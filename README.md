@@ -59,6 +59,7 @@ npm run dev
    - فعّل مزود **Google**، وحدد البريد الإلكتروني لدعم المشروع.
 4. في تبويب **Settings -> Authorized domains**:
    - تأكد من إضافة النطاق الخاص بتطبيقك (مثلاً نطاق المعاينة أو نطاق الاستضافة الخاص بك).
+   - **ملاحظة هامة لنشر GitHub Pages**: يجب إضافة نطاق GitHub Pages (`username.github.io`) في **Firebase Console ← Authentication ← Settings ← Authorized domains**، حتى يعمل تسجيل الدخول بحساب Google.
 
 ### الخطوة 3: تفعيل قاعدة بيانات Firestore
 1. من القائمة الجانبية، اختر **Build -> Firestore Database**.
@@ -140,3 +141,14 @@ firebase init hosting
 firebase deploy --only hosting
 ```
 ستحصل فوراً على رابط التطبيق المنشور على الإنترنت.
+
+---
+
+## 🐙 النشر على GitHub Pages
+
+المشروع مهيأ للنشر التلقائي عبر GitHub Actions في مسار `.github/workflows/deploy.yml`.
+
+> ⚠️ **تنبيه هام لتسجيل الدخول بحساب Google**:
+> يجب إضافة نطاق GitHub Pages الخاص بك (`username.github.io`) في:
+> **Firebase Console ← Authentication ← Settings ← Authorized domains**
+> حتى يعمل تسجيل الدخول بحساب Google بنجاح دون أي خطأ في النطاق غير المصرح به (`auth/unauthorized-domain`).

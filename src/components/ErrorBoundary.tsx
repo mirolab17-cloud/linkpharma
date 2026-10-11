@@ -67,11 +67,15 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
 
             <h1 className="text-xl sm:text-2xl font-bold text-slate-800 mb-2">
-              حدث خطأ غير متوقع
+              {this.state.error?.message?.toLowerCase().includes('api-key') || this.state.error?.message?.toLowerCase().includes('invalid-api-key')
+                ? 'إعدادات Firebase API Key غير مكتملة'
+                : 'حدث خطأ غير متوقع'}
             </h1>
 
             <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-              نعتذر، واجه التطبيق مشكلة أثناء تحميل هذه الصفحة. يمكنك إعادة تحميل الصفحة أو العودة للصفحة الرئيسية للمتابعة.
+              {this.state.error?.message?.toLowerCase().includes('api-key') || this.state.error?.message?.toLowerCase().includes('invalid-api-key')
+                ? 'مفتاح Firebase API Key مفقود أو غير صالح. يرجى التأكد من ضبط متغيرات البيئة أو إعدادات الربط للتشغيل بنجاح.'
+                : 'نعتذر، واجه التطبيق مشكلة أثناء تحميل هذه الصفحة. يمكنك إعادة تحميل الصفحة أو العودة للصفحة الرئيسية للمتابعة.'}
             </p>
 
             {this.state.error && (

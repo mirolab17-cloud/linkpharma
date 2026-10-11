@@ -9,6 +9,7 @@ import {
   Outlet 
 } from 'react-router-dom';
 import { useAuthStore } from './store/useAuthStore';
+import { isFirebaseConfigured } from './firebase';
 import { ToastContainer } from './components/Toast';
 import { Navbar } from './components/Navbar';
 import { AdminSidebar } from './components/AdminSidebar';
@@ -196,6 +197,30 @@ export default function App() {
     const unsub = initializeAuth();
     return () => unsub();
   }, [initializeAuth]);
+
+  if (!isFirebaseConfigured) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4" dir="rtl">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-slate-200/90 p-6 sm:p-8 text-center">
+          <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200 shadow-xs">
+            <svg className="w-8 h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">
+            إعدادات Firebase غير مكتملة
+          </h1>
+          <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+            لم يتم العثور على مفاتيح الاتصال بقاعدة بيانات Firebase (مثل مفتاح الـ API أو معرّف المشروع). يرجى التأكد من ضبط متغيرات البيئة أو مفاتيح الإعدادات لتشغيل المنصة بنجاح.
+          </p>
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs text-slate-600 text-right space-y-1.5 font-mono dir-ltr">
+            <div>VITE_FIREBASE_API_KEY: {import.meta.env.VITE_FIREBASE_API_KEY ? '✓ متوفر' : '✗ غير متوفر (يستخدم القيمة الافتراضية)'}</div>
+            <div>VITE_FIREBASE_PROJECT_ID: {import.meta.env.VITE_FIREBASE_PROJECT_ID ? '✓ متوفر' : '✗ غير متوفر (يستخدم القيمة الافتراضية)'}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <HashRouter>

@@ -35,18 +35,19 @@ import {
   serverTimestamp,
   onSnapshot
 } from 'firebase/firestore';
-// Firebase configuration strictly from environment variables
+// Firebase configuration: environment variables first, then fallback from firebase-applet-config.json
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || undefined,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyDgKxltoVlUxjOAqqhACmZagGLHLbvoP_I',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'refined-might-8mn89.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'refined-might-8mn89',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'refined-might-8mn89.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '652233191904',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:652233191904:web:df3333c93f1281619f3b85',
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || 'ai-studio-db7166d9-197a-4088-a47b-4865511559c0',
 };
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+
 export const db = (() => {
   const databaseId = firebaseConfig.firestoreDatabaseId;
   try {
@@ -58,11 +59,17 @@ export const db = (() => {
     return databaseId ? getFirestore(app, databaseId) : getFirestore(app);
   }
 })();
+
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-export const isFirebaseConfigured = Boolean(firebaseConfig && firebaseConfig.projectId && firebaseConfig.apiKey);
+export const isFirebaseConfigured = Boolean(
+  firebaseConfig && 
+  firebaseConfig.projectId && 
+  firebaseConfig.apiKey && 
+  firebaseConfig.apiKey.trim() !== ''
+);
 
 /**
  * تنظيف وحذف أي حقول بقيمة undefined بشكل جذري وشامل من أي كائن يتم إرساله إلى Firestore
@@ -175,6 +182,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 // Connection test per skill guidelines
 export async function testConnection() {
+  if (!isFirebaseConfigured) return;
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
