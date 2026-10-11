@@ -1,6 +1,7 @@
 // src/services/gemini.ts
 import { GoogleGenAI } from '@google/genai';
 import { cleanPrice } from '../utils/formatPrice';
+import { db, doc, getDoc, setDoc, deleteDoc } from '../firebase';
 
 export interface ExtractedPriceItem {
   id: string;
@@ -9,17 +10,43 @@ export interface ExtractedPriceItem {
   publicPrice?: number;
 }
 
-// الحصول على المفتاح من متغيرات البيئة بأمان تام دون التسبب في أخطاء
-function getApiKey(): string | null {
+const GEMINI_LOCAL_STORAGE_KEY = 'linkpharma_gemini_api_key';
+
+/**
+ * الحصول على مفتاح Gemini بأمان:
+ * 1. من الذاكرة المحلية للمشرف (localStorage)
+ * 2. أو من Firestore في وثيقة settings/gemini (التي لا يقرأها إلا المشرف)
+ * 3. أو من متغير البيئة VITE_GEMINI_KEY إن وجد محلياً
+ */
+export async function getStoredGeminiKey(): Promise<string | null> {
+  // 1. فحص الكاش المحلي
   try {
-    if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_KEY) {
-      return String(import.meta.env.VITE_GEMINI_KEY).trim();
+    const cached = localStorage.getItem(GEMINI_LOCAL_STORAGE_KEY);
+    if (cached && cached.trim()) {
+      return cached.trim();
     }
   } catch (_) {}
 
+  // 2. القراءة من Firestore (مقتصرة على المشرف فقط عبر قواعد الأمان)
   try {
-    if (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) {
-      return String(process.env.GEMINI_API_KEY).trim();
+    const snap = await getDoc(doc(db, 'settings', 'gemini'));
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data?.apiKey && typeof data.apiKey === 'string' && data.apiKey.trim()) {
+        const key = data.apiKey.trim();
+        try {
+          localStorage.setItem(GEMINI_LOCAL_STORAGE_KEY, key);
+        } catch (_) {}
+        return key;
+      }
+    }
+  } catch (_) {}
+
+  // 3. فحص متغير البيئة كخيار احتياطي للتطوير
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_KEY) {
+      const envKey = String(import.meta.env.VITE_GEMINI_KEY).trim();
+      if (envKey) return envKey;
     }
   } catch (_) {}
 
@@ -27,12 +54,45 @@ function getApiKey(): string | null {
 }
 
 /**
+ * حفظ مفتاح Gemini في Firestore وفي المتصفح للمشرف
+ */
+export async function saveGeminiKey(apiKey: string): Promise<void> {
+  const clean = apiKey.trim();
+  if (!clean) {
+    throw new Error('يرجى إدخال مفتاح API صالح.');
+  }
+
+  // الحفظ في Firestore
+  await setDoc(doc(db, 'settings', 'gemini'), {
+    apiKey: clean,
+    updatedAt: new Date().toISOString(),
+  });
+
+  // الحفظ في التخزين المحلي للمشرف
+  try {
+    localStorage.setItem(GEMINI_LOCAL_STORAGE_KEY, clean);
+  } catch (_) {}
+}
+
+/**
+ * مسح مفتاح Gemini
+ */
+export async function deleteGeminiKey(): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'settings', 'gemini'));
+  } catch (_) {}
+  try {
+    localStorage.removeItem(GEMINI_LOCAL_STORAGE_KEY);
+  } catch (_) {}
+}
+
+/**
  * استخراج الأسعار من نص ملصوق عبر Gemini
  */
-export async function extractPricesFromText(text: string): Promise<ExtractedPriceItem[]> {
-  const apiKey = getApiKey();
+export async function extractPricesFromText(text: string, customApiKey?: string): Promise<ExtractedPriceItem[]> {
+  const apiKey = (customApiKey && customApiKey.trim()) || await getStoredGeminiKey();
   if (!apiKey) {
-    throw new Error('مفتاح Gemini API غير مهيأ (VITE_GEMINI_KEY). يمكنك استخدام الاستيراد المباشر لملفات Excel/CSV.');
+    throw new Error('مفتاح Gemini API غير مهيأ. يرجى إدخال المفتاح وحفظه من لوحة الإدارة أعلاه، أو استخدام استيراد ملفات Excel/CSV.');
   }
 
   const prompt = `
@@ -85,10 +145,10 @@ ${text}
 /**
  * استخراج الأسعار من صورة (قائمة أسعار / فاتورة / كشف مستودع) عبر Gemini Vision
  */
-export async function extractPricesFromImage(file: File): Promise<ExtractedPriceItem[]> {
-  const apiKey = getApiKey();
+export async function extractPricesFromImage(file: File, customApiKey?: string): Promise<ExtractedPriceItem[]> {
+  const apiKey = (customApiKey && customApiKey.trim()) || await getStoredGeminiKey();
   if (!apiKey) {
-    throw new Error('مفتاح Gemini API غير مهيأ (VITE_GEMINI_KEY). يمكنك استخدام الاستيراد المباشر لملفات Excel/CSV.');
+    throw new Error('مفتاح Gemini API غير مهيأ. يرجى إدخال المفتاح وحفظه من لوحة الإدارة أعلاه، أو استخدام استيراد ملفات Excel/CSV.');
   }
 
   // تحويل الملف إلى Base64

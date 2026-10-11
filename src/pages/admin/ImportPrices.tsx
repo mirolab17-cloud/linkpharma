@@ -12,7 +12,14 @@ import {
 } from '../../services/dataStorage';
 import { Supplier, Product, ActiveIngredient, ImportBatch } from '../../types';
 import { parseSpreadsheetFile, processMappedRows, SheetParseResult, MappedPriceRow } from '../../services/import';
-import { extractPricesFromImage, extractPricesFromText, ExtractedPriceItem } from '../../services/gemini';
+import { 
+  extractPricesFromImage, 
+  extractPricesFromText, 
+  ExtractedPriceItem,
+  getStoredGeminiKey,
+  saveGeminiKey,
+  deleteGeminiKey
+} from '../../services/gemini';
 import { ProductMatcher, MatchResult } from '../../utils/fuzzyMatch';
 import { normalizeArabic } from '../../utils/arabicNormalize';
 import { formatCurrency } from '../../utils/formatPrice';
@@ -39,7 +46,8 @@ import {
   X,
   Clock,
   History,
-  Building
+  Building,
+  Key
 } from 'lucide-react';
 import { Modal } from '../../components/Modal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -92,6 +100,11 @@ export const ImportPrices: React.FC = () => {
   const [pastedText, setPastedText] = useState<string>('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [geminiItems, setGeminiItems] = useState<ExtractedPriceItem[]>([]);
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('');
+  const [hasSavedGeminiKey, setHasSavedGeminiKey] = useState(false);
+  const [isEditingGeminiKey, setIsEditingGeminiKey] = useState(false);
+  const [showGeminiKeyText, setShowGeminiKeyText] = useState(false);
+  const [isSavingGeminiKey, setIsSavingGeminiKey] = useState(false);
 
   // Matching State
   const [matchRows, setMatchRows] = useState<RowMatchItem[]>([]);
@@ -142,8 +155,47 @@ export const ImportPrices: React.FC = () => {
       if (sups.length > 0 && !selectedSupplierId) {
         setSelectedSupplierId(sups[0].id);
       }
+
+      // تحميل مفتاح Gemini المحفوظ للمشرف إن وجد
+      try {
+        const storedKey = await getStoredGeminiKey();
+        if (storedKey) {
+          setHasSavedGeminiKey(true);
+          setGeminiApiKeyInput(storedKey);
+        }
+      } catch (_) {}
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleSaveGeminiKey = async () => {
+    if (!geminiApiKeyInput.trim()) {
+      warning('يرجى إدخال مفتاح Gemini API صالح.');
+      return;
+    }
+    setIsSavingGeminiKey(true);
+    try {
+      await saveGeminiKey(geminiApiKeyInput.trim());
+      setHasSavedGeminiKey(true);
+      setIsEditingGeminiKey(false);
+      success('تم حفظ مفتاح Gemini بنجاح في قاعدة البيانات (خاص بالمشرف).');
+    } catch (e: any) {
+      error('فشل حفظ المفتاح: ' + (e.message || ''));
+    } finally {
+      setIsSavingGeminiKey(false);
+    }
+  };
+
+  const handleDeleteGeminiKey = async () => {
+    try {
+      await deleteGeminiKey();
+      setHasSavedGeminiKey(false);
+      setGeminiApiKeyInput('');
+      setIsEditingGeminiKey(true);
+      success('تمت إزالة مفتاح Gemini.');
+    } catch (e: any) {
+      error('فشل إزالة المفتاح: ' + (e.message || ''));
     }
   };
 
@@ -260,6 +312,12 @@ export const ImportPrices: React.FC = () => {
       return;
     }
 
+    if (!hasSavedGeminiKey && !geminiApiKeyInput.trim()) {
+      setIsEditingGeminiKey(true);
+      warning('يرجى إدخال مفتاح Gemini API وحفظه أولاً لتفعيل الاستخراج بالذكاء الاصطناعي.');
+      return;
+    }
+
     setLoading(true);
     try {
       let items: ExtractedPriceItem[] = [];
@@ -269,14 +327,14 @@ export const ImportPrices: React.FC = () => {
           setLoading(false);
           return;
         }
-        items = await extractPricesFromImage(imageFile);
+        items = await extractPricesFromImage(imageFile, geminiApiKeyInput.trim() || undefined);
       } else {
         if (!pastedText.trim()) {
           warning('يرجى لصق نص قائمة الأسعار أولاً.');
           setLoading(false);
           return;
         }
-        items = await extractPricesFromText(pastedText);
+        items = await extractPricesFromText(pastedText, geminiApiKeyInput.trim() || undefined);
       }
 
       if (items.length === 0) {
@@ -653,6 +711,95 @@ export const ImportPrices: React.FC = () => {
 
             {/* محتوى الإدخال بناءً على الطريقة */}
             <div className="pt-4 border-t border-slate-100">
+              {/* بطاقة إعداد مفتاح Gemini API للمشرف */}
+              {(inputMode === 'image' || inputMode === 'text') && (
+                <div className="mb-6 p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                        <Key className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800">
+                          مفتاح Gemini API (مخصص للمشرف فقط)
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          {hasSavedGeminiKey && !isEditingGeminiKey
+                            ? 'تم حفظ المفتاح بأمان في Firestore، ولا يمكن لأي صيدلية الاطلاع عليه.'
+                            : 'أدخل مفتاحك المجاني من Google AI Studio لتشغيل استخراج الأسعار بالذكاء الاصطناعي.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {hasSavedGeminiKey && !isEditingGeminiKey ? (
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 text-[11px] font-semibold">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          المفتاح مفعل ومحفوظ
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingGeminiKey(true)}
+                          className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition cursor-pointer"
+                        >
+                          تعديل
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDeleteGeminiKey}
+                          className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                          title="حذف المفتاح"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {(!hasSavedGeminiKey || isEditingGeminiKey) && (
+                    <div className="mt-3 pt-3 border-t border-amber-200/60 flex flex-col sm:flex-row gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type={showGeminiKeyText ? 'text' : 'password'}
+                          value={geminiApiKeyInput}
+                          onChange={(e) => setGeminiApiKeyInput(e.target.value)}
+                          placeholder="أدخل مفتاح Gemini API هنا..."
+                          className="w-full pl-9 pr-3 py-2 text-xs font-mono rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:border-amber-500"
+                          dir="ltr"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowGeminiKeyText(!showGeminiKeyText)}
+                          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          {showGeminiKeyText ? <Eye className="w-4 h-4" /> : <Eye className="w-4 h-4 opacity-50" />}
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleSaveGeminiKey}
+                          disabled={isSavingGeminiKey || !geminiApiKeyInput.trim()}
+                          className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          <span>{isSavingGeminiKey ? 'جاري الحفظ...' : 'حفظ المفتاح في النظام'}</span>
+                        </button>
+                        {hasSavedGeminiKey && (
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingGeminiKey(false)}
+                            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-xl transition cursor-pointer"
+                          >
+                            إلغاء
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {inputMode === 'file' && (
                 <div className="border-2 border-dashed border-slate-300 rounded-3xl p-8 text-center hover:border-[#0f9d7a] transition bg-slate-50/50">
                   <input

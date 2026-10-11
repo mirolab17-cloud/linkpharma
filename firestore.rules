@@ -56,9 +56,9 @@ service cloud.firestore {
       );
     }
 
-    // Test collection for boot connectivity check
+    // Test collection for boot connectivity check (Requires authentication)
     match /test/{docId} {
-      allow read: if true;
+      allow read: if isSignedIn();
       allow write: if false;
     }
 
@@ -67,9 +67,9 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // System Settings (Read by all authenticated users, modified only by admin)
+    // System Settings (Gemini key restricted strictly to admins; general settings readable by signed-in users)
     match /settings/{settingId} {
-      allow read: if isSignedIn();
+      allow read: if settingId == 'gemini' ? isAdmin() : isSignedIn();
       allow write: if isAdmin();
     }
 

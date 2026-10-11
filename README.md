@@ -73,7 +73,7 @@ npm run dev
 4. انسخ كائن `firebaseConfig` والصقه إما في ملف `.env` أو مباشرة داخل ملف `src/firebase.js`:
 ```javascript
 const firebaseConfig = {
-  apiKey: "AIzaSy...",
+  apiKey: "YOUR_FIREBASE_API_KEY",
   authDomain: "your-app.firebaseapp.com",
   projectId: "your-app-id",
   storageBucket: "your-app.appspot.com",
@@ -85,10 +85,8 @@ const firebaseConfig = {
 ### الخطوة 5: إضافة مفتاح Gemini API
 لتمكين الذكاء الاصطناعي من استخراج الأسعار من الصور والنصوص:
 1. احصل على مفتاح مجاني من [Google AI Studio](https://aistudio.google.com/).
-2. أضفه في ملف `.env`:
-```env
-VITE_GEMINI_KEY="AIzaSyYourGeminiApiKeyHere"
-```
+2. قم بإدخاله مباشرة من داخل لوحة تحكم المشرف (صفحة استيراد الأسعار) حيث يتم حفظه بأمان في Firestore للمشرف فقط.
+
 
 ---
 
