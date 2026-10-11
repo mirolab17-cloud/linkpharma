@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '../../components/Modal';
 import { EmptyState } from '../../components/EmptyState';
-import { Spinner } from '../../components/Loader';
+import { Spinner, CardSkeleton } from '../../components/Loader';
 import { useNavigate } from 'react-router-dom';
 
 export const MyOrders: React.FC = () => {
@@ -133,9 +133,7 @@ export const MyOrders: React.FC = () => {
       </div>
 
       {loading ? (
-        <div className="py-20 flex justify-center">
-          <Spinner text="جاري جلب الطلبيات..." />
-        </div>
+        <CardSkeleton count={4} />
       ) : orders.length === 0 ? (
         <EmptyState
           icon={<ClipboardList className="w-8 h-8" />}

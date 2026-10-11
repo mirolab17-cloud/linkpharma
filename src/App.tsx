@@ -13,7 +13,7 @@ import { ToastContainer } from './components/Toast';
 import { Navbar } from './components/Navbar';
 import { AdminSidebar } from './components/AdminSidebar';
 import { PharmacyBottomNav } from './components/PharmacyBottomNav';
-import { Spinner } from './components/Loader';
+import { Spinner, PharmacyBrandLoader } from './components/Loader';
 import { SubscriptionExpiredScreen } from './components/SubscriptionExpiredScreen';
 import { SubscriptionWarningBanner } from './components/SubscriptionWarningBanner';
 
@@ -83,8 +83,13 @@ const ProtectedAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children
 
   if (!initialized || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
-        <Spinner text="جاري التحقق من الصلاحيات الإدارية..." />
+      <div className="min-h-screen flex items-center justify-center bg-slate-900" dir="rtl">
+        <PharmacyBrandLoader
+          size="lg"
+          text="جاري التحقق من الصلاحيات الإدارية..."
+          subtext="منظومة إدارة مستودعات وتسعير الأدوية"
+          className="text-white"
+        />
       </div>
     );
   }
@@ -103,8 +108,12 @@ const ProtectedPharmacyRoute: React.FC<{ children: React.ReactNode }> = ({ child
 
   if (!initialized || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Spinner text="جاري التحميل..." />
+      <div className="min-h-screen flex items-center justify-center bg-slate-50" dir="rtl">
+        <PharmacyBrandLoader
+          size="lg"
+          text="جاري فتح صيدليتك وتحديث الأسعار..."
+          subtext="الربط مع مستودعات الأدوية المعتمدة"
+        />
       </div>
     );
   }
@@ -151,8 +160,12 @@ const RootRedirect: React.FC = () => {
 
   if (!initialized || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Spinner text="جاري التهيئة..." />
+      <div className="min-h-screen flex items-center justify-center bg-slate-50" dir="rtl">
+        <PharmacyBrandLoader
+          size="lg"
+          text="جاري تهيئة المنصة الموحدة..."
+          subtext="كشف الأسعار والعروض المحدثة لآلاف الأصناف"
+        />
       </div>
     );
   }

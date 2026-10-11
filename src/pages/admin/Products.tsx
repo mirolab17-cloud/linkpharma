@@ -30,7 +30,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { BulkBar } from '../../components/BulkBar';
 import { Pagination } from '../../components/Pagination';
 import { EmptyState } from '../../components/EmptyState';
-import { Spinner } from '../../components/Loader';
+import { Spinner, TableSkeleton } from '../../components/Loader';
 
 const DOSAGE_FORMS = [
   'أقراص',
@@ -466,9 +466,7 @@ export const Products: React.FC = () => {
 
       {/* الجدول والبيانات */}
       {loading ? (
-        <div className="py-20 flex justify-center">
-          <Spinner text="جاري جلب الأصناف الدوائية..." />
-        </div>
+        <TableSkeleton rows={8} cols={6} />
       ) : filteredProducts.length === 0 ? (
         <EmptyState
           icon={<Pill className="w-8 h-8" />}

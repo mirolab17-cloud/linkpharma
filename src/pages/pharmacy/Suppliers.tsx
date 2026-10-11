@@ -23,7 +23,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { Modal } from '../../components/Modal';
-import { Spinner } from '../../components/Loader';
+import { Spinner, CardSkeleton } from '../../components/Loader';
 
 export const PharmacySuppliers: React.FC = () => {
   const navigate = useNavigate();
@@ -156,9 +156,7 @@ export const PharmacySuppliers: React.FC = () => {
 
       {/* قائمة المستودعات كبطاقات تفاعلية */}
       {loading ? (
-        <div className="bg-white p-12 rounded-3xl border border-slate-200 flex justify-center">
-          <Spinner text="جاري تحميل دليل المستودعات والموردين..." />
-        </div>
+        <CardSkeleton count={6} />
       ) : visibleSuppliers.length === 0 ? (
         <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
           <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">

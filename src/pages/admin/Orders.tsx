@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { Table, Column } from '../../components/Table';
 import { Modal } from '../../components/Modal';
-import { Spinner } from '../../components/Loader';
+import { Spinner, TableSkeleton } from '../../components/Loader';
 import { EmptyState } from '../../components/EmptyState';
 
 export const AdminOrders: React.FC = () => {
@@ -259,9 +259,7 @@ export const AdminOrders: React.FC = () => {
       </div>
 
       {loading ? (
-        <div className="py-20 flex justify-center">
-          <Spinner text="جاري جلب الطلبيات..." />
-        </div>
+        <TableSkeleton rows={6} cols={6} />
       ) : filteredOrders.length === 0 ? (
         <EmptyState
           icon={<ClipboardList className="w-8 h-8" />}
