@@ -1,0 +1,178 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isCurrentUser(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Bootstrapped Admin: Determined via runtime email, custom claims, admins collection, or adminEmails in system settings
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'mirolab17@gmail.com' ||
+        (request.auth.token.keys().hasAll(['admin']) && request.auth.token.admin == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (
+          exists(/databases/$(database)/documents/settings/system) &&
+          'adminEmails' in get(/databases/$(database)/documents/settings/system).data &&
+          request.auth.token.email in get(/databases/$(database)/documents/settings/system).data.adminEmails
+        )
+      );
+    }
+
+    function isPharmacyUser() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'pharmacy';
+    }
+
+    function isActivePharmacy() {
+      return isPharmacyUser() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
+    }
+
+    // Check active subscription or trial directly inside security rules
+    function hasActiveSubscription() {
+      return isSignedIn() && (
+        isAdmin() || (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active' &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscriptionStatus in ['active', 'trial'] &&
+          (
+            !('subscriptionExpiresAtMillis' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+            request.time.toMillis() <= get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscriptionExpiresAtMillis
+          )
+        )
+      );
+    }
+
+    // Test collection for boot connectivity check
+    match /test/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Admins marker collection (Only admins can view or modify)
+    match /admins/{adminId} {
+      allow read, write: if isAdmin();
+    }
+
+    // System Settings (Read by all authenticated users, modified only by admin)
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow get: if isCurrentUser(userId) || isAdmin();
+      allow list: if isAdmin();
+
+      // Instant registration: User can create their own initial profile with trial period configured by admin
+      // Admins can create any user
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        (
+          isCurrentUser(userId) &&
+          request.resource.data.role == 'pharmacy' &&
+          request.resource.data.status == 'active' &&
+          request.resource.data.subscriptionStatus == 'trial' &&
+          request.resource.data.subscriptionExpiresAtMillis is number &&
+          request.resource.data.subscriptionExpiresAtMillis <= request.time.toMillis() + (366 * 24 * 60 * 60 * 1000)
+        )
+      );
+
+      // Users cannot change their role, status, subscription, or allowedSuppliers
+      allow update: if isAdmin() || (
+        isCurrentUser(userId) &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.status == resource.data.status &&
+        (!('subscriptionStatus' in resource.data) || request.resource.data.subscriptionStatus == resource.data.subscriptionStatus) &&
+        (!('subscriptionExpiresAt' in resource.data) || request.resource.data.subscriptionExpiresAt == resource.data.subscriptionExpiresAt) &&
+        (!('subscriptionExpiresAtMillis' in resource.data) || request.resource.data.subscriptionExpiresAtMillis == resource.data.subscriptionExpiresAtMillis) &&
+        (!('allowedSuppliers' in resource.data) || request.resource.data.allowedSuppliers == resource.data.allowedSuppliers)
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // Active Ingredients (Catalog read by signed-in users, modified only by admin)
+    match /activeIngredients/{ingredientId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Products (Catalog read by signed-in users, modified only by admin)
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Suppliers (Warehouses read by signed-in users, modified only by admin)
+    match /suppliers/{supplierId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Prices (Read allowed ONLY with active subscription/trial or for admins)
+    match /prices/{priceId} {
+      allow read: if hasActiveSubscription();
+      allow write: if isAdmin();
+    }
+
+    // Price History (Admin only)
+    match /priceHistory/{historyId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Import Batches (Admin only)
+    match /importBatches/{batchId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Orders (Only users with active subscription can place orders)
+    match /orders/{orderId} {
+      allow get: if isAdmin() || (isSignedIn() && resource.data.pharmacyId == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && resource.data.pharmacyId == request.auth.uid);
+
+      allow create: if isAdmin() || (
+        hasActiveSubscription() &&
+        request.resource.data.pharmacyId == request.auth.uid &&
+        request.resource.data.status == 'sent'
+      );
+
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow get: if isAdmin() || (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.userId == 'all'));
+      allow list: if isAdmin() || (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.userId == 'all'));
+
+      allow create: if isSignedIn() && (
+        isAdmin() || 
+        request.resource.data.userId == request.auth.uid || 
+        request.resource.data.userId == 'all'
+      );
+
+      allow update: if isAdmin() || (
+        isSignedIn() && 
+        (resource.data.userId == request.auth.uid || resource.data.userId == 'all') && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+      );
+
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+  }
+}
