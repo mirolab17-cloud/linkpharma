@@ -1,7 +1,7 @@
 // src/App.tsx
 import React, { useEffect, useState } from 'react';
 import { 
-  BrowserRouter, 
+  HashRouter, 
   Routes, 
   Route, 
   Navigate, 
@@ -198,7 +198,7 @@ export default function App() {
   }, [initializeAuth]);
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       {/* حاوية الإشعارات العائمة */}
       <ToastContainer />
 
@@ -261,6 +261,6 @@ export default function App() {
         {/* أي مسار غير معروف يحول للصفحة المناسبة */}
         <Route path="*" element={<RootRedirect />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }

@@ -9,13 +9,21 @@ export interface ExtractedPriceItem {
   publicPrice?: number;
 }
 
-// الحصول على المفتاح من متغيرات البيئة
+// الحصول على المفتاح من متغيرات البيئة بأمان تام دون التسبب في أخطاء
 function getApiKey(): string | null {
-  return (
-    import.meta.env.VITE_GEMINI_KEY ||
-    (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) ||
-    null
-  );
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_KEY) {
+      return String(import.meta.env.VITE_GEMINI_KEY).trim();
+    }
+  } catch (_) {}
+
+  try {
+    if (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) {
+      return String(process.env.GEMINI_API_KEY).trim();
+    }
+  } catch (_) {}
+
+  return null;
 }
 
 /**
@@ -24,10 +32,8 @@ function getApiKey(): string | null {
 export async function extractPricesFromText(text: string): Promise<ExtractedPriceItem[]> {
   const apiKey = getApiKey();
   if (!apiKey) {
-    throw new Error('مفتاح Gemini API غير مهيأ. يرجى إضافة VITE_GEMINI_KEY في ملف .env');
+    throw new Error('مفتاح Gemini API غير مهيأ (VITE_GEMINI_KEY). يمكنك استخدام الاستيراد المباشر لملفات Excel/CSV.');
   }
-
-  const ai = new GoogleGenAI({ apiKey });
 
   const prompt = `
 أنت خبير في التعرف على فواتير وقوائم أسعار الأدوية والمستحضرات الطبية.
@@ -47,6 +53,7 @@ ${text}
 `;
 
   try {
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
@@ -81,7 +88,7 @@ ${text}
 export async function extractPricesFromImage(file: File): Promise<ExtractedPriceItem[]> {
   const apiKey = getApiKey();
   if (!apiKey) {
-    throw new Error('مفتاح Gemini API غير مهيأ. يرجى إضافة VITE_GEMINI_KEY في ملف .env');
+    throw new Error('مفتاح Gemini API غير مهيأ (VITE_GEMINI_KEY). يمكنك استخدام الاستيراد المباشر لملفات Excel/CSV.');
   }
 
   // تحويل الملف إلى Base64
@@ -96,8 +103,6 @@ export async function extractPricesFromImage(file: File): Promise<ExtractedPrice
     reader.readAsDataURL(file);
   });
 
-  const ai = new GoogleGenAI({ apiKey });
-
   const prompt = `
 استخرج قائمة الأصناف الدوائية وأسعارها من صورة قائمة الأسعار / الفاتورة هذه بدقة عالية.
 أعد الناتج حصراً على هيئة JSON Array بالصيغة التالية:
@@ -108,6 +113,7 @@ export async function extractPricesFromImage(file: File): Promise<ExtractedPrice
 `;
 
   try {
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: [
