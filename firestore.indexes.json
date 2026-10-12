@@ -29,6 +29,14 @@
       "collectionGroup": "prices",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "supplierId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "prices",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "productId", "order": "ASCENDING" },
         { "fieldPath": "available", "order": "ASCENDING" },
         { "fieldPath": "price", "order": "ASCENDING" }

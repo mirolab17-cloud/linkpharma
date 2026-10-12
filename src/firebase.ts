@@ -19,6 +19,8 @@ import {
 import { 
   getFirestore,
   initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   doc, 
   getDocFromServer,
   collection, 
@@ -52,8 +54,11 @@ export const db = (() => {
   const databaseId = firebaseConfig.firestoreDatabaseId;
   try {
     return initializeFirestore(app, {
-      experimentalForceLongPolling: true,
-      ignoreUndefinedProperties: true
+      experimentalAutoDetectLongPolling: true,
+      ignoreUndefinedProperties: true,
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
     }, databaseId);
   } catch {
     return databaseId ? getFirestore(app, databaseId) : getFirestore(app);

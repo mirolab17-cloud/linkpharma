@@ -7,13 +7,15 @@ import {
   getUsers, 
   getOrders, 
   getImportBatches,
+  getPrices,
   seedDatabase,
   clearDatabase,
   getSystemSettings,
   updateSystemSettings
 } from '../../services/dataStorage';
-import { Product, Supplier, UserProfile, Order, ImportBatch } from '../../types';
-import { formatCurrency } from '../../utils/formatPrice';
+import { Product, Supplier, UserProfile, Order, ImportBatch, PriceRecord } from '../../types';
+import { formatCurrency, setSystemCurrency, getSystemCurrency } from '../../utils/formatPrice';
+import { formatGregorianDate } from '../../utils/formatDate';
 import { useToastStore } from '../../store/useToastStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { 
@@ -30,7 +32,11 @@ import {
   Clock,
   CheckCircle2,
   Megaphone,
-  Save
+  Save,
+  AlertTriangle,
+  Flame,
+  CheckCheck,
+  Coins
 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Spinner } from '../../components/Loader';
@@ -46,9 +52,12 @@ export const AdminDashboard: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [batches, setBatches] = useState<ImportBatch[]>([]);
+  const [prices, setPrices] = useState<PriceRecord[]>([]);
 
   const [editingTrialDays, setEditingTrialDays] = useState<number>(defaultTrialDays || 7);
   const [savingTrialDays, setSavingTrialDays] = useState(false);
+  const [systemCurrency, setLocalCurrency] = useState<string>(getSystemCurrency() || '₪');
+  const [savingCurrency, setSavingCurrency] = useState(false);
 
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
@@ -61,12 +70,13 @@ export const AdminDashboard: React.FC = () => {
   const loadDashboard = async () => {
     setLoading(true);
     try {
-      const [p, s, u, o, b, settings] = await Promise.all([
+      const [p, s, u, o, b, prs, settings] = await Promise.all([
         getProducts(),
         getSuppliers(),
         getUsers(),
         getOrders(),
         getImportBatches(),
+        getPrices(),
         getSystemSettings(),
       ]);
       setProducts(p);
@@ -74,9 +84,14 @@ export const AdminDashboard: React.FC = () => {
       setUsers(u);
       setOrders(o);
       setBatches(b);
+      setPrices(prs);
       if (settings?.defaultTrialDays) {
         setEditingTrialDays(settings.defaultTrialDays);
         setDefaultTrialDays(settings.defaultTrialDays);
+      }
+      if (settings?.currency) {
+        setLocalCurrency(settings.currency);
+        setSystemCurrency(settings.currency);
       }
     } catch (e) {
       console.error(e);
@@ -99,6 +114,20 @@ export const AdminDashboard: React.FC = () => {
       error('تعذر حفظ أيام التجربة: ' + err.message);
     } finally {
       setSavingTrialDays(false);
+    }
+  };
+
+  const handleSaveCurrency = async (curr: string) => {
+    setSavingCurrency(true);
+    try {
+      await updateSystemSettings({ currency: curr });
+      setLocalCurrency(curr);
+      setSystemCurrency(curr);
+      success(`تم تحديث العملة الافتراضية للنظام إلى (${curr}) بنجاح.`);
+    } catch (err: any) {
+      error('تعذر حفظ العملة: ' + err.message);
+    } finally {
+      setSavingCurrency(false);
     }
   };
 
@@ -128,6 +157,36 @@ export const AdminDashboard: React.FC = () => {
       setActionLoading(false);
     }
   };
+
+  // ======================= حساب الإحصاءات والتحليلات المطلوبة =======================
+  // 1) أصناف بلا أسعار
+  const pricedProductIds = new Set(prices.map((p) => p.productId));
+  const productsWithoutPrices = products.filter((p) => !pricedProductIds.has(p.id));
+
+  // 2) مستودعات لم تُحدَّث منذ 7 أيام
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const suppliersNotUpdated7Days = suppliers.filter((s) => {
+    if (!s.lastPriceUpdate) return true;
+    return new Date(s.lastPriceUpdate).getTime() < sevenDaysAgo;
+  });
+
+  // 3) أكثر الأصناف طلباً وبحثاً
+  const productDemandMap = new Map<string, { count: number; name: string }>();
+  orders.forEach((o) => {
+    o.items.forEach((item) => {
+      const current = productDemandMap.get(item.productId) || { count: 0, name: item.name };
+      current.count += item.qty;
+      productDemandMap.set(item.productId, current);
+    });
+  });
+  const topDemandedProducts = Array.from(productDemandMap.values())
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  // 4) نسبة الاستيراد الناجح
+  const successfulImportRate = batches.length > 0
+    ? Math.round((batches.reduce((sum, b) => sum + (b.rowsCount > 0 ? 1 : 0), 0) / batches.length) * 100)
+    : 100;
 
   const activePharmacies = users.filter((u) => u.role === 'pharmacy' && u.status === 'active');
   const pendingPharmacies = users.filter((u) => u.role === 'pharmacy' && u.status === 'pending');
@@ -222,7 +281,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center gap-1 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
               {[3, 7, 14, 21, 30, 60].map((d) => (
                 <button
                   key={d}
@@ -231,7 +290,7 @@ export const AdminDashboard: React.FC = () => {
                   className={`px-2.5 py-1 text-xs font-bold rounded-lg transition ${
                     editingTrialDays === d
                       ? 'bg-blue-600 text-white shadow-2xs'
-                      : 'text-slate-600 hover:bg-slate-100'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
                   }`}
                 >
                   {d} يوماً
@@ -246,9 +305,9 @@ export const AdminDashboard: React.FC = () => {
                 max="365"
                 value={editingTrialDays}
                 onChange={(e) => setEditingTrialDays(Math.max(1, Number(e.target.value)))}
-                className="w-20 px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-black text-center focus:outline-hidden focus:border-blue-500"
+                className="w-20 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-black text-center focus:outline-hidden focus:border-blue-500 font-mono"
               />
-              <span className="text-xs font-bold text-slate-600">يوماً</span>
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-300">يوماً</span>
             </div>
 
             <button
@@ -260,6 +319,122 @@ export const AdminDashboard: React.FC = () => {
               <Save className="w-3.5 h-3.5" />
               <span>{savingTrialDays ? 'جاري الحفظ...' : 'حفظ التعديل'}</span>
             </button>
+          </div>
+        </div>
+
+        {/* إعداد العملة الافتراضية للنظام */}
+        <div className="mt-4 pt-4 border-t border-blue-200/60 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Coins className="w-4 h-4 text-emerald-600" />
+            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">العملة الافتراضية لعرض الأسعار بالنظام:</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-mono font-bold">({systemCurrency})</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+            {[
+              { code: 'ILS', symbol: '₪', label: 'الشيكل ₪' },
+              { code: 'USD', symbol: '$', label: 'الدولار $' },
+              { code: 'JOD', symbol: 'JOD', label: 'الدينار JOD' },
+            ].map((c) => (
+              <button
+                key={c.symbol}
+                type="button"
+                onClick={() => handleSaveCurrency(c.symbol)}
+                disabled={savingCurrency}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
+                  systemCurrency === c.symbol
+                    ? 'bg-[#0f9d7a] text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* قسم مؤشرات الجودة والرقابة (KPI Analytics) */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+          <span>مؤشرات الجودة والرقابة على الأسعار والمستودعات</span>
+        </h3>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 1) أصناف بلا أسعار */}
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">أصناف بدون أي أسعار</span>
+              <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">
+                {productsWithoutPrices.length}
+              </span>
+              <span className="text-[11px] text-slate-400 block mt-0.5">
+                من إجمالي {products.length} صنف مسجل
+              </span>
+            </div>
+          </div>
+
+          {/* 2) مستودعات لم تحدث منذ 7 أيام */}
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">مستودعات راكدة (&gt; 7 أيام)</span>
+              <div className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center">
+                <Clock className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <span className="text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
+                {suppliersNotUpdated7Days.length}
+              </span>
+              <span className="text-[11px] text-slate-400 block mt-0.5">
+                من إجمالي {suppliers.length} مستودع
+              </span>
+            </div>
+          </div>
+
+          {/* 3) نسبة الاستيراد الناجح */}
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">نسبة الاستيراد الناجح</span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-[#0f9d7a] flex items-center justify-center">
+                <CheckCheck className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                {successfulImportRate}%
+              </span>
+              <span className="text-[11px] text-slate-400 block mt-0.5">
+                عبر {batches.length} دفعات استيراد
+              </span>
+            </div>
+          </div>
+
+          {/* 4) أكثر الأصناف طلباً وبحثاً */}
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">أكثر الأصناف طلباً</span>
+              <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 flex items-center justify-center">
+                <Flame className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-3">
+              {topDemandedProducts.length > 0 ? (
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                  {topDemandedProducts[0].name} ({topDemandedProducts[0].count} وحدة)
+                </div>
+              ) : (
+                <span className="text-xs text-slate-400">لا توجد طلبيات بعد</span>
+              )}
+              <span className="text-[11px] text-slate-400 block mt-0.5">
+                بناءً على طلبات الصيدليات
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -407,7 +582,7 @@ export const AdminDashboard: React.FC = () => {
                       </div>
                     </div>
                     <span className="text-[10px] text-slate-500 font-medium">
-                      {new Date(batch.createdAt).toLocaleDateString('ar-SA')}
+                      {formatGregorianDate(batch.createdAt)}
                     </span>
                   </div>
                 );
@@ -452,7 +627,7 @@ export const AdminDashboard: React.FC = () => {
                       {formatCurrency(order.total)}
                     </span>
                     <span className="text-[10px] text-slate-400">
-                      {new Date(order.createdAt).toLocaleDateString('ar-SA')}
+                      {formatGregorianDate(order.createdAt)}
                     </span>
                   </div>
                 </div>

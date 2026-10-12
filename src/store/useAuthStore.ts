@@ -24,6 +24,7 @@ import {
 } from '../firebase';
 import { GoogleAuthProvider } from 'firebase/auth';
 import { useToastStore } from './useToastStore';
+import { setSystemCurrency } from '../utils/formatPrice';
 
 // فترة التجربة الافتراضية بالأيام
 export const DEFAULT_TRIAL_DAYS = 7;
@@ -91,12 +92,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return () => {};
     }
 
-    // استماع مباشر لإعدادات النظام العامة (أيام التجربة المحددة من الإدارة)
+    // استماع مباشر لإعدادات النظام العامة (أيام التجربة المحددة من الإدارة والعملة)
     let unsubSettings: (() => void) | null = null;
+    let safetyTimer: any = null;
+
+    // مهلة أمان قصوى: 5 ثوانٍ لضمان عدم تعليق الواجهة في حالة انقطاع الشبكة أو بطء فايربيس
+    safetyTimer = setTimeout(() => {
+      const state = get();
+      if (!state.initialized || state.loading) {
+        console.warn('Auth initialization reached 5s timeout - unlocking UI state');
+        set({ loading: false, initialized: true });
+      }
+    }, 5000);
+
     try {
       unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (settingsSnap) => {
-        if (settingsSnap.exists() && typeof settingsSnap.data().defaultTrialDays === 'number') {
-          set({ defaultTrialDays: settingsSnap.data().defaultTrialDays });
+        if (settingsSnap.exists()) {
+          const data = settingsSnap.data();
+          if (typeof data.defaultTrialDays === 'number') {
+            set({ defaultTrialDays: data.defaultTrialDays });
+          }
+          if (data.currency && typeof data.currency === 'string') {
+            setSystemCurrency(data.currency);
+          }
         }
       }, (err) => {
         console.warn('Settings subscription error:', err);
@@ -115,6 +133,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       if (!fbUser) {
+        if (safetyTimer) clearTimeout(safetyTimer);
         set({ user: null, loading: false, initialized: true, isPasswordUser: false, isGoogleUser: false });
         return;
       }
@@ -122,11 +141,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const isPassword = fbUser.providerData.some(p => p.providerId === 'password');
       const isGoogle = fbUser.providerData.some(p => p.providerId === 'google.com');
 
+      // مؤقت إضافي لملف المستخدم
+      const docTimeout = setTimeout(() => {
+        if (get().loading) {
+          console.warn('User profile fetch exceeded timeout, unlocking state');
+          set({ loading: false, initialized: true });
+        }
+      }, 4000);
+
       try {
         const userDocRef = doc(db, 'users', fbUser.uid);
-        let isRuntimeAdmin = fbUser.email?.trim().toLowerCase() === 'mirolab17@gmail.com';
+        let isRuntimeAdmin = false;
 
-        // التحقق مما إذا كان المستخدم مسجلاً في مجموعة المشرفين أو قائمة إيميلات المدراء
+        // التحقق مما إذا كان المستخدم مسجلاً في مجموعة المشرفين أو قائمة إيميلات المدراء بالإعدادات السحابية
         try {
           const [adminSnap, settingsSnap] = await Promise.all([
             getDoc(doc(db, 'admins', fbUser.uid)).catch(() => null),
@@ -147,93 +174,107 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         // استماع فوري لتغيرات ملف المستخدم (تعديل الاشتراك، انتهاء التجربة، إلخ)
         unsubUserDoc = onSnapshot(userDocRef, async (userSnap) => {
-          if (userSnap.exists()) {
-            const profile = userSnap.data() as UserProfile;
-            const shouldBeAdmin = isRuntimeAdmin || profile.role === 'admin';
+          clearTimeout(docTimeout);
+          if (safetyTimer) clearTimeout(safetyTimer);
 
-            if (shouldBeAdmin && profile.role !== 'admin') {
-              profile.role = 'admin';
-              profile.status = 'active';
-              profile.subscriptionStatus = 'active';
-              await setDoc(userDocRef, profile, { merge: true });
-            }
+          try {
+            if (userSnap.exists()) {
+              const profile = userSnap.data() as UserProfile;
+              const shouldBeAdmin = isRuntimeAdmin || profile.role === 'admin';
 
-            if (shouldBeAdmin) {
-              try {
-                await setDoc(doc(db, 'admins', fbUser.uid), {
-                  uid: fbUser.uid,
-                  email: fbUser.email || '',
-                  addedAt: new Date().toISOString()
-                }, { merge: true });
-              } catch (adminErr) {
-                console.warn('Failed to register in admins collection:', adminErr);
+              if (shouldBeAdmin && profile.role !== 'admin') {
+                profile.role = 'admin';
+                profile.status = 'active';
+                profile.subscriptionStatus = 'active';
+                await setDoc(userDocRef, profile, { merge: true }).catch(() => null);
               }
-            }
 
-            set({ 
-              user: { ...profile, uid: fbUser.uid, role: shouldBeAdmin ? 'admin' : (profile.role || 'pharmacy') }, 
-              loading: false, 
-              initialized: true,
-              isPasswordUser: isPassword,
-              isGoogleUser: isGoogle
-            });
-          } else {
-            // مستخدم جديد يسجل لأول مرة عبر Google -> تفعيل مباشر بحساب نشط ومفتوح
-            const now = Date.now();
-            const activePeriodDays = 365;
-            const expiresAtMillis = now + activePeriodDays * 24 * 60 * 60 * 1000;
-            const expiresAt = new Date(expiresAtMillis).toISOString();
-
-            const newProfile: UserProfile = {
-              uid: fbUser.uid,
-              name: fbUser.displayName || fbUser.email?.split('@')[0] || (isRuntimeAdmin ? 'مدير النظام' : 'صيدلي جديد'),
-              email: fbUser.email || '',
-              role: isRuntimeAdmin ? 'admin' : 'pharmacy',
-              status: 'active', // تفعيل فوري ومباشر
-              subscriptionStatus: 'active', // تفعيل مباشر كحساب نشط بدون قيود
-              trialDays: activePeriodDays,
-              pharmacyName: isRuntimeAdmin ? 'الإدارة المركزية' : 'صيدليتي',
-              allowedSuppliers: [],
-              profileComplete: true,
-              createdAt: new Date().toISOString(),
-              ...(isRuntimeAdmin ? {} : {
-                subscriptionExpiresAt: expiresAt,
-                subscriptionExpiresAtMillis: expiresAtMillis,
-              }),
-            };
-
-            await setDoc(userDocRef, newProfile);
-
-            if (isRuntimeAdmin) {
-              try {
-                await setDoc(doc(db, 'admins', fbUser.uid), {
-                  uid: fbUser.uid,
-                  email: fbUser.email || '',
-                  addedAt: new Date().toISOString()
-                }, { merge: true });
-              } catch (adminErr) {
-                console.warn('Failed to register in admins collection:', adminErr);
+              if (shouldBeAdmin) {
+                try {
+                  await setDoc(doc(db, 'admins', fbUser.uid), {
+                    uid: fbUser.uid,
+                    email: fbUser.email || '',
+                    addedAt: new Date().toISOString()
+                  }, { merge: true });
+                } catch (adminErr) {
+                  console.warn('Failed to register in admins collection:', adminErr);
+                }
               }
-            }
 
-            set({ 
-              user: newProfile, 
-              loading: false, 
-              initialized: true,
-              isPasswordUser: isPassword,
-              isGoogleUser: isGoogle
-            });
+              set({ 
+                user: { ...profile, uid: fbUser.uid, role: shouldBeAdmin ? 'admin' : (profile.role || 'pharmacy') }, 
+                loading: false, 
+                initialized: true,
+                isPasswordUser: isPassword,
+                isGoogleUser: isGoogle
+              });
+            } else {
+              // مستخدم جديد يسجل لأول مرة عبر Google -> تفعيل مباشر بحساب نشط ومفتوح
+              const now = Date.now();
+              const activePeriodDays = 365;
+              const expiresAtMillis = now + activePeriodDays * 24 * 60 * 60 * 1000;
+              const expiresAt = new Date(expiresAtMillis).toISOString();
+
+              const newProfile: UserProfile = {
+                uid: fbUser.uid,
+                name: fbUser.displayName || fbUser.email?.split('@')[0] || (isRuntimeAdmin ? 'مدير النظام' : 'صيدلي جديد'),
+                email: fbUser.email || '',
+                role: isRuntimeAdmin ? 'admin' : 'pharmacy',
+                status: 'active', // تفعيل فوري ومباشر
+                subscriptionStatus: 'active', // تفعيل مباشر كحساب نشط بدون قيود
+                trialDays: activePeriodDays,
+                pharmacyName: isRuntimeAdmin ? 'الإدارة المركزية' : 'صيدليتي',
+                allowedSuppliers: [],
+                profileComplete: true,
+                createdAt: new Date().toISOString(),
+                ...(isRuntimeAdmin ? {} : {
+                  subscriptionExpiresAt: expiresAt,
+                  subscriptionExpiresAtMillis: expiresAtMillis,
+                }),
+              };
+
+              await setDoc(userDocRef, newProfile).catch(() => null);
+
+              if (isRuntimeAdmin) {
+                try {
+                  await setDoc(doc(db, 'admins', fbUser.uid), {
+                    uid: fbUser.uid,
+                    email: fbUser.email || '',
+                    addedAt: new Date().toISOString()
+                  }, { merge: true });
+                } catch (adminErr) {
+                  console.warn('Failed to register in admins collection:', adminErr);
+                }
+              }
+
+              set({ 
+                user: newProfile, 
+                loading: false, 
+                initialized: true,
+                isPasswordUser: isPassword,
+                isGoogleUser: isGoogle
+              });
+            }
+          } catch (innerErr) {
+            console.error('Error handling user doc snapshot:', innerErr);
+            set({ loading: false, initialized: true });
           }
         }, (snapErr) => {
+          clearTimeout(docTimeout);
+          if (safetyTimer) clearTimeout(safetyTimer);
           console.error('User doc onSnapshot error:', snapErr);
+          set({ loading: false, initialized: true });
         });
       } catch (err: any) {
+        clearTimeout(docTimeout);
+        if (safetyTimer) clearTimeout(safetyTimer);
         console.error('Error in auth state changed:', err);
         set({ user: null, loading: false, initialized: true, isPasswordUser: false, isGoogleUser: false });
       }
     });
 
     return () => {
+      if (safetyTimer) clearTimeout(safetyTimer);
       if (unsubSettings) unsubSettings();
       if (unsubUserDoc) unsubUserDoc();
       unsubscribe();
@@ -307,7 +348,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const cred = await createUserWithEmailAndPassword(auth, email.trim(), pass);
-      const isRuntimeAdmin = email.trim() === 'mirolab17@gmail.com';
+      let isRuntimeAdmin = false;
+      try {
+        const settingsSnap = await getDoc(doc(db, 'settings', 'system')).catch(() => null);
+        if (settingsSnap && settingsSnap.exists()) {
+          const adminEmails: string[] = settingsSnap.data().adminEmails || [];
+          if (adminEmails.map((e) => e.trim().toLowerCase()).includes(email.trim().toLowerCase())) {
+            isRuntimeAdmin = true;
+          }
+        }
+      } catch (_) {}
 
       const newProfile: UserProfile = {
         uid: cred.user.uid,

@@ -1,6 +1,7 @@
 // src/services/whatsapp.ts
 import { CartItem, UserProfile } from '../types';
 import { formatCurrency } from '../utils/formatPrice';
+import { formatGregorianDateTime } from '../utils/formatDate';
 import { createWhatsAppLink } from '../utils/phone';
 
 export function buildOrderWhatsAppMessage(params: {
@@ -10,13 +11,7 @@ export function buildOrderWhatsAppMessage(params: {
 }): string {
   const { pharmacy, items, subtotal } = params;
 
-  const nowFormatted = new Date().toLocaleDateString('ar-SA', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const nowFormatted = formatGregorianDateTime(new Date());
 
   const lines = [
     'طلبية جديدة 🧾',

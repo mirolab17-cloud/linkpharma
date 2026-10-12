@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { 
   HashRouter, 
   Routes, 
@@ -9,6 +9,7 @@ import {
   Outlet 
 } from 'react-router-dom';
 import { useAuthStore } from './store/useAuthStore';
+import { useThemeStore } from './store/useThemeStore';
 import { isFirebaseConfigured } from './firebase';
 import { ToastContainer } from './components/Toast';
 import { Navbar } from './components/Navbar';
@@ -17,26 +18,34 @@ import { PharmacyBottomNav } from './components/PharmacyBottomNav';
 import { Spinner, PharmacyBrandLoader } from './components/Loader';
 import { SubscriptionExpiredScreen } from './components/SubscriptionExpiredScreen';
 import { SubscriptionWarningBanner } from './components/SubscriptionWarningBanner';
+import { OfflineIndicator } from './components/OfflineIndicator';
 
 // Auth Pages
 import { Login } from './pages/auth/Login';
-import { PendingApproval } from './pages/auth/PendingApproval';
+const PendingApproval = lazy(() => import('./pages/auth/PendingApproval').then(m => ({ default: m.PendingApproval })));
 
-// Admin Pages
-import { AdminDashboard } from './pages/admin/Dashboard';
-import { ActiveIngredients } from './pages/admin/ActiveIngredients';
-import { Products } from './pages/admin/Products';
-import { Suppliers } from './pages/admin/Suppliers';
-import { ImportPrices } from './pages/admin/ImportPrices';
-import { Pharmacies } from './pages/admin/Pharmacies';
-import { AdminOrders } from './pages/admin/Orders';
+// Admin Pages (Lazy loaded to reduce initial bundle size)
+const AdminDashboard = lazy(() => import('./pages/admin/Dashboard').then(m => ({ default: m.AdminDashboard })));
+const ActiveIngredients = lazy(() => import('./pages/admin/ActiveIngredients').then(m => ({ default: m.ActiveIngredients })));
+const Products = lazy(() => import('./pages/admin/Products').then(m => ({ default: m.Products })));
+const Suppliers = lazy(() => import('./pages/admin/Suppliers').then(m => ({ default: m.Suppliers })));
+const ImportPrices = lazy(() => import('./pages/admin/ImportPrices').then(m => ({ default: m.ImportPrices })));
+const Pharmacies = lazy(() => import('./pages/admin/Pharmacies').then(m => ({ default: m.Pharmacies })));
+const AdminOrders = lazy(() => import('./pages/admin/Orders').then(m => ({ default: m.AdminOrders })));
 
-// Pharmacy Pages
+// Pharmacy Pages (Prices loaded directly or fast-suspensed)
 import { PharmacyPrices } from './pages/pharmacy/Prices';
-import { PharmacySuppliers } from './pages/pharmacy/Suppliers';
-import { PharmacyCart } from './pages/pharmacy/Cart';
-import { MyOrders } from './pages/pharmacy/MyOrders';
-import { PharmacyProfile } from './pages/pharmacy/Profile';
+const PharmacySuppliers = lazy(() => import('./pages/pharmacy/Suppliers').then(m => ({ default: m.PharmacySuppliers })));
+const PharmacyCart = lazy(() => import('./pages/pharmacy/Cart').then(m => ({ default: m.PharmacyCart })));
+const MyOrders = lazy(() => import('./pages/pharmacy/MyOrders').then(m => ({ default: m.MyOrders })));
+const PharmacyProfile = lazy(() => import('./pages/pharmacy/Profile').then(m => ({ default: m.PharmacyProfile })));
+
+// Page Loading Fallback
+const PageFallback: React.FC = () => (
+  <div className="flex-1 min-h-[60vh] flex items-center justify-center p-8" dir="rtl">
+    <PharmacyBrandLoader size="md" text="جاري التحميل..." />
+  </div>
+);
 
 // ======================= Admin Layout =======================
 const AdminLayout: React.FC = () => {
@@ -44,7 +53,7 @@ const AdminLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col transition-colors duration-200">
       <Navbar
         onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         isSidebarOpen={isSidebarOpen}
@@ -57,7 +66,9 @@ const AdminLayout: React.FC = () => {
           onToggleCollapse={() => setCollapsed(!collapsed)}
         />
         <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0">
-          <Outlet />
+          <Suspense fallback={<PageFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>
@@ -67,11 +78,13 @@ const AdminLayout: React.FC = () => {
 // ======================= Pharmacy Layout =======================
 const PharmacyLayout: React.FC = () => {
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col pb-16 md:pb-0">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col pb-16 md:pb-0 transition-colors duration-200">
       <Navbar />
       <SubscriptionWarningBanner />
       <main className="flex-1 min-w-0">
-        <Outlet />
+        <Suspense fallback={<PageFallback />}>
+          <Outlet />
+        </Suspense>
       </main>
       <PharmacyBottomNav />
     </div>
@@ -192,11 +205,13 @@ const RootRedirect: React.FC = () => {
 
 export default function App() {
   const { initializeAuth } = useAuthStore();
+  const { initializeTheme } = useThemeStore();
 
   useEffect(() => {
+    initializeTheme();
     const unsub = initializeAuth();
     return () => unsub();
-  }, [initializeAuth]);
+  }, [initializeAuth, initializeTheme]);
 
   if (!isFirebaseConfigured) {
     return (
@@ -224,8 +239,9 @@ export default function App() {
 
   return (
     <HashRouter>
-      {/* حاوية الإشعارات العائمة */}
+      {/* حاوية الإشعارات العائمة ومؤشر عدم الاتصال */}
       <ToastContainer />
+      <OfflineIndicator />
 
       <Routes>
         {/* المسار الجذري */}

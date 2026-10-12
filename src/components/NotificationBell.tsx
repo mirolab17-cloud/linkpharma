@@ -1,5 +1,6 @@
 // src/components/NotificationBell.tsx
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { 
   subscribeToNotifications, 
@@ -8,6 +9,7 @@ import {
   deleteNotification 
 } from '../services/dataStorage';
 import { AppNotification } from '../types';
+import { formatGregorianDate } from '../utils/formatDate';
 import { 
   Bell, 
   CheckCheck, 
@@ -19,7 +21,10 @@ import {
   Clock, 
   Megaphone, 
   X,
-  ExternalLink
+  ExternalLink,
+  TrendingDown,
+  Truck,
+  PackageCheck
 } from 'lucide-react';
 import { useToastStore } from '../store/useToastStore';
 
@@ -52,6 +57,7 @@ function playChime() {
 export const NotificationBell: React.FC = () => {
   const { user } = useAuthStore();
   const { info } = useToastStore();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
@@ -108,6 +114,14 @@ export const NotificationBell: React.FC = () => {
     if (!notif.read) {
       await markNotificationAsRead(notif.id);
     }
+    setIsOpen(false);
+    if (notif.metadata?.actionUrl) {
+      navigate(notif.metadata.actionUrl);
+    } else if (notif.type === 'order_update') {
+      navigate('/app/orders');
+    } else if (notif.type === 'price_alert') {
+      navigate('/app/prices');
+    }
   };
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
@@ -127,13 +141,22 @@ export const NotificationBell: React.FC = () => {
       if (diffHours < 24) return `منذ ${diffHours} ساعة`;
       if (diffDays === 1) return 'أمس';
       if (diffDays < 7) return `منذ ${diffDays} أيام`;
-      return new Date(isoString).toLocaleDateString('ar-SA');
+      return formatGregorianDate(isoString);
     } catch {
       return '';
     }
   };
 
   const getNotificationIcon = (type: string, metadata?: any) => {
+    if (type === 'price_alert') {
+      return <TrendingDown className="w-4 h-4 text-emerald-600" />;
+    }
+    if (type === 'order_update') {
+      if (metadata?.orderStatus === 'delivered') {
+        return <PackageCheck className="w-4 h-4 text-emerald-600" />;
+      }
+      return <Truck className="w-4 h-4 text-indigo-600" />;
+    }
     if (type === 'status_change') {
       if (metadata?.newStatus === 'active') {
         return <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
@@ -243,11 +266,15 @@ export const NotificationBell: React.FC = () => {
                 >
                   {/* أيقونة النوع */}
                   <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${
-                    notif.type === 'status_change'
-                      ? 'bg-emerald-100/70'
+                    notif.type === 'price_alert'
+                      ? 'bg-emerald-100/80 text-emerald-700'
+                      : notif.type === 'order_update'
+                      ? 'bg-indigo-100/80 text-indigo-700'
+                      : notif.type === 'status_change'
+                      ? 'bg-amber-100/70 text-amber-700'
                       : notif.type === 'admin_announcement'
-                      ? 'bg-teal-100/70'
-                      : 'bg-slate-100'
+                      ? 'bg-teal-100/70 text-teal-700'
+                      : 'bg-slate-100 text-slate-700'
                   }`}>
                     {getNotificationIcon(notif.type, notif.metadata)}
                   </div>
@@ -270,7 +297,11 @@ export const NotificationBell: React.FC = () => {
                     {/* معلومات إضافية */}
                     <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
                       <span className="font-semibold text-slate-500">
-                        {notif.type === 'status_change'
+                        {notif.type === 'price_alert'
+                          ? '🎯 تنبيه سعر'
+                          : notif.type === 'order_update'
+                          ? '📦 حالة الطلبية'
+                          : notif.type === 'status_change'
                           ? 'تحديث الحساب'
                           : notif.type === 'admin_announcement'
                           ? 'تعميم إداري'

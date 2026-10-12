@@ -24,9 +24,11 @@ import {
   PriceHistory, 
   ImportBatch, 
   Order, 
+  OrderStatus,
   UserProfile,
   AppNotification,
-  SystemSettings
+  SystemSettings,
+  RecurringOrderTemplate
 } from '../types';
 import { 
   SEED_ACTIVE_INGREDIENTS, 
@@ -34,6 +36,8 @@ import {
   SEED_SUPPLIERS, 
   SEED_PRICES 
 } from './seed';
+import { setSystemCurrency, formatCurrency } from '../utils/formatPrice';
+import { formatGregorianDate } from '../utils/formatDate';
 
 const STORAGE_KEYS = {
   activeIngredients: 'pharma_db_active_ingredients',
@@ -47,6 +51,53 @@ const STORAGE_KEYS = {
   notifications: 'pharma_db_notifications',
   settings: 'pharma_db_settings',
 };
+
+// ======================= Memory Cache & In-Flight Dedup =======================
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+const memoryCache = new Map<string, CacheEntry<any>>();
+const inFlightRequests = new Map<string, Promise<any>>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export function invalidateCache(keys?: string[]): void {
+  if (!keys || keys.length === 0) {
+    memoryCache.clear();
+  } else {
+    keys.forEach((k) => {
+      for (const cacheKey of memoryCache.keys()) {
+        if (cacheKey === k || cacheKey.startsWith(`${k}_`)) {
+          memoryCache.delete(cacheKey);
+        }
+      }
+    });
+  }
+}
+
+async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+  const cached = memoryCache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  if (inFlightRequests.has(key)) {
+    return inFlightRequests.get(key)!;
+  }
+
+  const promise = (async () => {
+    try {
+      const data = await fetcher();
+      memoryCache.set(key, { data, timestamp: Date.now() });
+      return data;
+    } finally {
+      inFlightRequests.delete(key);
+    }
+  })();
+
+  inFlightRequests.set(key, promise);
+  return promise;
+}
 
 // تهيئة البيانات المبدئية محلياً عند أول تشغيل
 function initializeLocalStorage() {
@@ -136,18 +187,21 @@ function setLocal<T>(key: string, items: T[]) {
 
 // ======================= Active Ingredients =======================
 export async function getActiveIngredients(): Promise<ActiveIngredient[]> {
-  if (isFirebaseConfigured) {
-    try {
-      const snap = await getDocs(collection(db, 'activeIngredients'));
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ActiveIngredient));
-    } catch (e) {
-      console.warn('Firestore fallback to local for activeIngredients:', e);
+  return fetchWithCache('activeIngredients', async () => {
+    if (isFirebaseConfigured) {
+      try {
+        const snap = await getDocs(collection(db, 'activeIngredients'));
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ActiveIngredient));
+      } catch (e) {
+        console.warn('Firestore fallback to local for activeIngredients:', e);
+      }
     }
-  }
-  return getLocal<ActiveIngredient>(STORAGE_KEYS.activeIngredients);
+    return getLocal<ActiveIngredient>(STORAGE_KEYS.activeIngredients);
+  });
 }
 
 export async function saveActiveIngredient(item: Omit<ActiveIngredient, 'id'> & { id?: string }): Promise<ActiveIngredient> {
+  invalidateCache(['activeIngredients']);
   const id = item.id || 'ing_' + Date.now();
   const newItem: ActiveIngredient = {
     ...item,
@@ -175,6 +229,7 @@ export async function saveActiveIngredient(item: Omit<ActiveIngredient, 'id'> & 
 }
 
 export async function deleteActiveIngredients(ids: string[]): Promise<void> {
+  invalidateCache(['activeIngredients']);
   if (isFirebaseConfigured) {
     try {
       const batch = writeBatch(db);
@@ -193,18 +248,21 @@ export async function deleteActiveIngredients(ids: string[]): Promise<void> {
 
 // ======================= Products =======================
 export async function getProducts(): Promise<Product[]> {
-  if (isFirebaseConfigured) {
-    try {
-      const snap = await getDocs(collection(db, 'products'));
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
-    } catch (e) {
-      console.warn('Firestore fallback to local for products:', e);
+  return fetchWithCache('products', async () => {
+    if (isFirebaseConfigured) {
+      try {
+        const snap = await getDocs(collection(db, 'products'));
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
+      } catch (e) {
+        console.warn('Firestore fallback to local for products:', e);
+      }
     }
-  }
-  return getLocal<Product>(STORAGE_KEYS.products);
+    return getLocal<Product>(STORAGE_KEYS.products);
+  });
 }
 
 export async function saveProduct(item: Omit<Product, 'id'> & { id?: string }): Promise<Product> {
+  invalidateCache(['products', 'prices']);
   const id = item.id || 'prod_' + Date.now();
   const newItem: Product = {
     ...item,
@@ -232,6 +290,7 @@ export async function saveProduct(item: Omit<Product, 'id'> & { id?: string }): 
 }
 
 export async function deleteProducts(ids: string[]): Promise<void> {
+  invalidateCache(['products', 'prices']);
   if (isFirebaseConfigured) {
     try {
       const batch = writeBatch(db);
@@ -247,6 +306,7 @@ export async function deleteProducts(ids: string[]): Promise<void> {
 }
 
 export async function updateProductsCategory(ids: string[], newCategory: string): Promise<void> {
+  invalidateCache(['products']);
   if (isFirebaseConfigured) {
     try {
       const batch = writeBatch(db);
@@ -268,18 +328,21 @@ export async function updateProductsCategory(ids: string[], newCategory: string)
 
 // ======================= Suppliers =======================
 export async function getSuppliers(): Promise<Supplier[]> {
-  if (isFirebaseConfigured) {
-    try {
-      const snap = await getDocs(collection(db, 'suppliers'));
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Supplier));
-    } catch (e) {
-      console.warn('Firestore fallback to local for suppliers:', e);
+  return fetchWithCache('suppliers', async () => {
+    if (isFirebaseConfigured) {
+      try {
+        const snap = await getDocs(collection(db, 'suppliers'));
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Supplier));
+      } catch (e) {
+        console.warn('Firestore fallback to local for suppliers:', e);
+      }
     }
-  }
-  return getLocal<Supplier>(STORAGE_KEYS.suppliers);
+    return getLocal<Supplier>(STORAGE_KEYS.suppliers);
+  });
 }
 
 export async function saveSupplier(item: Omit<Supplier, 'id'> & { id?: string }): Promise<Supplier> {
+  invalidateCache(['suppliers', 'prices']);
   const id = item.id || 'sup_' + Date.now();
   const newItem: Supplier = {
     ...item,
@@ -307,6 +370,7 @@ export async function saveSupplier(item: Omit<Supplier, 'id'> & { id?: string })
 }
 
 export async function deleteSupplier(id: string): Promise<void> {
+  invalidateCache(['suppliers', 'prices']);
   if (isFirebaseConfigured) {
     try {
       await deleteDoc(doc(db, 'suppliers', id));
@@ -320,16 +384,49 @@ export async function deleteSupplier(id: string): Promise<void> {
 }
 
 // ======================= Prices & Import Batches =======================
-export async function getPrices(): Promise<PriceRecord[]> {
-  if (isFirebaseConfigured) {
-    try {
-      const snap = await getDocs(collection(db, 'prices'));
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as PriceRecord));
-    } catch (e) {
-      console.warn('Firestore fallback to local for prices:', e);
+export async function getPrices(allowedSupplierIds?: string[]): Promise<PriceRecord[]> {
+  const cacheKey = allowedSupplierIds && allowedSupplierIds.length > 0
+    ? `prices_${[...allowedSupplierIds].sort().join(',')}`
+    : 'prices_all';
+
+  return fetchWithCache(cacheKey, async () => {
+    if (isFirebaseConfigured) {
+      try {
+        if (allowedSupplierIds && allowedSupplierIds.length > 0) {
+          // تقسيم الموردين لدفعات 10 كحد أقصى لتوافق استعلامات Firestore 'in'
+          const chunks: string[][] = [];
+          for (let i = 0; i < allowedSupplierIds.length; i += 10) {
+            chunks.push(allowedSupplierIds.slice(i, i + 10));
+          }
+
+          const queries = chunks.map((chunk) =>
+            getDocs(query(collection(db, 'prices'), where('supplierId', 'in', chunk)))
+          );
+
+          const snapshots = await Promise.all(queries);
+          const results: PriceRecord[] = [];
+          snapshots.forEach((snap) => {
+            snap.docs.forEach((d) => {
+              results.push({ id: d.id, ...d.data() } as PriceRecord);
+            });
+          });
+          return results;
+        }
+
+        const snap = await getDocs(collection(db, 'prices'));
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() } as PriceRecord));
+      } catch (e) {
+        console.warn('Firestore fallback to local for prices:', e);
+      }
     }
-  }
-  return getLocal<PriceRecord>(STORAGE_KEYS.prices);
+
+    const allLocal = getLocal<PriceRecord>(STORAGE_KEYS.prices);
+    if (allowedSupplierIds && allowedSupplierIds.length > 0) {
+      const allowedSet = new Set(allowedSupplierIds);
+      return allLocal.filter((p) => allowedSet.has(p.supplierId));
+    }
+    return allLocal;
+  });
 }
 
 export async function commitImportBatch(params: {
@@ -427,6 +524,50 @@ export async function commitImportBatch(params: {
     setLocal(STORAGE_KEYS.suppliers, suppliers);
   }
 
+  invalidateCache(['prices', 'suppliers']);
+
+  // فحص تنبيهات الأسعار الفورية للصيادلة المشتركين وإرسال إشعارات لمن وصل سعره المستهدف
+  try {
+    const allUsers = getLocal<UserProfile>(STORAGE_KEYS.users);
+    const allProducts = getLocal<Product>(STORAGE_KEYS.products);
+    const prodMap = new Map<string, Product>();
+    allProducts.forEach((p) => prodMap.set(p.id, p));
+
+    const currentSupplierName = suppliers.find((s) => s.id === supplierId)?.name || 'مورد معتمد';
+
+    allUsers.forEach((u) => {
+      if (!u.priceAlerts || Object.keys(u.priceAlerts).length === 0) return;
+      // التحقق مما إذا كان المورد مسموحاً لهذه الصيدلية
+      if (u.allowedSuppliers && u.allowedSuppliers.length > 0 && !u.allowedSuppliers.includes(supplierId)) {
+        return;
+      }
+
+      priceRecords.forEach((rec) => {
+        const targetPrice = u.priceAlerts?.[rec.productId];
+        if (targetPrice !== undefined && rec.price <= targetPrice && (rec.available ?? true)) {
+          const prod = prodMap.get(rec.productId);
+          const prodName = prod ? prod.tradeName : 'الصنف المفضل';
+
+          createNotification({
+            userId: u.uid,
+            title: `🎯 تنبيه انخفاض سعر: ${prodName}`,
+            message: `توفر دواء "${prodName}" بسعر ${formatCurrency(rec.price)} لدى (${currentSupplierName})، وهو أقل من أو يساوي سعرك المستهدف (${formatCurrency(targetPrice)})!`,
+            type: 'price_alert',
+            metadata: {
+              productId: rec.productId,
+              supplierId,
+              newPrice: rec.price,
+              targetPrice,
+              actionUrl: `/app/prices?q=${encodeURIComponent(prodName)}`,
+            },
+          }).catch((err) => console.warn('Could not create price alert notification:', err));
+        }
+      });
+    });
+  } catch (alertErr) {
+    console.warn('Error checking price alerts during import:', alertErr);
+  }
+
   // التخزين في Firestore إن كان مهيأً مع دفعات بحد أقصى 400 عملية
   if (isFirebaseConfigured) {
     try {
@@ -507,6 +648,85 @@ export async function getImportBatches(): Promise<ImportBatch[]> {
   return getLocal<ImportBatch>(STORAGE_KEYS.importBatches);
 }
 
+export async function getPriceHistory(productId?: string): Promise<PriceHistory[]> {
+  const localHistory = getLocal<PriceHistory>(STORAGE_KEYS.priceHistory);
+  if (productId) {
+    return localHistory.filter((h) => h.productId === productId);
+  }
+  return localHistory;
+}
+
+export async function toggleProductFavorite(userId: string, productId: string): Promise<string[]> {
+  const users = getLocal<UserProfile>(STORAGE_KEYS.users);
+  const user = users.find((u) => u.uid === userId);
+  const currentFavs = user?.favorites || [];
+  const exists = currentFavs.includes(productId);
+  const newFavs = exists ? currentFavs.filter((id) => id !== productId) : [...currentFavs, productId];
+
+  if (user) {
+    user.favorites = newFavs;
+    setLocal(STORAGE_KEYS.users, users);
+  }
+
+  // حفظ في التخزين المحلي للمستخدم الحالي
+  try {
+    const activeLocal = localStorage.getItem('pharma_local_user');
+    if (activeLocal) {
+      const parsed = JSON.parse(activeLocal);
+      parsed.favorites = newFavs;
+      localStorage.setItem('pharma_local_user', JSON.stringify(parsed));
+    }
+  } catch (_) {}
+
+  if (isFirebaseConfigured && userId) {
+    try {
+      await updateDoc(doc(db, 'users', userId), { favorites: newFavs });
+    } catch (e) {
+      console.warn('Firestore toggleProductFavorite error:', e);
+    }
+  }
+
+  return newFavs;
+}
+
+export async function setProductPriceAlert(
+  userId: string,
+  productId: string,
+  targetPrice: number | null
+): Promise<void> {
+  const users = getLocal<UserProfile>(STORAGE_KEYS.users);
+  const user = users.find((u) => u.uid === userId);
+  const currentAlerts = { ...(user?.priceAlerts || {}) };
+
+  if (targetPrice === null || targetPrice <= 0) {
+    delete currentAlerts[productId];
+  } else {
+    currentAlerts[productId] = targetPrice;
+  }
+
+  if (user) {
+    user.priceAlerts = currentAlerts;
+    setLocal(STORAGE_KEYS.users, users);
+  }
+
+  try {
+    const activeLocal = localStorage.getItem('pharma_local_user');
+    if (activeLocal) {
+      const parsed = JSON.parse(activeLocal);
+      parsed.priceAlerts = currentAlerts;
+      localStorage.setItem('pharma_local_user', JSON.stringify(parsed));
+    }
+  } catch (_) {}
+
+  if (isFirebaseConfigured && userId) {
+    try {
+      await updateDoc(doc(db, 'users', userId), { priceAlerts: currentAlerts });
+    } catch (e) {
+      console.warn('Firestore setProductPriceAlert error:', e);
+    }
+  }
+}
+
 // ======================= Orders =======================
 export async function getOrders(): Promise<Order[]> {
   if (isFirebaseConfigured) {
@@ -542,22 +762,64 @@ export async function createOrder(orderData: Omit<Order, 'id' | 'createdAt'>): P
   return newOrder;
 }
 
-export async function updateOrderStatus(orderId: string, status: 'sent' | 'confirmed' | 'cancelled'): Promise<void> {
+export async function updateOrderStatus(orderId: string, status: OrderStatus): Promise<void> {
+  const list = getLocal<Order>(STORAGE_KEYS.orders);
+  const targetOrder = list.find((o) => o.id === orderId);
+
   if (isFirebaseConfigured) {
     try {
-      await updateDoc(doc(db, 'orders', orderId), { status });
+      await updateDoc(doc(db, 'orders', orderId), { status, updatedAt: new Date().toISOString() });
     } catch (e) {
       console.error('Firestore updateOrderStatus failed:', e);
     }
   }
 
-  const list = getLocal<Order>(STORAGE_KEYS.orders).map((o) => {
+  const updatedList = list.map((o) => {
     if (o.id === orderId) {
-      return { ...o, status };
+      return { ...o, status, updatedAt: new Date().toISOString() };
     }
     return o;
   });
-  setLocal(STORAGE_KEYS.orders, list);
+  setLocal(STORAGE_KEYS.orders, updatedList);
+
+  // إرسال إشعار فوري للصيدلية بتحديث حالة الطلبية
+  if (targetOrder) {
+    const statusLabels: Record<OrderStatus, string> = {
+      sent: 'تم إرسال الطلبية للمستودع',
+      confirmed: 'تم تأكيد استلام الطلبية من المستودع',
+      processing: 'جاري تجهيز وتعبئة طلبيتك للشحن',
+      delivered: 'تم تسليم الطلبية بنجاح للصيدلية',
+      cancelled: 'تم إلغاء الطلبية',
+    };
+
+    const notif: AppNotification = {
+      id: 'notif_' + Date.now(),
+      userId: targetOrder.pharmacyId,
+      title: `تحديث حالة طلبيتك من ${targetOrder.supplierName}`,
+      message: statusLabels[status] || `أصبحت حالة الطلبية: ${status}`,
+      type: 'order_update',
+      read: false,
+      createdAt: new Date().toISOString(),
+      metadata: {
+        orderId,
+        orderStatus: status,
+      },
+    };
+
+    const notifs = getLocal<AppNotification>(STORAGE_KEYS.notifications);
+    notifs.unshift(notif);
+    setLocal(STORAGE_KEYS.notifications, notifs);
+
+    if (isFirebaseConfigured) {
+      try {
+        await setDoc(doc(db, 'notifications', notif.id), notif);
+      } catch (_) {}
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pharma_notifications_updated'));
+    }
+  }
 }
 
 // ======================= Pharmacies / Users =======================
@@ -881,9 +1143,9 @@ export async function updateUserSubscription(
 
     const notifMsg = customNote || (
       subscriptionStatus === 'active'
-        ? `تم تفعيل اشتراك صيدليتكم حتى تاريخ ${new Date(finalExpiresAt).toLocaleDateString('ar-SA')}. استمتع بمقارنة كافة الأسعار وتوليد الطلبيات.`
+        ? `تم تفعيل اشتراك صيدليتكم حتى تاريخ ${formatGregorianDate(finalExpiresAt)}. استمتع بمقارنة كافة الأسعار وتوليد الطلبيات.`
         : subscriptionStatus === 'trial'
-        ? `تم تمديد فترتك التجريبية حتى ${new Date(finalExpiresAt).toLocaleDateString('ar-SA')}.`
+        ? `تم تمديد فترتك التجريبية حتى ${formatGregorianDate(finalExpiresAt)}.`
         : 'انتهت فترة اشتراكك في المنصة. يمكنك التجديد الآن لمواصلة مقارنة أسعار المستودعات.'
     );
 

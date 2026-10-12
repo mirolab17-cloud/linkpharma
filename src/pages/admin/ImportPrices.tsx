@@ -8,9 +8,10 @@ import {
   saveProduct,
   commitImportBatch,
   getImportBatches,
-  rollbackImportBatch
+  rollbackImportBatch,
+  getPrices
 } from '../../services/dataStorage';
-import { Supplier, Product, ActiveIngredient, ImportBatch } from '../../types';
+import { Supplier, Product, ActiveIngredient, ImportBatch, PriceRecord } from '../../types';
 import { parseSpreadsheetFile, processMappedRows, SheetParseResult, MappedPriceRow } from '../../services/import';
 import { 
   extractPricesFromImage, 
@@ -23,6 +24,7 @@ import {
 import { ProductMatcher, MatchResult } from '../../utils/fuzzyMatch';
 import { normalizeArabic } from '../../utils/arabicNormalize';
 import { formatCurrency } from '../../utils/formatPrice';
+import { formatGregorianDateTime } from '../../utils/formatDate';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useToastStore } from '../../store/useToastStore';
 import { 
@@ -78,6 +80,7 @@ export const ImportPrices: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [ingredients, setIngredients] = useState<ActiveIngredient[]>([]);
   const [recentBatches, setRecentBatches] = useState<ImportBatch[]>([]);
+  const [existingPrices, setExistingPrices] = useState<PriceRecord[]>([]);
 
   // Selection
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
@@ -110,6 +113,10 @@ export const ImportPrices: React.FC = () => {
   const [matchRows, setMatchRows] = useState<RowMatchItem[]>([]);
   const [filterMatchStatus, setFilterMatchStatus] = useState<'all' | 'exact' | 'fuzzy' | 'none' | 'ignored'>('all');
   const [matchSearchTerm, setMatchSearchTerm] = useState('');
+
+  // Audit Diff & Anomaly Detection State (تدقيق الاستيراد والمعاينة)
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [auditFilter, setAuditFilter] = useState<'all' | 'outlier' | 'changed' | 'new'>('all');
 
   // New Product Modal inline creation
   const [isNewProdModalOpen, setIsNewProdModalOpen] = useState(false);
@@ -878,9 +885,9 @@ export const ImportPrices: React.FC = () => {
                       value={pastedText}
                       onChange={(e) => setPastedText(e.target.value)}
                       placeholder="مثال:
-بنادول إكسترا - 12 ريال
-أوجمنتين 1 جم - 55 ريال
-بروفين 400 - 18 ريال..."
+بنادول إكسترا - 12 ₪
+أوجمنتين 1 جم - 55 ₪
+بروفين 400 - 18 ₪..."
                       className="w-full p-3.5 rounded-2xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a] font-mono leading-relaxed"
                     />
                   </div>
@@ -930,7 +937,7 @@ export const ImportPrices: React.FC = () => {
                           <span>•</span>
                           <span>بواسطة: {batch.createdBy}</span>
                           <span>•</span>
-                          <span>{new Date(batch.createdAt).toLocaleString('ar-SA')}</span>
+                          <span>{formatGregorianDateTime(batch.createdAt)}</span>
                         </div>
                       </div>
 
@@ -1246,7 +1253,7 @@ export const ImportPrices: React.FC = () => {
                     <tr>
                       <th className="py-2.5 px-3 w-12 text-center">#</th>
                       <th className="py-2.5 px-4">اسم الصنف المستخرج</th>
-                      <th className="py-2.5 px-4 w-40">السعر المستخرج (ر.س)</th>
+                      <th className="py-2.5 px-4 w-40">السعر المستخرج (₪)</th>
                       <th className="py-2.5 px-4 w-20 text-center">حذف</th>
                     </tr>
                   </thead>

@@ -13,6 +13,7 @@ import {
   removeAdminByEmail
 } from '../../services/dataStorage';
 import { UserProfile, Supplier } from '../../types';
+import { formatGregorianDate } from '../../utils/formatDate';
 import { useToastStore } from '../../store/useToastStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { 
@@ -503,7 +504,7 @@ export const Pharmacies: React.FC = () => {
                 <span>اشتراك منتهي</span>
               </span>
               <div className="text-[10px] text-slate-400">
-                {item.subscriptionExpiresAt ? `انتهى في: ${new Date(item.subscriptionExpiresAt).toLocaleDateString('ar-SA')}` : 'غير مفعّل'}
+                {item.subscriptionExpiresAt ? `انتهى في: ${formatGregorianDate(item.subscriptionExpiresAt)}` : 'غير مفعّل'}
               </div>
             </div>
           );
@@ -520,7 +521,7 @@ export const Pharmacies: React.FC = () => {
                 المتبقي: <strong className="text-blue-700">{diffDays > 0 ? `${diffDays} يوماً` : 'اليوم الأخير'}</strong>
               </div>
               <div className="text-[10px] text-slate-400">
-                ينتهي في: {item.subscriptionExpiresAt ? new Date(item.subscriptionExpiresAt).toLocaleDateString('ar-SA') : '—'}
+                ينتهي في: {item.subscriptionExpiresAt ? formatGregorianDate(item.subscriptionExpiresAt) : '—'}
               </div>
             </div>
           );
@@ -533,7 +534,7 @@ export const Pharmacies: React.FC = () => {
               <span>مشترك نشط</span>
             </span>
             <div className="text-[11px] text-slate-500">
-              ينتهي في: <strong className="text-slate-700">{item.subscriptionExpiresAt ? new Date(item.subscriptionExpiresAt).toLocaleDateString('ar-SA') : 'مفتوح'}</strong>
+              ينتهي في: <strong className="text-slate-700">{item.subscriptionExpiresAt ? formatGregorianDate(item.subscriptionExpiresAt) : 'مفتوح'}</strong>
               {diffDays > 0 && <span className="text-[10px] text-emerald-600 font-bold mr-1">({diffDays} يوم)</span>}
             </div>
           </div>

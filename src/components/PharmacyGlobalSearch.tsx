@@ -163,14 +163,14 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
   return (
     <div className="w-full relative" ref={containerRef}>
       {/* شريط البحث الرئيسي */}
-      <div className="bg-white rounded-2xl border-2 border-slate-200 hover:border-[#0f9d7a]/50 focus-within:border-[#0f9d7a] focus-within:ring-4 focus-within:ring-[#0f9d7a]/10 transition-all shadow-xs overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-slate-200 dark:border-slate-700 hover:border-[#0f9d7a]/50 focus-within:border-[#0f9d7a] focus-within:ring-4 focus-within:ring-[#0f9d7a]/10 transition-all shadow-xs overflow-hidden">
         {/* صف الإدخال الرئيسي */}
         <div className="flex items-center px-4 py-2.5 gap-3">
-          <div className="text-slate-400 shrink-0">
+          <div className="text-slate-400 dark:text-slate-500 shrink-0">
             {isDebouncing ? (
               <Loader2 className="w-5 h-5 text-[#0f9d7a] animate-spin" />
             ) : (
-              <Search className="w-5 h-5 text-slate-400" />
+              <Search className="w-5 h-5 text-slate-400 dark:text-slate-500" />
             )}
           </div>
 
@@ -184,14 +184,14 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
             }}
             onFocus={() => setIsOpenDropdown(true)}
             placeholder="ابحث عن دواء بالاسم التجاري، المادة الفعالة، أو الشركة المصنعة..."
-            className="w-full text-sm font-semibold text-slate-800 placeholder-slate-400 focus:outline-hidden bg-transparent"
+            className="w-full text-sm font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden bg-transparent"
           />
 
           {inputValue && (
             <button
               type="button"
               onClick={handleClear}
-              className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition shrink-0"
+              className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition shrink-0"
               title="مسح البحث"
             >
               <X className="w-4 h-4" />
@@ -199,16 +199,16 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
           )}
 
           {/* اختصار لوحة المفاتيح */}
-          <div className="hidden sm:flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-md shrink-0 border border-slate-200">
+          <div className="hidden sm:flex items-center gap-1 text-[10px] font-bold text-slate-400 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md shrink-0 border border-slate-200 dark:border-slate-700">
             <span>/</span>
             <span>للبحث</span>
           </div>
         </div>
 
         {/* أزرار تحديد نطاق البحث (الاسم التجاري / المادة الفعالة / الشركة) */}
-        <div className="bg-slate-50/70 border-t border-slate-100 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="bg-slate-50/70 dark:bg-slate-800/60 border-t border-slate-100 dark:border-slate-800 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-1 overflow-x-auto py-0.5">
-            <span className="text-[11px] font-bold text-slate-400 ml-1 flex items-center gap-1">
+            <span className="text-[11px] font-bold text-slate-400 dark:text-slate-400 ml-1 flex items-center gap-1">
               <SlidersHorizontal className="w-3 h-3" />
               <span>نطاق البحث:</span>
             </span>
@@ -226,7 +226,7 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
                 className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
                   scope === s.id
                     ? 'bg-[#0f9d7a] text-white shadow-2xs'
-                    : 'text-slate-600 hover:bg-white hover:text-slate-900'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 {s.label}
@@ -236,8 +236,8 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
 
           {/* عدد النتائج الحالية */}
           {totalFilteredCount !== undefined && (
-            <div className="text-[11px] font-bold text-slate-500">
-              المطابق: <strong className="text-slate-800">{totalFilteredCount}</strong> صنف
+            <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+              المطابق: <strong className="text-slate-800 dark:text-slate-100">{totalFilteredCount}</strong> صنف
             </div>
           )}
         </div>
@@ -245,11 +245,11 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
 
       {/* قائمة الاقتراحات المنسدلة الحية مصنفة */}
       {isOpenDropdown && hasSuggestions && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 z-40 overflow-hidden divide-y divide-slate-100 max-h-[380px] overflow-y-auto animate-in fade-in slide-in-from-top-1 text-right">
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 z-40 overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 max-h-[380px] overflow-y-auto animate-in fade-in slide-in-from-top-1 text-right">
           {/* قسم الأدوية بالاسم التجاري */}
           {categorizedSuggestions.medicines.length > 0 && (
             <div className="p-2">
-              <div className="px-2.5 py-1 text-[11px] font-black text-slate-400 flex items-center gap-1.5">
+              <div className="px-2.5 py-1 text-[11px] font-black text-slate-400 dark:text-slate-400 flex items-center gap-1.5">
                 <Pill className="w-3.5 h-3.5 text-[#0f9d7a]" />
                 <span>أدوية مطابقة بالاسم التجاري</span>
               </div>
@@ -264,13 +264,13 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
                       key={prod.id}
                       type="button"
                       onClick={() => handleSelectSuggestion(prod.tradeName, 'tradeName')}
-                      className="w-full px-3 py-2 rounded-xl text-right hover:bg-emerald-50/50 flex items-center justify-between gap-2 transition group"
+                      className="w-full px-3 py-2 rounded-xl text-right hover:bg-emerald-50/50 dark:hover:bg-slate-800 flex items-center justify-between gap-2 transition group"
                     >
                       <div className="min-w-0">
-                        <div className="font-extrabold text-xs text-slate-800 group-hover:text-[#0f9d7a] truncate">
+                        <div className="font-extrabold text-xs text-slate-800 dark:text-slate-100 group-hover:text-[#0f9d7a] truncate">
                           {prod.tradeName}
                         </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                        <div className="text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-2 mt-0.5">
                           {ing && <span>{ing.name}</span>}
                           <span>•</span>
                           <span>{prod.form} {prod.strength}</span>
@@ -298,9 +298,9 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
 
           {/* قسم المواد الفعالة */}
           {categorizedSuggestions.ingredients.length > 0 && (
-            <div className="p-2 bg-slate-50/50">
+            <div className="p-2 bg-slate-50/50 dark:bg-slate-800/40">
               <div className="px-2.5 py-1 text-[11px] font-black text-slate-400 flex items-center gap-1.5">
-                <FlaskConical className="w-3.5 h-3.5 text-teal-600" />
+                <FlaskConical className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
                 <span>مواد فعالة علمية مطابقة</span>
               </div>
               <div className="space-y-1 mt-1">
@@ -309,17 +309,17 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
                     key={ingredient.id}
                     type="button"
                     onClick={() => handleSelectSuggestion(ingredient.name, 'ingredient')}
-                    className="w-full px-3 py-2 rounded-xl text-right hover:bg-teal-50 flex items-center justify-between gap-2 transition group"
+                    className="w-full px-3 py-2 rounded-xl text-right hover:bg-teal-50 dark:hover:bg-slate-800 flex items-center justify-between gap-2 transition group"
                   >
                     <div>
-                      <span className="font-bold text-xs text-slate-800 group-hover:text-teal-700">
+                      <span className="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-teal-700 dark:group-hover:text-teal-400">
                         {ingredient.name}
                       </span>
                       <span className="text-[10px] text-slate-400 mr-2">
                         ({ingredient.category})
                       </span>
                     </div>
-                    <span className="text-[10px] bg-teal-100 text-teal-800 font-bold px-2 py-0.5 rounded-md">
+                    <span className="text-[10px] bg-teal-100 dark:bg-teal-950/70 text-teal-800 dark:text-teal-300 font-bold px-2 py-0.5 rounded-md">
                       {count} أدوية
                     </span>
                   </button>
@@ -332,7 +332,7 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
           {categorizedSuggestions.manufacturers.length > 0 && (
             <div className="p-2">
               <div className="px-2.5 py-1 text-[11px] font-black text-slate-400 flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span>شركات أدوية ومصانع</span>
               </div>
               <div className="space-y-1 mt-1">
@@ -341,12 +341,12 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
                     key={name}
                     type="button"
                     onClick={() => handleSelectSuggestion(name, 'manufacturer')}
-                    className="w-full px-3 py-2 rounded-xl text-right hover:bg-blue-50 flex items-center justify-between gap-2 transition group"
+                    className="w-full px-3 py-2 rounded-xl text-right hover:bg-blue-50 dark:hover:bg-slate-800 flex items-center justify-between gap-2 transition group"
                   >
-                    <span className="font-bold text-xs text-slate-800 group-hover:text-blue-700">
+                    <span className="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-blue-700 dark:group-hover:text-blue-400">
                       {name}
                     </span>
-                    <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-md">
+                    <span className="text-[10px] bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 font-bold px-2 py-0.5 rounded-md">
                       {count} أصناف
                     </span>
                   </button>

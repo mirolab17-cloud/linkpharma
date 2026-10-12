@@ -87,12 +87,35 @@ export async function deleteGeminiKey(): Promise<void> {
 }
 
 /**
- * استخراج الأسعار من نص ملصوق عبر Gemini
+ * استخراج الأسعار من نص ملصوق عبر خادم Cloud / Proxy أو محلياً
  */
 export async function extractPricesFromText(text: string, customApiKey?: string): Promise<ExtractedPriceItem[]> {
+  // 1. محاولة استدعاء خادم الـ API الآمن (Cloud Proxy / Function) أولاً
+  try {
+    const res = await fetch('/api/gemini/extract-text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, customApiKey })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.items)) {
+        return data.items.map((item: any, idx: number) => ({
+          id: 'ext_' + Date.now() + '_' + idx,
+          name: String(item.name || '').trim(),
+          price: cleanPrice(item.price) || 0,
+          publicPrice: item.publicPrice ? cleanPrice(item.publicPrice) || undefined : undefined,
+        })).filter((i: any) => i.name && i.price > 0);
+      }
+    }
+  } catch (_) {
+    // الخادم غير متصل أو وضع العميل فقط، الاستمرار للاحتياطي المباشر
+  }
+
+  // 2. الاحتياطي المباشر في المتصفح إذا توفر مفتاح في واجهة الإدارة
   const apiKey = (customApiKey && customApiKey.trim()) || await getStoredGeminiKey();
   if (!apiKey) {
-    throw new Error('مفتاح Gemini API غير مهيأ. يرجى إدخال المفتاح وحفظه من لوحة الإدارة أعلاه، أو استخدام استيراد ملفات Excel/CSV.');
+    throw new Error('مفتاح Gemini API غير مهيأ على الخادم ولا محلياً. يرجى توفير المفتاح أو استخدام استيراد ملفات Excel/CSV.');
   }
 
   const prompt = `
@@ -143,14 +166,9 @@ ${text}
 }
 
 /**
- * استخراج الأسعار من صورة (قائمة أسعار / فاتورة / كشف مستودع) عبر Gemini Vision
+ * استخراج الأسعار من صورة (قائمة أسعار / فاتورة / كشف مستودع) عبر خادم Cloud / Proxy أو محلياً
  */
 export async function extractPricesFromImage(file: File, customApiKey?: string): Promise<ExtractedPriceItem[]> {
-  const apiKey = (customApiKey && customApiKey.trim()) || await getStoredGeminiKey();
-  if (!apiKey) {
-    throw new Error('مفتاح Gemini API غير مهيأ. يرجى إدخال المفتاح وحفظه من لوحة الإدارة أعلاه، أو استخدام استيراد ملفات Excel/CSV.');
-  }
-
   // تحويل الملف إلى Base64
   const base64Data = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -162,6 +180,37 @@ export async function extractPricesFromImage(file: File, customApiKey?: string):
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+
+  // 1. محاولة استدعاء خادم الـ API الآمن (Cloud Proxy / Function) أولاً
+  try {
+    const res = await fetch('/api/gemini/extract-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageBase64: base64Data,
+        mimeType: file.type || 'image/jpeg',
+        customApiKey
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.items)) {
+        return data.items.map((item: any, idx: number) => ({
+          id: 'ext_img_' + Date.now() + '_' + idx,
+          name: String(item.name || '').trim(),
+          price: cleanPrice(item.price) || 0,
+        })).filter((i: any) => i.name && i.price > 0);
+      }
+    }
+  } catch (_) {
+    // الاستمرار للاحتياطي المباشر
+  }
+
+  // 2. الاحتياطي المباشر في المتصفح إذا توفر مفتاح في واجهة الإدارة
+  const apiKey = (customApiKey && customApiKey.trim()) || await getStoredGeminiKey();
+  if (!apiKey) {
+    throw new Error('مفتاح Gemini API غير مهيأ على الخادم ولا محلياً. يرجى توفير المفتاح أو استخدام استيراد ملفات Excel/CSV.');
+  }
 
   const prompt = `
 استخرج قائمة الأصناف الدوائية وأسعارها من صورة قائمة الأسعار / الفاتورة هذه بدقة عالية.

@@ -5,6 +5,7 @@ export type SubscriptionStatus = 'trial' | 'active' | 'expired';
 export interface SystemSettings {
   id: string; // 'system'
   defaultTrialDays: number;
+  currency?: string; // ILS / ₪ default
   adminEmails?: string[];
   updatedAt?: string;
   updatedBy?: string;
@@ -26,6 +27,8 @@ export interface UserProfile {
   allowedSuppliers?: string[]; // Array of supplier IDs, empty means all allowed
   profileComplete?: boolean;
   createdAt?: string;
+  favorites?: string[]; // Array of favorite product IDs
+  priceAlerts?: Record<string, number>; // productId -> target price
 }
 
 export interface ActiveIngredient {
@@ -59,18 +62,20 @@ export interface ImportTemplate {
     publicPrice?: string;
     availability?: string;
     expiry?: string;
+    bonus?: string;
   };
 }
 
 export interface Supplier {
   id: string;
   name: string;
-  whatsapp: string; // International format without + (e.g. 966501234567 or 962791234567)
+  whatsapp: string; // International format without + (e.g. 966501234567 or 972591234567)
   address: string;
   notes?: string;
   status: 'active' | 'paused';
   importTemplate?: ImportTemplate;
   lastPriceUpdate?: string;
+  minimumOrderAmount?: number; // الحد الأدنى للطلب بالشيكل
   createdAt: string;
 }
 
@@ -82,6 +87,8 @@ export interface PriceRecord {
   publicPrice?: number;
   available: boolean;
   expiry?: string;
+  bonus?: string; // e.g. "10+2" or "10+1"
+  effectivePrice?: number; // السعر الفعلي بعد احتساب البونص
   updatedAt: string;
 }
 
@@ -92,6 +99,7 @@ export interface PriceHistory {
   price: number;
   publicPrice?: number;
   available?: boolean;
+  bonus?: string;
   importedAt: string;
   importBatchId: string;
 }
@@ -111,7 +119,10 @@ export interface OrderItem {
   name: string;
   qty: number;
   price: number;
+  bonus?: string;
 }
+
+export type OrderStatus = 'sent' | 'confirmed' | 'processing' | 'delivered' | 'cancelled';
 
 export interface Order {
   id: string;
@@ -123,8 +134,11 @@ export interface Order {
   supplierName: string;
   items: OrderItem[];
   total: number;
-  status: 'sent' | 'confirmed' | 'cancelled';
+  status: OrderStatus;
   createdAt: string;
+  updatedAt?: string;
+  notes?: string;
+  pdfExportedAt?: string;
 }
 
 export interface CartItem {
@@ -137,10 +151,11 @@ export interface CartItem {
   supplierWhatsapp: string;
   price: number;
   publicPrice?: number;
+  bonus?: string;
   qty: number;
 }
 
-export type NotificationType = 'status_change' | 'admin_announcement' | 'order_update' | 'system';
+export type NotificationType = 'status_change' | 'admin_announcement' | 'order_update' | 'system' | 'price_alert';
 
 export interface AppNotification {
   id: string;
@@ -158,6 +173,17 @@ export interface AppNotification {
     actionUrl?: string;
     senderName?: string;
     priority?: 'normal' | 'high' | 'urgent';
+    orderId?: string;
+    orderStatus?: OrderStatus;
+    productId?: string;
     [key: string]: any;
   };
+}
+
+export interface RecurringOrderTemplate {
+  id: string;
+  name: string;
+  schedule: 'weekly' | 'monthly' | 'custom';
+  items: CartItem[];
+  createdAt: string;
 }

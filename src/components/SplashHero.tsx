@@ -47,8 +47,8 @@ export const SplashHero: React.FC<SplashHeroProps> = ({
       subtitle: 'مسح فوري لأكثر من 50 مستودع أدوية معتمد لتحديد السعر الأقل بدقة سنتيمترية.',
       tag: '01. كشف الأسعار',
       drug: 'Panadol Extra 500mg (24s)',
-      warehouseA: { name: 'مستودع الأمل', price: '1.45 د.أ', badge: 'الأرخص (10+2 بونص)', best: true },
-      warehouseB: { name: 'مستودع المتحدة', price: '1.80 د.أ', badge: 'صافي بدون بونص', best: false },
+      warehouseA: { name: 'مستودع الأمل', price: '1.45 ₪', badge: 'الأرخص (10+2 بونص)', best: true },
+      warehouseB: { name: 'مستودع المتحدة', price: '1.80 ₪', badge: 'صافي بدون بونص', best: false },
       saving: 'وفرت الصيدلية 24% في هذا الصنف',
     },
     {
@@ -56,8 +56,8 @@ export const SplashHero: React.FC<SplashHeroProps> = ({
       subtitle: 'تجميع نواقص الصيدلية بضغطة زر واحدة وتوزيع كل دواء على مستودعه الأرخص.',
       tag: '02. الذكاء اللوجستي',
       drug: 'Augmentin 1g Tab (14s)',
-      warehouseA: { name: 'مستودع الشرق', price: '4.10 د.أ', badge: 'خصم توريد 15%', best: true },
-      warehouseB: { name: 'مستودع الرواد', price: '5.20 د.أ', badge: 'السعر الرسمي', best: false },
+      warehouseA: { name: 'مستودع الشرق', price: '4.10 ₪', badge: 'خصم توريد 15%', best: true },
+      warehouseB: { name: 'مستودع الرواد', price: '5.20 ₪', badge: 'السعر الرسمي', best: false },
       saving: 'توزيع تلقائي لفاتورة الشراء',
     },
     {
@@ -65,8 +65,8 @@ export const SplashHero: React.FC<SplashHeroProps> = ({
       subtitle: 'تنسيق الطلبية الرسمية مع بيانات صيدليتك وإرسالها فوراً لمندوب المستودع.',
       tag: '03. الإرسال الفوري',
       drug: 'Nexium 40mg Tab (28s)',
-      warehouseA: { name: 'مستودع الشفاء', price: '7.85 د.أ', badge: 'جاهز للإرسال واتساب', best: true },
-      warehouseB: { name: 'مستودع النخبة', price: '8.90 د.أ', badge: 'متوفر', best: false },
+      warehouseA: { name: 'مستودع الشفاء', price: '7.85 ₪', badge: 'جاهز للإرسال واتساب', best: true },
+      warehouseB: { name: 'مستودع النخبة', price: '8.90 ₪', badge: 'متوفر', best: false },
       saving: 'إرسال مباشر لمندوب المبيعات',
     },
   ];
@@ -285,7 +285,7 @@ export const SplashHero: React.FC<SplashHeroProps> = ({
               <div className="flex justify-between text-xs text-slate-700 font-bold mb-1.5">
                 <span>حجم مشتريات صيدليتك الشهري من المستودعات:</span>
                 <span className="text-emerald-800 font-black text-sm">
-                  {monthlySpend.toLocaleString('ar-EG')} د.أ / ر.س
+                  {monthlySpend.toLocaleString('en-US')} ₪
                 </span>
               </div>
               <input 
@@ -298,9 +298,9 @@ export const SplashHero: React.FC<SplashHeroProps> = ({
                 className="w-full accent-[#0f9d7a] cursor-pointer h-2 bg-slate-200 rounded-lg"
               />
               <div className="flex justify-between text-[11px] text-slate-500 mt-1">
-                <span>1,000 د.أ</span>
-                <span>15,000 د.أ</span>
-                <span>30,000 د.أ</span>
+                <span>1,000 ₪</span>
+                <span>15,000 ₪</span>
+                <span>30,000 ₪</span>
               </div>
             </div>
 
@@ -308,11 +308,11 @@ export const SplashHero: React.FC<SplashHeroProps> = ({
               <div>
                 <span className="block text-xs font-bold text-slate-500">التوفير المالي الصافي شهرياً:</span>
                 <span className="text-xl sm:text-2xl font-black text-emerald-700 tracking-tight">
-                  +{estimatedSavings.toLocaleString('ar-EG')} <span className="text-xs font-bold">د.أ / ر.س</span>
+                  +{estimatedSavings.toLocaleString('en-US')} <span className="text-xs font-bold">₪</span>
                 </span>
               </div>
               <div className="text-[11px] text-slate-500 max-w-xs leading-relaxed text-right">
-                يعادل توفير ما يزيد عن <strong className="text-emerald-800 font-bold">{(estimatedSavings * 12).toLocaleString('ar-EG')} د.أ</strong> سنوياً يمكن استثمارها في توسيع مخزونك.
+                يعادل توفير ما يزيد عن <strong className="text-emerald-800 font-bold">{(estimatedSavings * 12).toLocaleString('en-US')} ₪</strong> سنوياً يمكن استثمارها في توسيع مخزونك.
               </div>
             </div>
           </div>

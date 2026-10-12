@@ -16,10 +16,9 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    // Bootstrapped Admin: Determined via runtime email, custom claims, admins collection, or adminEmails in system settings
+    // Bootstrapped Admin: Determined via custom claims, admins collection, or adminEmails in system settings
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email == 'mirolab17@gmail.com' ||
         (request.auth.token.keys().hasAll(['admin']) && request.auth.token.admin == true) ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         (
@@ -124,9 +123,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Prices (Read allowed ONLY with active subscription/trial or for admins)
+    // Prices (Read allowed ONLY with active subscription/trial for permitted suppliers, or for admins)
     match /prices/{priceId} {
-      allow read: if hasActiveSubscription();
+      allow read: if hasActiveSubscription() && (
+        isAdmin() ||
+        !('allowedSuppliers' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.allowedSuppliers.size() == 0 ||
+        resource.data.supplierId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.allowedSuppliers
+      );
       allow write: if isAdmin();
     }
 

@@ -23,6 +23,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { Modal } from '../../components/Modal';
+import { formatGregorianDate } from '../../utils/formatDate';
 import { Spinner, CardSkeleton } from '../../components/Loader';
 
 export const PharmacySuppliers: React.FC = () => {
@@ -231,7 +232,7 @@ export const PharmacySuppliers: React.FC = () => {
                     <div className="bg-slate-50/70 p-2.5 rounded-xl">
                       <div className="text-[10px] font-medium text-slate-400">آخر تحديث للأسعار</div>
                       <div className="text-[11px] font-bold text-slate-700 mt-0.5">
-                        {supplier.lastPriceUpdate ? new Date(supplier.lastPriceUpdate).toLocaleDateString('ar-SA') : 'حديثاً'}
+                        {supplier.lastPriceUpdate ? formatGregorianDate(supplier.lastPriceUpdate) : 'حديثاً'}
                       </div>
                     </div>
                   </div>

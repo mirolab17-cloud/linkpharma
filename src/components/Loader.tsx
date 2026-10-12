@@ -154,36 +154,61 @@ export const YouTubeShimmerBlock: React.FC<{
 };
 
 /**
- * سكيلتون شبكي كامل مثل واجهة يوتيوب (YouTube-style Card Skeleton)
- * يحاكي البطاقة مع صورة الدواء المصغرة، الشعار الدائري، والعناوين غير المتساوية مع الوميض الضوئي
+ * سكيلتون بطاقة الدواء الحقيقية (Product Card Skeleton)
+ * يطابق شكل البطاقة النهائي تماماً (الاسم، التركيز، جدول مقارنة المستودعات، الأزرار) لمنع قفزات التخطيط CLS
  */
 export const CardSkeleton: React.FC<{ count?: number }> = ({ count = 6 }) => {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" dir="rtl">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" dir="rtl">
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 flex flex-col justify-between shadow-2xs overflow-hidden"
+          className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-0 flex flex-col justify-between shadow-xs overflow-hidden"
         >
-          {/* رأس البطاقة - يحاكي الفيديو المصغر / صورة الدواء */}
-          <div className="w-full h-36 rounded-xl shimmer-wave mb-3.5" />
+          {/* رأس البطاقة: اسم الدواء، المادة، التصنيف، الخصائص */}
+          <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 space-y-2">
+                <div className="h-5 w-3/4 rounded-md bg-slate-200 dark:bg-slate-800 animate-pulse" />
+                <div className="h-3.5 w-1/2 rounded-md bg-emerald-100 dark:bg-emerald-950/60 animate-pulse" />
+              </div>
+              <div className="h-6 w-16 rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse shrink-0" />
+            </div>
 
-          {/* معلومات الدواء والتركيبة بأسلوب شريط قناة يوتيوب وعنوان الفيديو */}
-          <div className="flex items-start gap-3 mb-4">
-            {/* أيقونة دائرية تحاكي صورة القناة / أيقونة الدواء */}
-            <div className="w-10 h-10 rounded-full shimmer-wave shrink-0" />
-            
-            {/* أسطر العنوان والوصف المتدرجة */}
-            <div className="flex-1 space-y-2">
-              <div className="h-4 w-5/6 rounded-md shimmer-wave" />
-              <div className="h-3 w-1/2 rounded-md shimmer-wave" />
+            <div className="flex items-center gap-2 pt-1">
+              <div className="h-5 w-20 rounded-md bg-slate-100 dark:bg-slate-800/80 animate-pulse" />
+              <div className="h-5 w-16 rounded-md bg-slate-100 dark:bg-slate-800/80 animate-pulse" />
+              <div className="h-5 w-24 rounded-md bg-slate-100 dark:bg-slate-800/80 animate-pulse" />
             </div>
           </div>
 
-          {/* شريط الأسعار والمستودعات السفلية */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
-            <div className="h-6 w-20 rounded-lg shimmer-wave" />
-            <div className="h-8 w-24 rounded-xl shimmer-wave" />
+          {/* محتوى المقارنة: صفوف المستودعات والأسعار */}
+          <div className="p-3 sm:p-4 bg-slate-50/60 dark:bg-slate-900/60 space-y-2.5">
+            <div className="h-3.5 w-28 rounded bg-slate-200 dark:bg-slate-800 animate-pulse mb-1" />
+            
+            {/* عرض مستودع 1 */}
+            <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 space-y-2">
+              <div className="flex justify-between items-center">
+                <div className="h-4 w-24 rounded bg-slate-200 dark:bg-slate-700 animate-pulse" />
+                <div className="h-5 w-16 rounded bg-slate-300 dark:bg-slate-600 animate-pulse" />
+              </div>
+              <div className="flex justify-between items-center pt-1">
+                <div className="h-3 w-20 rounded bg-slate-200 dark:bg-slate-700 animate-pulse" />
+                <div className="h-7 w-20 rounded-lg bg-slate-200 dark:bg-slate-700 animate-pulse" />
+              </div>
+            </div>
+
+            {/* عرض مستودع 2 */}
+            <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 space-y-2">
+              <div className="flex justify-between items-center">
+                <div className="h-4 w-28 rounded bg-slate-200 dark:bg-slate-700 animate-pulse" />
+                <div className="h-5 w-14 rounded bg-slate-300 dark:bg-slate-600 animate-pulse" />
+              </div>
+              <div className="flex justify-between items-center pt-1">
+                <div className="h-3 w-16 rounded bg-slate-200 dark:bg-slate-700 animate-pulse" />
+                <div className="h-7 w-20 rounded-lg bg-slate-200 dark:bg-slate-700 animate-pulse" />
+              </div>
+            </div>
           </div>
         </div>
       ))}

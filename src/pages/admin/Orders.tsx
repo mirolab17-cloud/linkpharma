@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { getOrders, updateOrderStatus, getSuppliers, getUsers } from '../../services/dataStorage';
 import { Order, Supplier, UserProfile } from '../../types';
 import { formatCurrency } from '../../utils/formatPrice';
+import { formatGregorianDate } from '../../utils/formatDate';
 import { useToastStore } from '../../store/useToastStore';
 import { 
   ClipboardList, 
@@ -56,10 +57,10 @@ export const AdminOrders: React.FC = () => {
     }
   };
 
-  const handleStatusChange = async (orderId: string, status: 'sent' | 'confirmed' | 'cancelled') => {
+  const handleStatusChange = async (orderId: string, status: Order['status']) => {
     try {
       await updateOrderStatus(orderId, status);
-      success('تم تحديث حالة الطلبية بنجاح.');
+      success('تم تحديث حالة الطلبية وإشعار الصيدلية بنجاح.');
       if (selectedOrder && selectedOrder.id === orderId) {
         setSelectedOrder({ ...selectedOrder, status });
       }
@@ -86,11 +87,25 @@ export const AdminOrders: React.FC = () => {
 
   const getStatusBadge = (status: Order['status']) => {
     switch (status) {
+      case 'delivered':
+        return (
+          <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-lg flex items-center gap-1 w-fit">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>سُلّمت للصيدلية</span>
+          </span>
+        );
+      case 'processing':
+        return (
+          <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-lg flex items-center gap-1 w-fit">
+            <Clock className="w-3.5 h-3.5" />
+            <span>قيد التجهيز والشحن</span>
+          </span>
+        );
       case 'confirmed':
         return (
           <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-lg flex items-center gap-1 w-fit">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>مؤكدة</span>
+            <span>مؤكدة من المستودع</span>
           </span>
         );
       case 'cancelled':
@@ -105,7 +120,7 @@ export const AdminOrders: React.FC = () => {
         return (
           <span className="px-2.5 py-1 bg-sky-50 text-sky-700 border border-sky-200 text-xs font-bold rounded-lg flex items-center gap-1 w-fit">
             <Clock className="w-3.5 h-3.5" />
-            <span>مرسلة</span>
+            <span>مرسلة عبر واتساب</span>
           </span>
         );
     }
@@ -163,7 +178,7 @@ export const AdminOrders: React.FC = () => {
       sortable: true,
       render: (item) => (
         <span className="text-xs text-slate-400">
-          {new Date(item.createdAt).toLocaleDateString('ar-SA')}
+          {formatGregorianDate(item.createdAt)}
         </span>
       ),
     },
@@ -282,19 +297,33 @@ export const AdminOrders: React.FC = () => {
         maxWidth="lg"
         footer={
           <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs font-bold text-slate-500">تغيير الحالة:</span>
               <button
                 type="button"
                 onClick={() => selectedOrder && handleStatusChange(selectedOrder.id, 'confirmed')}
-                className="px-3 py-1 bg-emerald-50 text-[#0f9d7a] hover:bg-emerald-100 rounded-lg text-xs font-bold transition"
+                className="px-2.5 py-1 bg-emerald-50 text-[#0f9d7a] hover:bg-emerald-100 rounded-lg text-xs font-bold transition"
               >
                 تأكيد
               </button>
               <button
                 type="button"
+                onClick={() => selectedOrder && handleStatusChange(selectedOrder.id, 'processing')}
+                className="px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold transition"
+              >
+                قيد التجهيز
+              </button>
+              <button
+                type="button"
+                onClick={() => selectedOrder && handleStatusChange(selectedOrder.id, 'delivered')}
+                className="px-2.5 py-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 rounded-lg text-xs font-bold transition"
+              >
+                تم التسليم
+              </button>
+              <button
+                type="button"
                 onClick={() => selectedOrder && handleStatusChange(selectedOrder.id, 'cancelled')}
-                className="px-3 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold transition"
+                className="px-2.5 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold transition"
               >
                 إلغاء
               </button>

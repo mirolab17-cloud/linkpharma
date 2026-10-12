@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Table, Column } from '../../components/Table';
 import { Modal } from '../../components/Modal';
+import { formatGregorianDate } from '../../utils/formatDate';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState } from '../../components/EmptyState';
 import { Spinner } from '../../components/Loader';
@@ -215,7 +216,7 @@ export const Suppliers: React.FC = () => {
           <Clock className="w-3.5 h-3.5 text-slate-400" />
           <span>
             {item.lastPriceUpdate
-              ? new Date(item.lastPriceUpdate).toLocaleDateString('ar-SA')
+              ? formatGregorianDate(item.lastPriceUpdate)
               : 'لم تُرفع أسعار بعد'}
           </span>
         </span>

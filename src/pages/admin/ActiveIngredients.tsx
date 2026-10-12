@@ -23,6 +23,7 @@ import {
 import { Table, Column } from '../../components/Table';
 import { Modal } from '../../components/Modal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { formatGregorianDate } from '../../utils/formatDate';
 import { BulkBar } from '../../components/BulkBar';
 import { EmptyState } from '../../components/EmptyState';
 import { Spinner } from '../../components/Loader';
@@ -202,7 +203,7 @@ export const ActiveIngredients: React.FC = () => {
         <div>
           <span className="font-extrabold text-slate-800">{item.name}</span>
           <span className="text-[11px] text-slate-400 block mt-0.5">
-            تاريخ الإضافة: {item.createdAt ? new Date(item.createdAt).toLocaleDateString('ar-SA') : '-'}
+            تاريخ الإضافة: {item.createdAt ? formatGregorianDate(item.createdAt) : '-'}
           </span>
         </div>
       ),
