@@ -1,16 +1,34 @@
 // src/pages/auth/PendingApproval.tsx
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../../store/useAuthStore';
-import { Clock, LogOut, CheckCircle2 } from 'lucide-react';
+import { Clock, LogOut, CheckCircle2, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { getSystemSettings } from '../../services/dataStorage';
+import { createWhatsAppLink } from '../../utils/phone';
 
 export const PendingApproval: React.FC = () => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const [supportWhatsApp, setSupportWhatsApp] = useState('966501234567');
+
+  useEffect(() => {
+    getSystemSettings().then((sys) => {
+      if (sys?.supportWhatsApp) {
+        setSupportWhatsApp(sys.supportWhatsApp);
+      }
+    });
+  }, []);
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
+  };
+
+  const handleContactWhatsApp = () => {
+    const msg = `السلام عليكم ورحمة الله،
+أنا الدكتور ${user?.name || ''}، قمت بتسجيل حساب صيدلية جديدة في منصة مقارنة أسعار الأدوية (${user?.email || ''}) وأرغب في تسريع المراجعة وتفعيل الحساب. شكراً لكم!`;
+    const link = createWhatsAppLink(supportWhatsApp, msg);
+    window.open(link, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -44,7 +62,15 @@ export const PendingApproval: React.FC = () => {
           </div>
         </div>
 
-        <div className="pt-2">
+        <div className="space-y-2.5 pt-1">
+          <button
+            onClick={handleContactWhatsApp}
+            className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs active:scale-98"
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span>تواصل مع مدير المنصة عبر واتساب لتسريع التفعيل</span>
+          </button>
+
           <button
             onClick={handleLogout}
             className="w-full py-2.5 px-4 rounded-xl text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 text-xs font-bold transition flex items-center justify-center gap-2"

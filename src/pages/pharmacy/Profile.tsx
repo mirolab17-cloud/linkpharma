@@ -1,5 +1,5 @@
 // src/pages/pharmacy/Profile.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { 
@@ -198,6 +198,83 @@ export const PharmacyProfile: React.FC = () => {
             </p>
           </div>
         </div>
+      </div>
+
+      {/* بطاقة الدعم الفني وتواصل المستودعات عبر واتساب */}
+      <SupportContactCard user={user} />
+    </div>
+  );
+};
+
+const SupportContactCard: React.FC<{ user: any }> = ({ user }) => {
+  const [supportWhatsApp, setSupportWhatsApp] = useState('966501234567');
+  const [warehouseSupportWhatsApp, setWarehouseSupportWhatsApp] = useState('966552223344');
+
+  useEffect(() => {
+    import('../../services/dataStorage').then(({ getSystemSettings }) => {
+      getSystemSettings().then((sys) => {
+        if (sys?.supportWhatsApp) setSupportWhatsApp(sys.supportWhatsApp);
+        if (sys?.warehouseSupportWhatsApp) setWarehouseSupportWhatsApp(sys.warehouseSupportWhatsApp);
+      });
+    });
+  }, []);
+
+  const handleSupportWhatsApp = () => {
+    const msg = `السلام عليكم ورحمة الله،
+أنا الدكتور ${user?.name || ''} من صيدلية ${user?.pharmacyName || ''} (${user?.phone || ''}).
+أحتاج لمساعدة بخصوص الحساب / المنصة.`;
+    window.open(`https://wa.me/${supportWhatsApp}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleWarehouseWhatsApp = () => {
+    const msg = `السلام عليكم ورحمة الله،
+أنا الدكتور ${user?.name || ''} من صيدلية ${user?.pharmacyName || ''} (${user?.phone || ''}).
+لدي استفسار بخصوص طلبيات وتوريد المستودعات.`;
+    window.open(`https://wa.me/${warehouseSupportWhatsApp}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+  };
+
+  return (
+    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-7 space-y-4">
+      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-[#0f9d7a] flex items-center justify-center">
+            <Phone className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-extrabold text-slate-900">الدعم الفني وتنسيق المستودعات</h3>
+            <p className="text-[11px] text-slate-500">تواصل مباشر وسريع عبر واتساب مع إدارة المنصة</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+        <button
+          type="button"
+          onClick={handleSupportWhatsApp}
+          className="p-3.5 rounded-2xl bg-slate-50 hover:bg-emerald-50/70 border border-slate-200 hover:border-emerald-300 transition flex items-center justify-between group text-right"
+        >
+          <div>
+            <div className="text-xs font-bold text-slate-900 group-hover:text-emerald-700">دعم مدير المنصة والاشتراكات</div>
+            <div className="text-[11px] text-slate-500 font-mono mt-0.5" dir="ltr">+{supportWhatsApp}</div>
+          </div>
+          <span className="p-2 rounded-xl bg-white text-emerald-600 shadow-2xs group-hover:bg-emerald-600 group-hover:text-white transition">
+            <Phone className="w-4 h-4" />
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleWarehouseWhatsApp}
+          className="p-3.5 rounded-2xl bg-slate-50 hover:bg-teal-50/70 border border-slate-200 hover:border-teal-300 transition flex items-center justify-between group text-right"
+        >
+          <div>
+            <div className="text-xs font-bold text-slate-900 group-hover:text-teal-700">تنسيق المستودعات والطلبيات</div>
+            <div className="text-[11px] text-slate-500 font-mono mt-0.5" dir="ltr">+{warehouseSupportWhatsApp}</div>
+          </div>
+          <span className="p-2 rounded-xl bg-white text-teal-600 shadow-2xs group-hover:bg-teal-600 group-hover:text-white transition">
+            <Phone className="w-4 h-4" />
+          </span>
+        </button>
       </div>
     </div>
   );

@@ -7,6 +7,8 @@ export interface SystemSettings {
   defaultTrialDays: number;
   currency?: string; // ILS / ₪ default
   adminEmails?: string[];
+  supportWhatsApp?: string; // رقم واتساب الدعم الفني والمدير المعتمد (مثال: 966501234567)
+  warehouseSupportWhatsApp?: string; // رقم واتساب دعم المستودعات وتنسيق الطلبيات
   updatedAt?: string;
   updatedBy?: string;
 }

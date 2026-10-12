@@ -53,7 +53,7 @@ const AdminLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col transition-colors duration-200">
+    <div className="min-h-screen bg-slate-50 flex flex-col">
       <Navbar
         onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         isSidebarOpen={isSidebarOpen}
@@ -78,7 +78,7 @@ const AdminLayout: React.FC = () => {
 // ======================= Pharmacy Layout =======================
 const PharmacyLayout: React.FC = () => {
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col pb-16 md:pb-0 transition-colors duration-200">
+    <div className="min-h-screen bg-slate-50 flex flex-col pb-16 md:pb-0">
       <Navbar />
       <SubscriptionWarningBanner />
       <main className="flex-1 min-w-0">

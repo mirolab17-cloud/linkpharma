@@ -81,15 +81,9 @@
     <script>
       (function() {
         try {
-          var saved = localStorage.getItem('pharma_theme');
-          var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-          if (saved === 'dark' || (!saved || saved === 'system') && systemDark) {
-            document.documentElement.classList.add('dark');
-            document.documentElement.style.colorScheme = 'dark';
-          } else {
-            document.documentElement.classList.remove('dark');
-            document.documentElement.style.colorScheme = 'light';
-          }
+          localStorage.removeItem('pharma_theme');
+          document.documentElement.classList.remove('dark');
+          document.documentElement.style.colorScheme = 'light';
         } catch (_) {}
       })();
     </script>
@@ -101,7 +95,7 @@
       <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     </noscript>
   </head>
-  <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-200">
+  <body class="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-emerald-500 selection:text-white">
     <div id="root"></div>
     <script type="module" src="src/main.tsx"></script>
   </body>

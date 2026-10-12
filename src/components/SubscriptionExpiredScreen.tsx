@@ -1,7 +1,7 @@
 // src/components/SubscriptionExpiredScreen.tsx
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
-import { getOrders, getProducts, getSuppliers } from '../services/dataStorage';
+import { getOrders, getProducts, getSuppliers, getSystemSettings } from '../services/dataStorage';
 import { 
   Sparkles, 
   Check, 
@@ -34,6 +34,7 @@ export const SubscriptionExpiredScreen: React.FC = () => {
   const navigate = useNavigate();
 
   const [selectedPlanId, setSelectedPlanId] = useState<string>('quarterly');
+  const [adminWhatsApp, setAdminWhatsApp] = useState<string>('966501234567');
   const [stats, setStats] = useState({
     userOrdersCount: 0,
     totalProductsCount: 30,
@@ -43,10 +44,11 @@ export const SubscriptionExpiredScreen: React.FC = () => {
   useEffect(() => {
     async function loadStats() {
       try {
-        const [ordersList, prodsList, supsList] = await Promise.all([
+        const [ordersList, prodsList, supsList, sysSettings] = await Promise.all([
           getOrders(),
           getProducts(),
           getSuppliers(),
+          getSystemSettings(),
         ]);
         const myOrders = ordersList.filter((o) => o.pharmacyId === user?.uid);
         setStats({
@@ -54,6 +56,9 @@ export const SubscriptionExpiredScreen: React.FC = () => {
           totalProductsCount: Math.max(prodsList.length, 30),
           totalSuppliersCount: Math.max(supsList.length, 3),
         });
+        if (sysSettings?.supportWhatsApp) {
+          setAdminWhatsApp(sysSettings.supportWhatsApp);
+        }
       } catch (err) {
         console.error('Failed to load stats for expiry screen:', err);
       }
@@ -110,7 +115,7 @@ export const SubscriptionExpiredScreen: React.FC = () => {
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[1];
 
   const handleRenewViaWhatsApp = () => {
-    const adminPhone = '966501234567'; // رقم إدارة المنصة المعتمد
+    const adminPhone = adminWhatsApp || '966501234567'; // رقم إدارة المنصة المعتمد
     const textMessage = `السلام عليكم ورحمة الله،
 أرغب في تجديد اشتراك صيدليتي في منصة مقارنة أسعار الأدوية:
 

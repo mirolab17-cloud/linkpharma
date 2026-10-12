@@ -3,15 +3,12 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { useCartStore } from '../store/useCartStore';
-import { useThemeStore } from '../store/useThemeStore';
 import { 
   Pill, 
   ShoppingCart, 
   LogOut, 
   Menu, 
-  X,
-  Sun,
-  Moon
+  X
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -23,7 +20,6 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }) => {
   const { user, logout } = useAuthStore();
-  const { isDark, toggleTheme } = useThemeStore();
   const cartItemsCount = useCartStore((s) => s.getTotalItemsCount());
   const navigate = useNavigate();
 
@@ -33,14 +29,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 transition-colors duration-200">
+    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         {/* الجانب الأيمن: زر القائمة والشعار */}
         <div className="flex items-center gap-3">
           {user?.role === 'admin' && onToggleSidebar && (
             <button
               onClick={onToggleSidebar}
-              className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 transition"
               aria-label="القائمة الجانبية"
             >
               {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -52,10 +48,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }
               <Pill className="w-5 h-5 rotate-45" />
             </div>
             <div>
-              <span className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white tracking-tight block leading-tight">
+              <span className="font-extrabold text-base sm:text-lg text-slate-900 tracking-tight block leading-tight">
                 مقارنة أسعار الأدوية
               </span>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium hidden sm:block">
+              <span className="text-[10px] text-slate-500 font-medium hidden sm:block">
                 منصة ربط الصيدليات بالمستودعات
               </span>
             </div>
@@ -64,22 +60,22 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }
 
         {/* الجانب الأوسط: روابط الصيدلية على الشاشات الكبيرة */}
         {user?.role === 'pharmacy' && user?.status === 'active' && user?.profileComplete && (
-          <nav className="hidden md:flex items-center gap-1 bg-slate-100/80 dark:bg-slate-800/80 p-1 rounded-xl">
+          <nav className="hidden md:flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl">
             <Link
               to="/app/prices"
-              className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-[#0f9d7a] dark:hover:text-[#0f9d7a] hover:bg-white dark:hover:bg-slate-700 transition"
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 hover:text-[#0f9d7a] hover:bg-white transition"
             >
               مقارنة الأسعار
             </Link>
             <Link
               to="/app/suppliers"
-              className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-[#0f9d7a] dark:hover:text-[#0f9d7a] hover:bg-white dark:hover:bg-slate-700 transition"
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 hover:text-[#0f9d7a] hover:bg-white transition"
             >
               دليل الموردين
             </Link>
             <Link
               to="/app/cart"
-              className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-[#0f9d7a] dark:hover:text-[#0f9d7a] hover:bg-white dark:hover:bg-slate-700 transition flex items-center gap-1.5"
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 hover:text-[#0f9d7a] hover:bg-white transition flex items-center gap-1.5"
             >
               <span>السلة</span>
               {cartItemsCount > 0 && (
@@ -90,33 +86,23 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }
             </Link>
             <Link
               to="/app/orders"
-              className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-[#0f9d7a] dark:hover:text-[#0f9d7a] hover:bg-white dark:hover:bg-slate-700 transition"
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 hover:text-[#0f9d7a] hover:bg-white transition"
             >
               طلباتي
             </Link>
             <Link
               to="/app/profile"
-              className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-[#0f9d7a] dark:hover:text-[#0f9d7a] hover:bg-white dark:hover:bg-slate-700 transition"
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 hover:text-[#0f9d7a] hover:bg-white transition"
             >
               الملف الشخصي
             </Link>
           </nav>
         )}
 
-        {/* الجانب الأيسر: الإشعارات والسلة ومعلومات الحساب والوضع الداكن وتثبيت التطبيق */}
+        {/* الجانب الأيسر: الإشعارات والسلة ومعلومات الحساب وتثبيت التطبيق */}
         <div className="flex items-center gap-2 sm:gap-3">
           {/* زر تثبيت PWA */}
           <PWAInstallButton className="hidden sm:flex" />
-
-          {/* زر تبديل الوضع الداكن/الفاتح */}
-          <button
-            onClick={toggleTheme}
-            className="p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-            title={isDark ? 'التحويل للوضع الفاتح' : 'التحويل للوضع الداكن'}
-            aria-label="تبديل مظهر الموقع"
-          >
-            {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
-          </button>
 
           {/* جرس الإشعارات والتنبيهات المباشرة */}
           {user && <NotificationBell />}

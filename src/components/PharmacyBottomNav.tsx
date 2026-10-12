@@ -8,13 +8,13 @@ export const PharmacyBottomNav: React.FC = () => {
   const cartItemsCount = useCartStore((s) => s.getTotalItemsCount());
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 md:hidden pb-safe transition-colors duration-200">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 md:hidden pb-safe">
       <div className="grid grid-cols-5 h-16">
         <NavLink
           to="/app/prices"
           className={({ isActive }) =>
             `flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition ${
-              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 hover:text-slate-800'
             }`
           }
         >
@@ -26,7 +26,7 @@ export const PharmacyBottomNav: React.FC = () => {
           to="/app/suppliers"
           className={({ isActive }) =>
             `flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition ${
-              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 hover:text-slate-800'
             }`
           }
         >
@@ -38,7 +38,7 @@ export const PharmacyBottomNav: React.FC = () => {
           to="/app/cart"
           className={({ isActive }) =>
             `relative flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition ${
-              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 hover:text-slate-800'
             }`
           }
         >
@@ -57,7 +57,7 @@ export const PharmacyBottomNav: React.FC = () => {
           to="/app/orders"
           className={({ isActive }) =>
             `flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition ${
-              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 hover:text-slate-800'
             }`
           }
         >
@@ -69,7 +69,7 @@ export const PharmacyBottomNav: React.FC = () => {
           to="/app/profile"
           className={({ isActive }) =>
             `flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition ${
-              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 hover:text-slate-800'
             }`
           }
         >

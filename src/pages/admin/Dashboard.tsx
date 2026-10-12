@@ -11,11 +11,13 @@ import {
   seedDatabase,
   clearDatabase,
   getSystemSettings,
-  updateSystemSettings
+  updateSystemSettings,
+  saveSupplier
 } from '../../services/dataStorage';
 import { Product, Supplier, UserProfile, Order, ImportBatch, PriceRecord } from '../../types';
 import { formatCurrency, setSystemCurrency, getSystemCurrency } from '../../utils/formatPrice';
 import { formatGregorianDate } from '../../utils/formatDate';
+import { isValidPhone, cleanPhone, createWhatsAppLink, formatPhoneNumber } from '../../utils/phone';
 import { useToastStore } from '../../store/useToastStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { 
@@ -36,7 +38,11 @@ import {
   AlertTriangle,
   Flame,
   CheckCheck,
-  Coins
+  Coins,
+  Phone,
+  MessageCircle,
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Spinner } from '../../components/Loader';
@@ -58,6 +64,14 @@ export const AdminDashboard: React.FC = () => {
   const [savingTrialDays, setSavingTrialDays] = useState(false);
   const [systemCurrency, setLocalCurrency] = useState<string>(getSystemCurrency() || '₪');
   const [savingCurrency, setSavingCurrency] = useState(false);
+
+  // أرقام واتساب الدعم الفني والمستودعات
+  const [supportWhatsApp, setSupportWhatsApp] = useState<string>('966501234567');
+  const [savingSupportWhatsApp, setSavingSupportWhatsApp] = useState(false);
+  const [warehouseSupportWhatsApp, setWarehouseSupportWhatsApp] = useState<string>('966552223344');
+  const [savingWarehouseSupportWhatsApp, setSavingWarehouseSupportWhatsApp] = useState(false);
+  const [supplierPhones, setSupplierPhones] = useState<Record<string, string>>({});
+  const [savingSupplierId, setSavingSupplierId] = useState<string | null>(null);
 
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
@@ -93,10 +107,84 @@ export const AdminDashboard: React.FC = () => {
         setLocalCurrency(settings.currency);
         setSystemCurrency(settings.currency);
       }
+      if (settings?.supportWhatsApp) {
+        setSupportWhatsApp(settings.supportWhatsApp);
+      }
+      if (settings?.warehouseSupportWhatsApp) {
+        setWarehouseSupportWhatsApp(settings.warehouseSupportWhatsApp);
+      }
+      const sMap: Record<string, string> = {};
+      s.forEach((sup) => {
+        sMap[sup.id] = sup.whatsapp;
+      });
+      setSupplierPhones(sMap);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveSupportWhatsApp = async () => {
+    if (!isValidPhone(supportWhatsApp)) {
+      error('يرجى إدخال رقم واتساب صحيح بالصيغة الدولية (8-15 رقماً بدون +).');
+      return;
+    }
+    setSavingSupportWhatsApp(true);
+    try {
+      const cleaned = cleanPhone(supportWhatsApp);
+      await updateSystemSettings({ supportWhatsApp: cleaned });
+      setSupportWhatsApp(cleaned);
+      success(`تم حفظ رقم واتساب الدعم الفني ومدير المنصة بنجاح (+${cleaned}).`);
+    } catch (err: any) {
+      error('تعذر حفظ رقم واتساب الدعم: ' + err.message);
+    } finally {
+      setSavingSupportWhatsApp(false);
+    }
+  };
+
+  const handleSaveWarehouseSupportWhatsApp = async () => {
+    if (!isValidPhone(warehouseSupportWhatsApp)) {
+      error('يرجى إدخال رقم واتساب صحيح بالصيغة الدولية (8-15 رقماً بدون +).');
+      return;
+    }
+    setSavingWarehouseSupportWhatsApp(true);
+    try {
+      const cleaned = cleanPhone(warehouseSupportWhatsApp);
+      await updateSystemSettings({ warehouseSupportWhatsApp: cleaned });
+      setWarehouseSupportWhatsApp(cleaned);
+      success(`تم حفظ رقم واتساب دعم المستودعات وتنسيق الطلبيات بنجاح (+${cleaned}).`);
+    } catch (err: any) {
+      error('تعذر حفظ رقم واتساب دعم المستودعات: ' + err.message);
+    } finally {
+      setSavingWarehouseSupportWhatsApp(false);
+    }
+  };
+
+  const handleSaveSupplierWhatsApp = async (supplierId: string) => {
+    const rawPhone = supplierPhones[supplierId];
+    if (!rawPhone || !isValidPhone(rawPhone)) {
+      error('يرجى إدخال رقم واتساب صالح للمستودع (8-15 رقماً بالصيغة الدولية).');
+      return;
+    }
+    const targetSup = suppliers.find((s) => s.id === supplierId);
+    if (!targetSup) return;
+
+    setSavingSupplierId(supplierId);
+    try {
+      const cleaned = cleanPhone(rawPhone);
+      await saveSupplier({
+        ...targetSup,
+        whatsapp: cleaned,
+      });
+      setSuppliers((prev) =>
+        prev.map((s) => (s.id === supplierId ? { ...s, whatsapp: cleaned } : s))
+      );
+      success(`تم تحديث رقم واتساب مستودع (${targetSup.name}) إلى (+${cleaned}) بنجاح.`);
+    } catch (err: any) {
+      error('تعذر تحديث رقم المستودع: ' + err.message);
+    } finally {
+      setSavingSupplierId(null);
     }
   };
 
@@ -262,7 +350,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* بطاقة إعدادات الفترة التجريبية الافتراضية */}
+      {/* بطاقة إعدادات الفترة التجريبية والعملة */}
       <div className="bg-gradient-to-r from-blue-50/90 via-indigo-50/50 to-white p-5 rounded-3xl border border-blue-200/90 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
@@ -281,7 +369,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
               {[3, 7, 14, 21, 30, 60].map((d) => (
                 <button
                   key={d}
@@ -290,7 +378,7 @@ export const AdminDashboard: React.FC = () => {
                   className={`px-2.5 py-1 text-xs font-bold rounded-lg transition ${
                     editingTrialDays === d
                       ? 'bg-blue-600 text-white shadow-2xs'
-                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                      : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
                   {d} يوماً
@@ -305,9 +393,9 @@ export const AdminDashboard: React.FC = () => {
                 max="365"
                 value={editingTrialDays}
                 onChange={(e) => setEditingTrialDays(Math.max(1, Number(e.target.value)))}
-                className="w-20 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-black text-center focus:outline-hidden focus:border-blue-500 font-mono"
+                className="w-20 px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs font-black text-center focus:outline-hidden focus:border-blue-500 font-mono"
               />
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-300">يوماً</span>
+              <span className="text-xs font-bold text-slate-600">يوماً</span>
             </div>
 
             <button
@@ -323,14 +411,14 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         {/* إعداد العملة الافتراضية للنظام */}
-        <div className="mt-4 pt-4 border-t border-blue-200/60 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="mt-4 pt-4 border-t border-blue-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Coins className="w-4 h-4 text-emerald-600" />
-            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">العملة الافتراضية لعرض الأسعار بالنظام:</span>
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-mono font-bold">({systemCurrency})</span>
+            <span className="text-xs font-bold text-slate-800">العملة الافتراضية لعرض الأسعار بالنظام:</span>
+            <span className="text-xs text-slate-500 font-mono font-bold">({systemCurrency})</span>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+          <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
             {[
               { code: 'ILS', symbol: '₪', label: 'الشيكل ₪' },
               { code: 'USD', symbol: '$', label: 'الدولار $' },
@@ -344,7 +432,7 @@ export const AdminDashboard: React.FC = () => {
                 className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
                   systemCurrency === c.symbol
                     ? 'bg-[#0f9d7a] text-white shadow-2xs'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                    : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 {c.label}
@@ -354,23 +442,255 @@ export const AdminDashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* بطاقة مخصصة: إدارة أرقام واتساب الدعم الفني والمستودعات */}
+      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-emerald-200/90 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shadow-xs">
+              <MessageCircle className="w-6 h-6 text-emerald-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                <span>أرقام واتساب الدعم الفني والمستودعات</span>
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                  إعدادات حية
+                </span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                تعديل رقم واتساب المدير لتلقي طلبات الاشتراك والتفعيل، ورقم دعم وتنسيق المستودعات، وتحديث أرقام كل مستودع
+              </p>
+            </div>
+          </div>
+
+          <Link
+            to="/admin/suppliers"
+            className="self-start sm:self-auto text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 border border-emerald-200"
+          >
+            <span>دليل المستودعات الكامل</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+
+        {/* قسم رقمي الدعم الفني: المدير والمستودعات */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* 1. رقم واتساب مدير المنصة والدعم الفني */}
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 flex flex-col justify-between">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>رقم واتساب المدير والدعم الفني المعتمد</span>
+                </span>
+                <span className="text-[11px] font-mono text-emerald-700 font-bold" dir="ltr">
+                  +{supportWhatsApp}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                يظهر للصيدليات في شاشة انتهاء الاشتراك لتجديد الباقات، وعند انتظار تفعيل الحساب، وفي بطاقة الدعم بالملف الشخصي.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="tel"
+                    value={supportWhatsApp}
+                    onChange={(e) => setSupportWhatsApp(e.target.value)}
+                    placeholder="966501234567"
+                    dir="ltr"
+                    className="w-full px-3 py-2 text-xs font-bold font-mono bg-white border border-slate-300 rounded-xl focus:outline-hidden focus:border-emerald-600"
+                  />
+                </div>
+
+                <a
+                  href={createWhatsAppLink(supportWhatsApp, 'مرحباً، هذه رسالة تجريبية لفحص رقم دعم المدير والمنصة')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition"
+                  title="فتح محادثة تجريبية على واتساب"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                </a>
+
+                <button
+                  type="button"
+                  onClick={handleSaveSupportWhatsApp}
+                  disabled={savingSupportWhatsApp}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50 active:scale-95 shadow-2xs"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{savingSupportWhatsApp ? 'حفظ...' : 'حفظ الرقم'}</span>
+                </button>
+              </div>
+              <div className="text-[10px] text-slate-400">
+                الصيغة الدولية للأرقام بدون مسافات أو علامة + (مثال: 966501234567 أو 972591234567)
+              </div>
+            </div>
+          </div>
+
+          {/* 2. رقم واتساب دعم المستودعات وتنسيق الطلبيات */}
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 flex flex-col justify-between">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                  <Truck className="w-4 h-4 text-teal-600" />
+                  <span>رقم واتساب دعم المستودعات وتنسيق الطلبيات</span>
+                </span>
+                <span className="text-[11px] font-mono text-teal-700 font-bold" dir="ltr">
+                  +{warehouseSupportWhatsApp}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                الخط الساخن الموحد لدعم العمليات وتنسيق التوريد والمستودعات والرد على استفسارات طلبيات الأدوية.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="tel"
+                    value={warehouseSupportWhatsApp}
+                    onChange={(e) => setWarehouseSupportWhatsApp(e.target.value)}
+                    placeholder="966552223344"
+                    dir="ltr"
+                    className="w-full px-3 py-2 text-xs font-bold font-mono bg-white border border-slate-300 rounded-xl focus:outline-hidden focus:border-teal-600"
+                  />
+                </div>
+
+                <a
+                  href={createWhatsAppLink(warehouseSupportWhatsApp, 'مرحباً، هذه رسالة تجريبية لفحص رقم دعم وتنسيق المستودعات')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 transition"
+                  title="فتح محادثة تجريبية على واتساب"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                </a>
+
+                <button
+                  type="button"
+                  onClick={handleSaveWarehouseSupportWhatsApp}
+                  disabled={savingWarehouseSupportWhatsApp}
+                  className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50 active:scale-95 shadow-2xs"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{savingWarehouseSupportWhatsApp ? 'حفظ...' : 'حفظ الرقم'}</span>
+                </button>
+              </div>
+              <div className="text-[10px] text-slate-400">
+                الصيغة الدولية للأرقام بدون مسافات أو علامة + (مثال: 966552223344 أو 972591234567)
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* قسم أرقام واتساب المستودعات المسجلة مع تعديل فوري */}
+        <div className="pt-2 border-t border-slate-100 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-extrabold text-slate-800 flex items-center gap-2">
+              <Truck className="w-4 h-4 text-[#0f9d7a]" />
+              <span>أرقام واتساب المستودعات المسجلة (تعديل وحفظ فوري)</span>
+            </span>
+            <span className="text-[11px] text-slate-500 font-medium">
+              إجمالي {suppliers.length} مستودع
+            </span>
+          </div>
+
+          {suppliers.length === 0 ? (
+            <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl">
+              لا توجد مستودعات مسجلة حالياً
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {suppliers.map((sup) => {
+                const currentVal = supplierPhones[sup.id] ?? sup.whatsapp;
+                const hasChanged = currentVal !== sup.whatsapp;
+                const isSavingThis = savingSupplierId === sup.id;
+
+                return (
+                  <div
+                    key={sup.id}
+                    className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 flex flex-col justify-between hover:border-slate-300 transition"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-extrabold text-xs text-slate-800 truncate" title={sup.name}>
+                        {sup.name}
+                      </div>
+                      <span
+                        className={`text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                          sup.status === 'active'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {sup.status === 'active' ? 'نشط' : 'متوقف'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="tel"
+                        value={currentVal}
+                        onChange={(e) =>
+                          setSupplierPhones((prev) => ({ ...prev, [sup.id]: e.target.value }))
+                        }
+                        placeholder="966501234567"
+                        dir="ltr"
+                        className="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-xl focus:outline-hidden focus:border-[#0f9d7a]"
+                      />
+
+                      <a
+                        href={createWhatsAppLink(currentVal, `السلام عليكم مستودع ${sup.name}، رسالة تجريبية من إدارة المنصة.`)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition shrink-0"
+                        title="تجربة الرقم على واتساب"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSaveSupplierWhatsApp(sup.id)}
+                        disabled={isSavingThis || !hasChanged}
+                        className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0 ${
+                          hasChanged
+                            ? 'bg-[#0f9d7a] hover:bg-[#0b7a5e] text-white shadow-2xs'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        }`}
+                        title="حفظ رقم الواتساب"
+                      >
+                        <Save className="w-3 h-3" />
+                        <span>{isSavingThis ? '...' : 'حفظ'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* قسم مؤشرات الجودة والرقابة (KPI Analytics) */}
       <div className="space-y-3">
-        <h3 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+        <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
           <span>مؤشرات الجودة والرقابة على الأسعار والمستودعات</span>
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* 1) أصناف بلا أسعار */}
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">أصناف بدون أي أسعار</span>
-              <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
+              <span className="text-xs font-bold text-slate-500">أصناف بدون أي أسعار</span>
+              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
                 <AlertTriangle className="w-4 h-4" />
               </div>
             </div>
             <div className="mt-3">
-              <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">
+              <span className="text-2xl font-black text-slate-900 font-mono">
                 {productsWithoutPrices.length}
               </span>
               <span className="text-[11px] text-slate-400 block mt-0.5">
@@ -380,15 +700,15 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           {/* 2) مستودعات لم تحدث منذ 7 أيام */}
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">مستودعات راكدة (&gt; 7 أيام)</span>
-              <div className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center">
+              <span className="text-xs font-bold text-slate-500">مستودعات راكدة (&gt; 7 أيام)</span>
+              <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
                 <Clock className="w-4 h-4" />
               </div>
             </div>
             <div className="mt-3">
-              <span className="text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
+              <span className="text-2xl font-black text-rose-600 font-mono">
                 {suppliersNotUpdated7Days.length}
               </span>
               <span className="text-[11px] text-slate-400 block mt-0.5">
@@ -398,15 +718,15 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           {/* 3) نسبة الاستيراد الناجح */}
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">نسبة الاستيراد الناجح</span>
-              <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-[#0f9d7a] flex items-center justify-center">
+              <span className="text-xs font-bold text-slate-500">نسبة الاستيراد الناجح</span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-[#0f9d7a] flex items-center justify-center">
                 <CheckCheck className="w-4 h-4" />
               </div>
             </div>
             <div className="mt-3">
-              <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+              <span className="text-2xl font-black text-emerald-600 font-mono">
                 {successfulImportRate}%
               </span>
               <span className="text-[11px] text-slate-400 block mt-0.5">
@@ -416,16 +736,16 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           {/* 4) أكثر الأصناف طلباً وبحثاً */}
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">أكثر الأصناف طلباً</span>
-              <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 flex items-center justify-center">
+              <span className="text-xs font-bold text-slate-500">أكثر الأصناف طلباً</span>
+              <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
                 <Flame className="w-4 h-4" />
               </div>
             </div>
             <div className="mt-3">
               {topDemandedProducts.length > 0 ? (
-                <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                <div className="text-xs font-bold text-slate-800 truncate">
                   {topDemandedProducts[0].name} ({topDemandedProducts[0].count} وحدة)
                 </div>
               ) : (

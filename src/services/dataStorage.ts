@@ -896,6 +896,8 @@ export async function getSystemSettings(): Promise<SystemSettings> {
   const fallbackSettings: SystemSettings = {
     id: 'system',
     defaultTrialDays: 7,
+    supportWhatsApp: '966501234567',
+    warehouseSupportWhatsApp: '966552223344',
     updatedAt: new Date().toISOString(),
   };
 
@@ -904,10 +906,14 @@ export async function getSystemSettings(): Promise<SystemSettings> {
       const snap = await getDoc(doc(db, 'settings', 'system'));
       if (snap.exists()) {
         const data = snap.data() as SystemSettings;
+        const merged: SystemSettings = {
+          ...fallbackSettings,
+          ...data,
+        };
         try {
-          localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(data));
+          localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(merged));
         } catch (_) {}
-        return data;
+        return merged;
       }
     } catch (e) {
       console.warn('Firestore getSystemSettings failed, using fallback:', e);
@@ -919,7 +925,10 @@ export async function getSystemSettings(): Promise<SystemSettings> {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed.defaultTrialDays === 'number') {
-        return parsed;
+        return {
+          ...fallbackSettings,
+          ...parsed,
+        };
       }
     }
   } catch (_) {}
