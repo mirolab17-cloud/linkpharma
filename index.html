@@ -24,7 +24,6 @@
           }
         } catch (_) {}
 
-        // Filter known browser extension and Firebase Auth internal popup race condition errors
         function isIgnoredError(msg, file) {
           if (!msg && !file) return false;
           var s = (msg || '') + ' ' + (file || '');
@@ -32,6 +31,9 @@
                  s.indexOf('Cannot set property fetch') !== -1 ||
                  s.indexOf('Pending promise was never set') !== -1 ||
                  s.indexOf('INTERNAL ASSERTION FAILED') !== -1 ||
+                 s.indexOf('workbox') !== -1 ||
+                 s.indexOf('WorkerGlobalScope') !== -1 ||
+                 s.indexOf('importScripts') !== -1 ||
                  s.indexOf('Could not reach Cloud Firestore backend') !== -1;
         }
 

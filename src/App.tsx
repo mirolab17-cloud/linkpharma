@@ -27,6 +27,7 @@ import { useNotificationStore } from './store/useNotificationStore';
 
 // Auth Pages
 import { Login } from './pages/auth/Login';
+const AdminLogin = lazy(() => import('./pages/admin/AdminLogin').then(m => ({ default: m.AdminLogin })));
 const PendingApproval = lazy(() => import('./pages/auth/PendingApproval').then(m => ({ default: m.PendingApproval })));
 
 // Admin Pages (Lazy loaded to reduce initial bundle size)
@@ -269,8 +270,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Navigate to="/login" replace />} />
 
-        {/* مدخل الإدارة محول تلقائياً إلى صفحة الدخول الموحدة */}
-        <Route path="/admin/login" element={<Navigate to="/login" replace />} />
+        {/* بوابة دخول الإدارة المركزية */}
+        <Route path="/admin/login" element={<Suspense fallback={<PageFallback />}><AdminLogin /></Suspense>} />
 
         {/* صفحة بانتظار التفعيل */}
         <Route

@@ -39,14 +39,15 @@ import {
   serverTimestamp,
   onSnapshot
 } from 'firebase/firestore';
-// Firebase configuration: environment variables only
+// Firebase configuration: environment variables with fallback
+const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'refined-might-8mn89';
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyDgKxltoVlUxjOAqqhACmZagGLHLbvoP_I',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || `${projectId}.firebaseapp.com`,
+  projectId: projectId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || `${projectId}.firebasestorage.app`,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '469046318366',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:469046318366:web:15f79a97d96aeae6',
   firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || '',
 };
 

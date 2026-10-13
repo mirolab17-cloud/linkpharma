@@ -30,6 +30,7 @@ import { setSystemCurrency } from '../utils/formatPrice';
 import { loginPush, logoutPush } from '../services/push';
 import { useNotificationStore } from './useNotificationStore';
 import { clearNotificationCache } from '../services/dataStorage';
+import { translateAuthError, TranslatedAuthError } from '../utils/authErrorTranslator';
 
 // فترة التجربة الافتراضية بالأيام
 export const DEFAULT_TRIAL_DAYS = 7;
@@ -42,7 +43,9 @@ interface AuthState {
   isPasswordUser: boolean;
   isGoogleUser: boolean;
   pendingGoogleCredential: { credential: any; email: string } | null;
+  lastAuthError: TranslatedAuthError | null;
   
+  clearAuthError: () => void;
   clearPendingGoogleCredential: () => void;
   setDefaultTrialDays: (days: number) => void;
   linkGoogleWithPassword: (password: string) => Promise<boolean>;
@@ -68,7 +71,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isPasswordUser: false,
   isGoogleUser: false,
   pendingGoogleCredential: null,
+  lastAuthError: null,
 
+  clearAuthError: () => set({ lastAuthError: null }),
   clearPendingGoogleCredential: () => set({ pendingGoogleCredential: null }),
   setDefaultTrialDays: (days: number) => set({ defaultTrialDays: days }),
 
@@ -97,11 +102,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return () => {};
     }
 
-    // التحقق من نتيجة إعادة التوجيه لـ Google OAuth (signInWithRedirect)
+    // التحقق من نتيجة إعادة التوجيه لـ Google OAuth (signInWithRedirect) في حال العودة من مسار خارجي
     try {
-      getRedirectResult(auth).catch((err) => {
-        console.warn('getRedirectResult warning:', err);
-      });
+      getRedirectResult(auth)
+        .then((result) => {
+          if (result && result.user) {
+            set({ lastAuthError: null });
+          }
+        })
+        .catch((err) => {
+          console.warn('getRedirectResult warning:', err);
+          const translated = translateAuthError(err);
+          set({ lastAuthError: translated });
+        });
     } catch (_) {}
 
     // استماع مباشر لإعدادات النظام العامة (أيام التجربة المحددة من الإدارة والعملة)
@@ -298,40 +311,38 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   loginWithEmail: async (email, pass) => {
-    set({ loading: true });
+    set({ loading: true, lastAuthError: null });
     try {
       if (!isFirebaseConfigured) {
         const localUsers = JSON.parse(localStorage.getItem('pharma_db_users') || '[]');
-        const found = localUsers.find((u: any) => u.email === email);
+        const found = localUsers.find((u: any) => u.email === email.trim());
         if (found) {
           localStorage.setItem('pharma_local_user', JSON.stringify(found));
-          set({ user: found, loading: false });
+          set({ user: found, loading: false, lastAuthError: null });
           useToastStore.getState().success(`أهلاً بك مجدداً`);
           return true;
         }
-        useToastStore.getState().error('البريد الإلكتروني غير مسجل.');
-        set({ loading: false });
+        const err = translateAuthError({ code: 'auth/user-not-found' });
+        set({ lastAuthError: err, loading: false });
+        useToastStore.getState().error(err.message);
         return false;
       }
 
-      const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
+      await signInWithEmailAndPassword(auth, email.trim(), pass);
+      set({ lastAuthError: null, loading: false });
       useToastStore.getState().success('تم تسجيل الدخول بنجاح');
       return true;
     } catch (error: any) {
       set({ loading: false });
-      let msg = 'فشل تسجيل الدخول. تأكد من صحة البريد وكلمة المرور.';
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-        msg = 'البريد الإلكتروني أو كلمة المرور غير صحيحة.';
-      } else if (error.code === 'auth/too-many-requests') {
-        msg = 'تم حظر المحاولات مؤقتاً بسبب تكرار المحاولات الخاطئة. انتظر قليلاً.';
-      }
-      useToastStore.getState().error(msg);
+      const translated = translateAuthError(error);
+      set({ lastAuthError: translated });
+      useToastStore.getState().error(`${translated.title}: ${translated.message}`);
       return false;
     }
   },
 
   signupWithEmail: async (email, pass, name) => {
-    set({ loading: true });
+    set({ loading: true, lastAuthError: null });
     try {
       const now = Date.now();
       const expiresAtMillis = now + DEFAULT_TRIAL_DAYS * 24 * 60 * 60 * 1000;
@@ -358,8 +369,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         existingUsers.push(newLocalUser);
         localStorage.setItem('pharma_db_users', JSON.stringify(existingUsers));
         localStorage.setItem('pharma_local_user', JSON.stringify(newLocalUser));
-        set({ user: newLocalUser, loading: false });
-        useToastStore.getState().success('أهلاً بك! تم تفعيل تجربتك المجانية لمدة 7 أيام بنجاح.');
+        set({ user: newLocalUser, loading: false, lastAuthError: null });
+        useToastStore.getState().success('أهلاً بك! تم تفعيل تجربتك المجانية بنجاح.');
         return true;
       }
 
@@ -394,18 +405,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       };
 
       await setDoc(doc(db, 'users', cred.user.uid), newProfile);
-      set({ user: newProfile, loading: false });
-      useToastStore.getState().success('أهلاً بك! تم تفعيل تجربتك المجانية لمدة 7 أيام بنجاح.');
+      set({ user: newProfile, loading: false, lastAuthError: null });
+      useToastStore.getState().success('أهلاً بك! تم إنشاء وتفعيل حسابك بنجاح.');
       return true;
     } catch (error: any) {
       set({ loading: false });
-      let msg = 'تعذر إنشاء الحساب.';
-      if (error.code === 'auth/email-already-in-use') {
-        msg = 'هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول.';
-      } else if (error.code === 'auth/weak-password') {
-        msg = 'كلمة المرور ضعيفة جداً. استخدم 6 خانات على الأقل.';
-      }
-      useToastStore.getState().error(msg);
+      const translated = translateAuthError(error);
+      set({ lastAuthError: translated });
+      useToastStore.getState().error(`${translated.title}: ${translated.message}`);
       return false;
     }
   },
@@ -416,65 +423,54 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     activeGoogleSignInPromise = (async () => {
-      set({ loading: true });
+      set({ loading: true, lastAuthError: null });
       try {
         if (!isFirebaseConfigured) {
-          useToastStore.getState().error('يرجى التحقق من إعدادات الاتصال بـ Firebase.');
+          const err = translateAuthError({ code: 'auth/invalid-api-key', message: 'إعدادات Firebase غير مكتملة' });
+          set({ lastAuthError: err });
+          useToastStore.getState().error(err.message);
           return false;
         }
 
         // إذا كان المستخدم مسجلاً بالفعل
         if (auth.currentUser) {
-          return true;
-        }
-
-        const isMobileOrCOOP = typeof window !== 'undefined' && (
-          window.innerWidth < 768 || 
-          /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-          window.location.hostname.includes('github.io')
-        );
-
-        if (isMobileOrCOOP) {
-          await signInWithRedirect(auth, googleProvider);
+          set({ lastAuthError: null });
           return true;
         }
 
         try {
           await signInWithPopup(auth, googleProvider);
+          set({ lastAuthError: null });
           return true;
         } catch (popupError: any) {
-          // معالجة خطأ الـ COOP أو إغلاق النافذة عبر التحويل التلقائي لـ signInWithRedirect
-          if (
-            popupError?.message?.includes('Cross-Origin-Opener-Policy') ||
-            popupError?.message?.includes('window.closed') ||
-            popupError?.code === 'auth/popup-blocked' ||
-            popupError?.code === 'auth/internal-error'
-          ) {
-            console.warn('Popup COOP/blocked issue detected, falling back to signInWithRedirect:', popupError.message);
-            await signInWithRedirect(auth, googleProvider);
-            return true;
-          }
+          console.warn('Google signInWithPopup error:', popupError);
 
           // معالجة خطأ الـ internal assertion الناتج عن race-condition في نوافذ الـ popup
           if (
             popupError?.message?.includes('Pending promise was never set') ||
             popupError?.message?.includes('INTERNAL ASSERTION FAILED')
           ) {
-            console.warn('Recovered from Firebase popup internal race condition:', popupError.message);
-            // إعطاء مهلة قصيرة لاكتمال ربط الحساب بواسطة onAuthStateChanged
+            console.warn('Checking auth.currentUser following popup assertion event...');
             for (let i = 0; i < 5; i++) {
               if (auth.currentUser) {
+                set({ lastAuthError: null });
                 return true;
               }
               await new Promise((r) => setTimeout(r, 200));
             }
-            return Boolean(auth.currentUser);
+            if (auth.currentUser) {
+              set({ lastAuthError: null });
+              return true;
+            }
           }
 
+          // المستخدم أغلق النافذة بنفسه قبل الاختيار
           if (
             popupError?.code === 'auth/popup-closed-by-user' || 
             popupError?.code === 'auth/cancelled-popup-request'
           ) {
+            const translated = translateAuthError(popupError);
+            set({ lastAuthError: translated });
             return false;
           }
 
@@ -491,19 +487,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 email,
               },
             });
-            useToastStore.getState().info('هذا البريد مسجل مسبقاً بكلمة مرور. أدخل كلمة المرور لربط حساب Google تلقائياً.');
+            const translated = translateAuthError(error);
+            set({ lastAuthError: translated });
+            useToastStore.getState().info(translated.message);
             return false;
           }
         }
-        if (
-          error.code === 'auth/popup-closed-by-user' || 
-          error.code === 'auth/cancelled-popup-request' ||
-          error?.message?.includes('Pending promise was never set') ||
-          error?.message?.includes('INTERNAL ASSERTION FAILED')
-        ) {
-          return Boolean(auth.currentUser);
-        }
-        useToastStore.getState().error('تعذر تسجيل الدخول عبر Google: ' + (error.message || ''));
+
+        const translated = translateAuthError(error);
+        set({ lastAuthError: translated });
+        useToastStore.getState().error(`${translated.title}: ${translated.message}`);
         return false;
       } finally {
         set({ loading: false });
