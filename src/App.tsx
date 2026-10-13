@@ -19,6 +19,7 @@ import { Spinner, PharmacyBrandLoader } from './components/Loader';
 import { SubscriptionExpiredScreen } from './components/SubscriptionExpiredScreen';
 import { SubscriptionWarningBanner } from './components/SubscriptionWarningBanner';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { initPush } from './services/push';
 
 // Auth Pages
 import { Login } from './pages/auth/Login';
@@ -208,6 +209,7 @@ export default function App() {
   const { initializeTheme } = useThemeStore();
 
   useEffect(() => {
+    initPush().catch(() => {});
     initializeTheme();
     const unsub = initializeAuth();
     return () => unsub();

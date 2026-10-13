@@ -25,6 +25,7 @@ import {
 import { GoogleAuthProvider } from 'firebase/auth';
 import { useToastStore } from './useToastStore';
 import { setSystemCurrency } from '../utils/formatPrice';
+import { loginPush, logoutPush } from '../services/push';
 
 // فترة التجربة الافتراضية بالأيام
 export const DEFAULT_TRIAL_DAYS = 7;
@@ -134,9 +135,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if (!fbUser) {
         if (safetyTimer) clearTimeout(safetyTimer);
+        logoutPush().catch(() => {});
         set({ user: null, loading: false, initialized: true, isPasswordUser: false, isGoogleUser: false });
         return;
       }
+
+      // ربط حساب المستخدم في OneSignal
+      loginPush(fbUser.uid).catch(() => {});
 
       const isPassword = fbUser.providerData.some(p => p.providerId === 'password');
       const isGoogle = fbUser.providerData.some(p => p.providerId === 'google.com');
@@ -551,11 +556,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (isFirebaseConfigured) {
         await fbSignOut(auth);
       }
+      await logoutPush();
       localStorage.removeItem('pharma_local_user');
       set({ user: null });
       useToastStore.getState().info('تم تسجيل الخروج بنجاح.');
     } catch (e) {
       console.error(e);
+      await logoutPush();
       set({ user: null });
     }
   },

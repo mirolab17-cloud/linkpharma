@@ -8,10 +8,13 @@ import {
   Phone, 
   CheckCircle, 
   ShieldAlert, 
-  ShieldCheck
+  ShieldCheck,
+  Bell,
+  CheckCircle2
 } from 'lucide-react';
 import { isValidPhone, cleanPhone } from '../../utils/phone';
 import { useToastStore } from '../../store/useToastStore';
+import { getPushStatus, enablePush, PushStatus } from '../../services/push';
 
 export const PharmacyProfile: React.FC = () => {
   const { user, updateUserProfile } = useAuthStore();
@@ -200,8 +203,124 @@ export const PharmacyProfile: React.FC = () => {
         </div>
       </div>
 
+      {/* بطاقة إشعارات الجوال الفورية (OneSignal Push) */}
+      <PushNotificationCard />
+
       {/* بطاقة الدعم الفني وتواصل المستودعات عبر واتساب */}
       <SupportContactCard user={user} />
+    </div>
+  );
+};
+
+const PushNotificationCard: React.FC = () => {
+  const [pushStatus, setPushStatus] = useState<PushStatus>(() => getPushStatus());
+  const [isEnabling, setIsEnabling] = useState(false);
+
+  useEffect(() => {
+    const updateStatus = () => setPushStatus(getPushStatus());
+    window.addEventListener('focus', updateStatus);
+    return () => window.removeEventListener('focus', updateStatus);
+  }, []);
+
+  const handleEnable = async () => {
+    setIsEnabling(true);
+    try {
+      const granted = await enablePush();
+      setPushStatus(getPushStatus());
+      if (granted) {
+        useToastStore.getState().success('تم تفعيل إشعارات الجوال بنجاح! ستصلك التنبيهات حتى والتطبيق مغلق.');
+      } else {
+        useToastStore.getState().error('لم يتم منح إذن الإشعارات. يرجى التحقق من إعدادات المتصفح.');
+      }
+    } finally {
+      setIsEnabling(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-7 space-y-4">
+      <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="flex items-start gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-[#0f9d7a] flex items-center justify-center shrink-0">
+            <Bell className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-extrabold text-slate-900">إشعارات الجوال الفورية (Push)</h2>
+              {pushStatus.isGranted && (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
+                  مفعّلة ✅
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+              تصلك تنبيهات فورية عند انخفاض أسعار الأدوية، تغيير حالة طلبيتك، أو ورود تعميمات إدارية حتى والتطبيق مغلق.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {pushStatus.isGranted ? (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-start gap-3">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+          <div className="space-y-1 text-right">
+            <div className="text-xs font-bold text-emerald-900">الإشعارات مفعّلة ✅</div>
+            <p className="text-[11px] text-emerald-800 leading-relaxed">
+              جهازك جاهز لاستقبال الإشعارات والتنبيهات المباشرة بالوقت الفعلي حتى لو كان التطبيق مغلقاً.
+            </p>
+          </div>
+        </div>
+      ) : pushStatus.isDenied ? (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-2 text-right">
+          <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
+            <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>تم حظر الإشعارات من إعدادات المتصفح</span>
+          </div>
+          <p className="text-[11px] text-amber-800 leading-relaxed">
+            لتفعيل الإشعارات: اضغط على أيقونة القفل أو الأمان 🔒 بجانب رابط الموقع في شريط عنوان المتصفح، وقم بالسماح بخيار (الإشعارات / Notifications)، ثم أعد تحميل الصفحة.
+          </p>
+          <p className="text-[10px] text-amber-700 font-medium">
+            📱 ملاحظة لمستخدمي iPhone: الإشعارات تعمل فقط بعد «إضافة إلى الشاشة الرئيسية» (تثبيت الـ PWA عبر متصفح Safari).
+          </p>
+        </div>
+      ) : !pushStatus.supported ? (
+        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-right space-y-1">
+          <p className="text-xs font-bold text-slate-800">ملاحظة لمستخدمي iPhone</p>
+          <p className="text-[11px] text-slate-600 leading-relaxed">
+            📱 لتفعيل إشعارات الجوال على أجهزة iOS: افتح الرابط في Safari، اضغط على زر المشاركة أسفل الشاشة، ثم اختر «إضافة إلى الشاشة الرئيسية». بعد فتح التطبيق من الأيقونة، يمكنك تفعيل الإشعارات مباشرة.
+          </p>
+        </div>
+      ) : (
+        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 text-right">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-bold text-slate-800">تفعيل التنبيهات المباشرة على هذا الجهاز</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">يتطلب موافقة سريعة من المتصفح لمرة واحدة فقط</div>
+            </div>
+            <button
+              type="button"
+              onClick={handleEnable}
+              disabled={isEnabling}
+              className="px-5 py-2.5 rounded-xl bg-[#0f9d7a] hover:bg-[#0b7a5e] text-white text-xs font-bold transition shadow-xs flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 cursor-pointer active:scale-95"
+            >
+              {isEnabling ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>جاري التفعيل...</span>
+                </>
+              ) : (
+                <>
+                  <Bell className="w-4 h-4" />
+                  <span>تفعيل إشعارات الجوال</span>
+                </>
+              )}
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-500 border-t border-slate-200/60 pt-2">
+            📱 ملاحظة لمستخدمي iPhone: الإشعارات تعمل فقط بعد «إضافة إلى الشاشة الرئيسية» (تثبيت الـ PWA).
+          </p>
+        </div>
+      )}
     </div>
   );
 };

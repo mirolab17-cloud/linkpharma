@@ -38,6 +38,8 @@ import {
 } from './seed';
 import { setSystemCurrency, formatCurrency } from '../utils/formatPrice';
 import { formatGregorianDate } from '../utils/formatDate';
+import { sendPush } from './push';
+import { useAuthStore } from '../store/useAuthStore';
 
 const STORAGE_KEYS = {
   activeIngredients: 'pharma_db_active_ingredients',
@@ -792,33 +794,18 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus): P
       cancelled: 'تم إلغاء الطلبية',
     };
 
-    const notif: AppNotification = {
-      id: 'notif_' + Date.now(),
+    // إرسال إشعار فوري للصيدلية بتحديث حالة الطلبية وتمريره عبر createNotification
+    await createNotification({
       userId: targetOrder.pharmacyId,
       title: `تحديث حالة طلبيتك من ${targetOrder.supplierName}`,
       message: statusLabels[status] || `أصبحت حالة الطلبية: ${status}`,
       type: 'order_update',
-      read: false,
-      createdAt: new Date().toISOString(),
       metadata: {
         orderId,
         orderStatus: status,
+        actionUrl: '/app/orders',
       },
-    };
-
-    const notifs = getLocal<AppNotification>(STORAGE_KEYS.notifications);
-    notifs.unshift(notif);
-    setLocal(STORAGE_KEYS.notifications, notifs);
-
-    if (isFirebaseConfigured) {
-      try {
-        await setDoc(doc(db, 'notifications', notif.id), notif);
-      } catch (_) {}
-    }
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('pharma_notifications_updated'));
-    }
+    });
   }
 }
 
@@ -1248,6 +1235,42 @@ export async function createNotification(
   // إشعار فوري لجميع النوافذ والمكونات
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('pharma_notifications_updated'));
+  }
+
+  // إرسال إشعار Push حقيقي عبر OneSignal والـ Worker (Fire-and-forget)
+  // لا ترسل Push عندما يكون المرسِل غير أدمن، لأن الـ Worker يقبل الأدمن فقط حسب ADMIN_EMAILS
+  try {
+    const currentUser = useAuthStore.getState().user;
+    if (currentUser && currentUser.role === 'admin') {
+      const baseUrl = 'https://mirolab17-cloud.github.io/linkpharma/#';
+      let targetPath = '/app/prices';
+      if (newNotif.metadata?.actionUrl) {
+        targetPath = newNotif.metadata.actionUrl.startsWith('/')
+          ? newNotif.metadata.actionUrl
+          : `/${newNotif.metadata.actionUrl}`;
+      } else if (newNotif.type === 'order_update') {
+        targetPath = '/app/orders';
+      } else if (newNotif.type === 'price_alert') {
+        targetPath = '/app/prices';
+      } else if (newNotif.type === 'status_change') {
+        targetPath = '/app/profile';
+      }
+
+      const fullUrl = `${baseUrl}${targetPath}`;
+      const isAll = !newNotif.userId || newNotif.userId === 'all';
+      const userIds = isAll ? undefined : [newNotif.userId];
+
+      sendPush({
+        title: newNotif.title,
+        message: newNotif.message,
+        url: fullUrl,
+        userIds,
+      }).catch((pushErr) => {
+        console.warn('Fire-and-forget sendPush caught:', pushErr);
+      });
+    }
+  } catch (pushErr) {
+    console.warn('sendPush trigger error:', pushErr);
   }
 
   return newNotif;

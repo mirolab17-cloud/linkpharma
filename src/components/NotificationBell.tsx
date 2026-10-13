@@ -10,6 +10,7 @@ import {
 } from '../services/dataStorage';
 import { AppNotification } from '../types';
 import { formatGregorianDate } from '../utils/formatDate';
+import { getPushStatus, enablePush, PushStatus } from '../services/push';
 import { 
   Bell, 
   CheckCheck, 
@@ -61,8 +62,30 @@ export const NotificationBell: React.FC = () => {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
+  const [pushStatus, setPushStatus] = useState<PushStatus>(() => getPushStatus());
+  const [isEnablingPush, setIsEnablingPush] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const prevCountRef = useRef<number>(-1);
+
+  // تحديث حالة إذن الإشعارات عند فتح القائمة
+  useEffect(() => {
+    if (isOpen) {
+      setPushStatus(getPushStatus());
+    }
+  }, [isOpen]);
+
+  const handleEnablePush = async () => {
+    setIsEnablingPush(true);
+    try {
+      const granted = await enablePush();
+      setPushStatus(getPushStatus());
+      if (granted) {
+        info('تم تفعيل إشعارات الجوال بنجاح! ستصلك التنبيهات حتى لو التطبيق مغلق.', 'إشعارات الجوال');
+      }
+    } finally {
+      setIsEnablingPush(false);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -246,6 +269,66 @@ export const NotificationBell: React.FC = () => {
               غير المقروءة ({unreadCount})
             </button>
           </div>
+
+          {/* شريط تفعيل وحالة إشعارات الجوال Push */}
+          {pushStatus.isGranted ? (
+            <div className="px-3.5 py-2 bg-emerald-50/80 border-b border-emerald-100 flex items-center justify-between text-xs text-emerald-900">
+              <div className="flex items-center gap-1.5 font-bold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>الإشعارات مفعّلة ✅</span>
+              </div>
+              <span className="text-[10px] text-emerald-700">تصلك حتى والتطبيق مغلق</span>
+            </div>
+          ) : pushStatus.isDenied ? (
+            <div className="p-3 bg-amber-50 border-b border-amber-200 text-right space-y-1.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
+                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>تم حظر الإشعارات من إعدادات المتصفح</span>
+              </div>
+              <p className="text-[11px] text-amber-800 leading-relaxed pr-5">
+                لتفعيلها: اضغط على أيقونة القفل أو الإعدادات 🔒 بجانب رابط الموقع في شريط عنوان المتصفح، وقم بالسماح بالإشعارات.
+              </p>
+              <p className="text-[10px] text-amber-700 pr-5">
+                📱 ملاحظة لمستخدمي iPhone: الإشعارات تعمل فقط بعد «إضافة إلى الشاشة الرئيسية» (تثبيت الـ PWA).
+              </p>
+            </div>
+          ) : !pushStatus.supported ? (
+            <div className="p-2.5 bg-slate-50 border-b border-slate-200 text-right">
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                📱 ملاحظة لمستخدمي iPhone: الإشعارات تعمل فقط بعد «إضافة إلى الشاشة الرئيسية» (تثبيت الـ PWA عبر متصفح Safari).
+              </p>
+            </div>
+          ) : (
+            <div className="p-3 bg-emerald-50/50 border-b border-emerald-100 text-right space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-slate-800">إشعارات الجوال الفورية</div>
+                  <div className="text-[10px] text-slate-500 truncate">تصلك فوراً حتى لو التطبيق مغلق</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleEnablePush}
+                  disabled={isEnablingPush}
+                  className="px-3 py-1.5 rounded-xl bg-[#0f9d7a] hover:bg-[#0b7a5e] text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer active:scale-95"
+                >
+                  {isEnablingPush ? (
+                    <>
+                      <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>جاري التفعيل...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Bell className="w-3.5 h-3.5" />
+                      <span>تفعيل إشعارات الجوال</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                📱 ملاحظة لمستخدمي iPhone: الإشعارات تعمل فقط بعد «إضافة إلى الشاشة الرئيسية» (تثبيت الـ PWA).
+              </p>
+            </div>
+          )}
 
           {/* محتوى الإشعارات */}
           <div className="max-h-96 overflow-y-auto divide-y divide-slate-100">
