@@ -141,8 +141,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             setSystemCurrency(data.currency);
           }
         }
-      }, (err) => {
-        console.warn('Public settings subscription error:', err);
+      }, () => {
+        // استخدام الإعدادات الافتراضية بهدوء في حال عدم تسجيل الدخول أو تأخر نشر القواعد
       });
     } catch (e) {
       console.warn('Failed to listen to public settings:', e);

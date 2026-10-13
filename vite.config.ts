@@ -47,6 +47,9 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          skipWaiting: true,
+          clientsClaim: true,
+          cleanupOutdatedCaches: true,
           inlineWorkboxRuntime: true,
           navigateFallback: null,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
@@ -83,8 +86,7 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: true,
-          type: 'module',
+          enabled: false,
         },
       }),
     ],

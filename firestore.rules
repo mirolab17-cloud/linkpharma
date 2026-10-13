@@ -61,9 +61,9 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // System Settings: Public/notification settings readable by users; sensitive settings (system, gemini, etc.) strictly for admin
+    // System Settings: Public settings readable by anyone; notification settings for signed-in users; sensitive settings (system, gemini, etc.) strictly for admin
     match /settings/{settingId} {
-      allow read: if (settingId in ['public', 'notifications']) ? isSignedIn() : isAdmin();
+      allow read: if settingId == 'public' || (settingId == 'notifications' && isSignedIn()) || isAdmin();
       allow write: if isAdmin();
     }
 

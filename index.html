@@ -34,6 +34,9 @@
                  s.indexOf('workbox') !== -1 ||
                  s.indexOf('WorkerGlobalScope') !== -1 ||
                  s.indexOf('importScripts') !== -1 ||
+                 s.indexOf('postMessage') !== -1 ||
+                 s.indexOf('initial evaluation of worker script') !== -1 ||
+                 s.indexOf('Missing or insufficient permissions') !== -1 ||
                  s.indexOf('Could not reach Cloud Firestore backend') !== -1;
         }
 
