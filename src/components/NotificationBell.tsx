@@ -2,15 +2,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
-import { 
-  subscribeToNotifications, 
-  markNotificationAsRead, 
-  markAllNotificationsAsRead, 
-  deleteNotification 
-} from '../services/dataStorage';
+import { useNotificationStore } from '../store/useNotificationStore';
 import { AppNotification } from '../types';
 import { formatGregorianDate } from '../utils/formatDate';
-import { getPushStatus, enablePush, PushStatus } from '../services/push';
+import { getPushStatus, enablePush, reactivatePush, PushStatus } from '../services/push';
 import { 
   Bell, 
   CheckCheck, 
@@ -22,50 +17,31 @@ import {
   Clock, 
   Megaphone, 
   X,
-  ExternalLink,
   TrendingDown,
   Truck,
-  PackageCheck
+  PackageCheck,
+  RefreshCw,
+  ExternalLink
 } from 'lucide-react';
 import { useToastStore } from '../store/useToastStore';
 
-// صوت تنبيه خفيف عبر Web Audio API عند وصول إشعار جديد
-function playChime() {
-  try {
-    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
-
-    gain.gain.setValueAtTime(0.08, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start();
-    osc.stop(ctx.currentTime + 0.5);
-  } catch (e) {
-    // Ignore audio autoplay restrictions
-  }
-}
-
 export const NotificationBell: React.FC = () => {
   const { user } = useAuthStore();
-  const { info } = useToastStore();
+  const { 
+    notifications, 
+    unreadCount, 
+    markAsRead, 
+    markAllAsRead, 
+    deleteNotification 
+  } = useNotificationStore();
+  const { success } = useToastStore();
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
   const [pushStatus, setPushStatus] = useState<PushStatus>(() => getPushStatus());
-  const [isEnablingPush, setIsEnablingPush] = useState(false);
+  const [isProcessingPush, setIsProcessingPush] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const prevCountRef = useRef<number>(-1);
 
   // تحديث حالة إذن الإشعارات عند فتح القائمة
   useEffect(() => {
@@ -73,39 +49,6 @@ export const NotificationBell: React.FC = () => {
       setPushStatus(getPushStatus());
     }
   }, [isOpen]);
-
-  const handleEnablePush = async () => {
-    setIsEnablingPush(true);
-    try {
-      const granted = await enablePush();
-      setPushStatus(getPushStatus());
-      if (granted) {
-        info('تم تفعيل إشعارات الجوال بنجاح! ستصلك التنبيهات حتى لو التطبيق مغلق.', 'إشعارات الجوال');
-      }
-    } finally {
-      setIsEnablingPush(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!user) return;
-
-    const unsubscribe = subscribeToNotifications(user.uid, (list) => {
-      // إذا وصل إشعار جديد أثناء وجود المستخدم في الصفحة
-      const unreadCount = list.filter((n) => !n.read).length;
-      if (prevCountRef.current !== -1 && unreadCount > prevCountRef.current) {
-        const newest = list[0];
-        if (newest && !newest.read) {
-          playChime();
-          info(newest.message, newest.title);
-        }
-      }
-      prevCountRef.current = unreadCount;
-      setNotifications(list);
-    });
-
-    return () => unsubscribe();
-  }, [user, info]);
 
   // إغلاق القائمة عند النقر خارجها
   useEffect(() => {
@@ -122,24 +65,48 @@ export const NotificationBell: React.FC = () => {
     };
   }, [isOpen]);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const handleEnablePush = async () => {
+    setIsProcessingPush(true);
+    try {
+      const granted = await enablePush(user?.uid);
+      setPushStatus(getPushStatus());
+      if (granted) {
+        success('تم تفعيل إشعارات الجوال بنجاح! ستصلك التنبيهات حتى لو التطبيق مغلق.', 'إشعارات الجوال');
+      }
+    } finally {
+      setIsProcessingPush(false);
+    }
+  };
+
+  const handleReactivatePush = async () => {
+    setIsProcessingPush(true);
+    try {
+      const ok = await reactivatePush(user?.uid);
+      setPushStatus(getPushStatus());
+      if (ok) {
+        success('تمت إعادة تهيئة واشتراك خدمة الإشعارات بنجاح.', 'إشعارات الجوال');
+      }
+    } finally {
+      setIsProcessingPush(false);
+    }
+  };
 
   const displayedList = activeTab === 'unread' 
     ? notifications.filter((n) => !n.read) 
     : notifications;
 
   const handleMarkAll = async () => {
-    if (!user) return;
-    await markAllNotificationsAsRead(user.uid);
+    await markAllAsRead();
   };
 
   const handleItemClick = async (notif: AppNotification) => {
     if (!notif.read) {
-      await markNotificationAsRead(notif.id);
+      await markAsRead(notif.id);
     }
     setIsOpen(false);
-    if (notif.metadata?.actionUrl) {
-      navigate(notif.metadata.actionUrl);
+    const targetUrl = notif.actionUrl || notif.metadata?.actionUrl;
+    if (targetUrl) {
+      navigate(targetUrl);
     } else if (notif.type === 'order_update') {
       navigate('/app/orders');
     } else if (notif.type === 'price_alert') {
@@ -196,11 +163,11 @@ export const NotificationBell: React.FC = () => {
   };
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative" ref={dropdownRef} dir="rtl">
       {/* زر الجرس مع شارة الإشعارات */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition focus:outline-hidden"
+        className="relative p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition focus:outline-hidden cursor-pointer"
         title="الإشعارات والتنبيهات المباشرة"
         aria-label="الإشعارات"
       >
@@ -230,7 +197,7 @@ export const NotificationBell: React.FC = () => {
               {unreadCount > 0 && (
                 <button
                   onClick={handleMarkAll}
-                  className="text-[11px] text-[#0f9d7a] hover:text-[#0b7a5e] font-bold flex items-center gap-1 transition"
+                  className="text-[11px] text-[#0f9d7a] hover:text-[#0b7a5e] font-bold flex items-center gap-1 transition cursor-pointer"
                   title="تحديد الكل كمقروء"
                 >
                   <CheckCheck className="w-3.5 h-3.5" />
@@ -239,7 +206,7 @@ export const NotificationBell: React.FC = () => {
               )}
               <button
                 onClick={() => setIsOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -250,7 +217,7 @@ export const NotificationBell: React.FC = () => {
           <div className="flex items-center border-b border-slate-100 px-3 bg-white">
             <button
               onClick={() => setActiveTab('all')}
-              className={`py-2 px-3 text-xs font-bold border-b-2 transition ${
+              className={`py-2 px-3 text-xs font-bold border-b-2 transition cursor-pointer ${
                 activeTab === 'all'
                   ? 'border-[#0f9d7a] text-[#0f9d7a]'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -260,7 +227,7 @@ export const NotificationBell: React.FC = () => {
             </button>
             <button
               onClick={() => setActiveTab('unread')}
-              className={`py-2 px-3 text-xs font-bold border-b-2 transition ${
+              className={`py-2 px-3 text-xs font-bold border-b-2 transition cursor-pointer ${
                 activeTab === 'unread'
                   ? 'border-[#0f9d7a] text-[#0f9d7a]'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -270,8 +237,29 @@ export const NotificationBell: React.FC = () => {
             </button>
           </div>
 
-          {/* شريط تفعيل وحالة إشعارات الجوال Push */}
-          {pushStatus.isGranted ? (
+          {/* شريط تشخيص وتفعيل إشعارات الجوال Push */}
+          {pushStatus.needsReactivation ? (
+            <div className="p-3 bg-amber-50/90 border-b border-amber-200 text-right space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
+                  <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>الإشعارات غير مفعّلة بالكامل</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleReactivatePush}
+                  disabled={isProcessingPush}
+                  className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isProcessingPush ? 'animate-spin' : ''}`} />
+                  <span>إعادة التفعيل</span>
+                </button>
+              </div>
+              <p className="text-[10px] text-amber-800 leading-relaxed">
+                تم منح إذن المتصفح لكن لم يكتمل تسجيل الرمز مع السيرفر. اضغط إعادة التفعيل لاستقبال الإشعارات خارج المتصفح.
+              </p>
+            </div>
+          ) : pushStatus.isSubscribed ? (
             <div className="px-3.5 py-2 bg-emerald-50/80 border-b border-emerald-100 flex items-center justify-between text-xs text-emerald-900">
               <div className="flex items-center gap-1.5 font-bold">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -280,22 +268,19 @@ export const NotificationBell: React.FC = () => {
               <span className="text-[10px] text-emerald-700">تصلك حتى والتطبيق مغلق</span>
             </div>
           ) : pushStatus.isDenied ? (
-            <div className="p-3 bg-amber-50 border-b border-amber-200 text-right space-y-1.5">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
-                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+            <div className="p-3 bg-rose-50 border-b border-rose-200 text-right space-y-1.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-rose-900">
+                <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
                 <span>تم حظر الإشعارات من إعدادات المتصفح</span>
               </div>
-              <p className="text-[11px] text-amber-800 leading-relaxed pr-5">
-                لتفعيلها: اضغط على أيقونة القفل أو الإعدادات 🔒 بجانب رابط الموقع في شريط عنوان المتصفح، وقم بالسماح بالإشعارات.
-              </p>
-              <p className="text-[10px] text-amber-700 pr-5">
-                📱 ملاحظة لمستخدمي iPhone: الإشعارات تعمل فقط بعد «إضافة إلى الشاشة الرئيسية» (تثبيت الـ PWA).
+              <p className="text-[11px] text-rose-800 leading-relaxed pr-5">
+                لتفعيلها: اضغط على أيقونة القفل أو الإعدادات 🔒 بجانب رابط الموقع في شريط عنوان المتصفح، واسمح بالإشعارات.
               </p>
             </div>
           ) : !pushStatus.supported ? (
             <div className="p-2.5 bg-slate-50 border-b border-slate-200 text-right">
               <p className="text-[10px] text-slate-500 leading-relaxed">
-                📱 ملاحظة لمستخدمي iPhone: الإشعارات تعمل فقط بعد «إضافة إلى الشاشة الرئيسية» (تثبيت الـ PWA عبر متصفح Safari).
+                📱 لمستخدمي iPhone: تعمل الإشعارات بعد «إضافة إلى الشاشة الرئيسية» (تثبيت الـ PWA عبر Safari).
               </p>
             </div>
           ) : (
@@ -308,10 +293,10 @@ export const NotificationBell: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleEnablePush}
-                  disabled={isEnablingPush}
+                  disabled={isProcessingPush}
                   className="px-3 py-1.5 rounded-xl bg-[#0f9d7a] hover:bg-[#0b7a5e] text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer active:scale-95"
                 >
-                  {isEnablingPush ? (
+                  {isProcessingPush ? (
                     <>
                       <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       <span>جاري التفعيل...</span>
@@ -324,9 +309,6 @@ export const NotificationBell: React.FC = () => {
                   )}
                 </button>
               </div>
-              <p className="text-[10px] text-slate-500 leading-relaxed">
-                📱 ملاحظة لمستخدمي iPhone: الإشعارات تعمل فقط بعد «إضافة إلى الشاشة الرئيسية» (تثبيت الـ PWA).
-              </p>
             </div>
           )}
 
@@ -397,7 +379,7 @@ export const NotificationBell: React.FC = () => {
                         )}
                         <button
                           onClick={(e) => handleDelete(e, notif.id)}
-                          className="text-slate-300 hover:text-rose-600 p-1 rounded-md transition"
+                          className="text-slate-300 hover:text-rose-600 p-1 rounded-md transition cursor-pointer"
                           title="حذف الإشعار"
                         >
                           <Trash2 className="w-3.5 h-3.5" />

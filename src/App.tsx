@@ -21,6 +21,10 @@ import { SubscriptionWarningBanner } from './components/SubscriptionWarningBanne
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { initPush } from './services/push';
 
+import { NotificationModalHost } from './components/NotificationModalHost';
+import { NotificationBannerHost } from './components/NotificationBannerHost';
+import { useNotificationStore } from './store/useNotificationStore';
+
 // Auth Pages
 import { Login } from './pages/auth/Login';
 const PendingApproval = lazy(() => import('./pages/auth/PendingApproval').then(m => ({ default: m.PendingApproval })));
@@ -33,6 +37,7 @@ const Suppliers = lazy(() => import('./pages/admin/Suppliers').then(m => ({ defa
 const ImportPrices = lazy(() => import('./pages/admin/ImportPrices').then(m => ({ default: m.ImportPrices })));
 const Pharmacies = lazy(() => import('./pages/admin/Pharmacies').then(m => ({ default: m.Pharmacies })));
 const AdminOrders = lazy(() => import('./pages/admin/Orders').then(m => ({ default: m.AdminOrders })));
+const AdminNotifications = lazy(() => import('./pages/admin/Notifications').then(m => ({ default: m.Notifications })));
 
 // Pharmacy Pages (Prices loaded directly or fast-suspensed)
 import { PharmacyPrices } from './pages/pharmacy/Prices';
@@ -81,6 +86,7 @@ const PharmacyLayout: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col pb-16 md:pb-0">
       <Navbar />
+      <NotificationBannerHost />
       <SubscriptionWarningBanner />
       <main className="flex-1 min-w-0">
         <Suspense fallback={<PageFallback />}>
@@ -205,7 +211,7 @@ const RootRedirect: React.FC = () => {
 };
 
 export default function App() {
-  const { initializeAuth } = useAuthStore();
+  const { user, initializeAuth } = useAuthStore();
   const { initializeTheme } = useThemeStore();
 
   useEffect(() => {
@@ -214,6 +220,13 @@ export default function App() {
     const unsub = initializeAuth();
     return () => unsub();
   }, [initializeAuth, initializeTheme]);
+
+  useEffect(() => {
+    if (user?.uid) {
+      const unsubNotifs = useNotificationStore.getState().init(user.uid, user.role);
+      return () => unsubNotifs();
+    }
+  }, [user?.uid, user?.role]);
 
   if (!isFirebaseConfigured) {
     return (
@@ -241,9 +254,10 @@ export default function App() {
 
   return (
     <HashRouter>
-      {/* حاوية الإشعارات العائمة ومؤشر عدم الاتصال */}
+      {/* حاوية الإشعارات العائمة ومؤشر عدم الاتصال والنافذة المنبثقة الترحيبية */}
       <ToastContainer />
       <OfflineIndicator />
+      <NotificationModalHost />
 
       <Routes>
         {/* المسار الجذري */}
@@ -282,6 +296,7 @@ export default function App() {
           <Route path="import" element={<ImportPrices />} />
           <Route path="pharmacies" element={<Pharmacies />} />
           <Route path="orders" element={<AdminOrders />} />
+          <Route path="notifications" element={<AdminNotifications />} />
         </Route>
 
         {/* مسارات تطبيق الصيدلية */}

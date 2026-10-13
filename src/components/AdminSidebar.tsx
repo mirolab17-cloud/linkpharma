@@ -10,7 +10,8 @@ import {
   Building2, 
   ClipboardList,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Bell
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -34,6 +35,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { to: '/admin/import', label: 'رفع أسعار مورد', icon: UploadCloud, highlight: true },
     { to: '/admin/pharmacies', label: 'إدارة الصيدليات', icon: Building2 },
     { to: '/admin/orders', label: 'الطلبيات الواردة', icon: ClipboardList },
+    { to: '/admin/notifications', label: 'الإشعارات والتنبيهات', icon: Bell },
   ];
 
   return (

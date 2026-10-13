@@ -9,6 +9,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut as fbSignOut,
   sendPasswordResetEmail as fbResetEmail,
   updatePassword,
@@ -92,6 +94,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       return () => {};
     }
+
+    // التحقق من نتيجة إعادة التوجيه لـ Google OAuth (signInWithRedirect)
+    try {
+      getRedirectResult(auth).catch((err) => {
+        console.warn('getRedirectResult warning:', err);
+      });
+    } catch (_) {}
 
     // استماع مباشر لإعدادات النظام العامة (أيام التجربة المحددة من الإدارة والعملة)
     let unsubSettings: (() => void) | null = null;
@@ -417,10 +426,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           return true;
         }
 
+        const isMobileOrCOOP = typeof window !== 'undefined' && (
+          window.innerWidth < 768 || 
+          /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+          window.location.hostname.includes('github.io')
+        );
+
+        if (isMobileOrCOOP) {
+          await signInWithRedirect(auth, googleProvider);
+          return true;
+        }
+
         try {
           await signInWithPopup(auth, googleProvider);
           return true;
         } catch (popupError: any) {
+          // معالجة خطأ الـ COOP أو إغلاق النافذة عبر التحويل التلقائي لـ signInWithRedirect
+          if (
+            popupError?.message?.includes('Cross-Origin-Opener-Policy') ||
+            popupError?.message?.includes('window.closed') ||
+            popupError?.code === 'auth/popup-blocked' ||
+            popupError?.code === 'auth/internal-error'
+          ) {
+            console.warn('Popup COOP/blocked issue detected, falling back to signInWithRedirect:', popupError.message);
+            await signInWithRedirect(auth, googleProvider);
+            return true;
+          }
+
           // معالجة خطأ الـ internal assertion الناتج عن race-condition في نوافذ الـ popup
           if (
             popupError?.message?.includes('Pending promise was never set') ||

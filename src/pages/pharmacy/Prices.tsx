@@ -47,6 +47,7 @@ import { Pagination } from '../../components/Pagination';
 import { CardSkeleton } from '../../components/Loader';
 import { EmptyState } from '../../components/EmptyState';
 import { PharmacyGlobalSearch, SearchScope } from '../../components/PharmacyGlobalSearch';
+import { LatestNotificationsTicker } from '../../components/LatestNotificationsTicker';
 
 export const PharmacyPrices: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -534,6 +535,9 @@ export const PharmacyPrices: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* شريط آخر الإشعارات والتحديثات الحية */}
+      <LatestNotificationsTicker />
 
       {/* شريط البحث المتقدم والفلاتر السريعة */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-xs mb-6 space-y-4">

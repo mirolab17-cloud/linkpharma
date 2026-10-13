@@ -28,7 +28,9 @@ import {
   UserProfile,
   AppNotification,
   SystemSettings,
-  RecurringOrderTemplate
+  RecurringOrderTemplate,
+  NotificationSettings,
+  UserNotificationRead
 } from '../types';
 import { 
   SEED_ACTIVE_INGREDIENTS, 
@@ -38,7 +40,7 @@ import {
 } from './seed';
 import { setSystemCurrency, formatCurrency } from '../utils/formatPrice';
 import { formatGregorianDate } from '../utils/formatDate';
-import { sendPush } from './push';
+import { sendPush, cancelScheduledPush } from './push';
 import { useAuthStore } from '../store/useAuthStore';
 
 const STORAGE_KEYS = {
@@ -51,6 +53,8 @@ const STORAGE_KEYS = {
   orders: 'pharma_db_orders',
   users: 'pharma_db_users',
   notifications: 'pharma_db_notifications',
+  notificationSettings: 'pharma_db_notification_settings',
+  notificationReads: 'pharma_db_notification_reads',
   settings: 'pharma_db_settings',
 };
 
@@ -1199,19 +1203,157 @@ export async function getNotifications(userId: string): Promise<AppNotification[
   return filtered;
 }
 
+// ======================= Notification Settings & Defaults =======================
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  ticker: {
+    enabled: true,
+    visibleCount: 3,
+    intervalSeconds: 6,
+    maxItems: 10,
+    style: 'cards',
+    pauseOnHover: true,
+  },
+  modal: {
+    cooldownMinutes: 30,
+    maxPerSession: 1,
+  },
+  toast: {
+    enabled: true,
+    maxVisible: 3,
+  },
+  push: {
+    defaultUrl: '/app/prices',
+    defaultIcon: 'pwa-192x192.png',
+    quietHours: {
+      enabled: false,
+      start: '22:00',
+      end: '07:00',
+    },
+  },
+};
+
+export async function getNotificationSettings(): Promise<NotificationSettings> {
+  if (isFirebaseConfigured) {
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'notifications'));
+      if (snap.exists()) {
+        const data = snap.data() as Partial<NotificationSettings>;
+        return {
+          ...DEFAULT_NOTIFICATION_SETTINGS,
+          ...data,
+          ticker: { ...DEFAULT_NOTIFICATION_SETTINGS.ticker, ...(data.ticker || {}) },
+          modal: { ...DEFAULT_NOTIFICATION_SETTINGS.modal, ...(data.modal || {}) },
+          toast: { ...DEFAULT_NOTIFICATION_SETTINGS.toast, ...(data.toast || {}) },
+          push: { ...DEFAULT_NOTIFICATION_SETTINGS.push, ...(data.push || {}) },
+        };
+      }
+    } catch (err) {
+      console.warn('Failed to load notification settings from Firestore:', err);
+    }
+  }
+
+  const saved = localStorage.getItem(STORAGE_KEYS.notificationSettings);
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch {}
+  }
+  return DEFAULT_NOTIFICATION_SETTINGS;
+}
+
+export async function updateNotificationSettings(settings: NotificationSettings): Promise<void> {
+  if (isFirebaseConfigured) {
+    try {
+      await setDoc(doc(db, 'settings', 'notifications'), settings, { merge: true });
+    } catch (err) {
+      console.error('Failed to update notification settings:', err);
+    }
+  }
+  localStorage.setItem(STORAGE_KEYS.notificationSettings, JSON.stringify(settings));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('pharma_notification_settings_updated', { detail: settings }));
+  }
+}
+
+export function subscribeToNotificationSettings(
+  callback: (settings: NotificationSettings) => void
+): () => void {
+  let unsub: (() => void) | null = null;
+
+  if (isFirebaseConfigured) {
+    try {
+      unsub = onSnapshot(doc(db, 'settings', 'notifications'), (snap) => {
+        if (snap.exists()) {
+          const data = snap.data() as Partial<NotificationSettings>;
+          const merged: NotificationSettings = {
+            ...DEFAULT_NOTIFICATION_SETTINGS,
+            ...data,
+            ticker: { ...DEFAULT_NOTIFICATION_SETTINGS.ticker, ...(data.ticker || {}) },
+            modal: { ...DEFAULT_NOTIFICATION_SETTINGS.modal, ...(data.modal || {}) },
+            toast: { ...DEFAULT_NOTIFICATION_SETTINGS.toast, ...(data.toast || {}) },
+            push: { ...DEFAULT_NOTIFICATION_SETTINGS.push, ...(data.push || {}) },
+          };
+          localStorage.setItem(STORAGE_KEYS.notificationSettings, JSON.stringify(merged));
+          callback(merged);
+        } else {
+          callback(DEFAULT_NOTIFICATION_SETTINGS);
+        }
+      });
+    } catch (err) {
+      console.warn('subscribeToNotificationSettings snapshot error:', err);
+    }
+  }
+
+  const onLocal = (e: any) => {
+    if (e.detail) callback(e.detail);
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pharma_notification_settings_updated', onLocal);
+  }
+
+  getNotificationSettings().then(callback).catch(() => callback(DEFAULT_NOTIFICATION_SETTINGS));
+
+  return () => {
+    if (unsub) unsub();
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pharma_notification_settings_updated', onLocal);
+    }
+  };
+}
+
+// ======================= Notification CRUD & Operations =======================
 export async function createNotification(
   item: Omit<AppNotification, 'id' | 'createdAt' | 'read'> & { 
     id?: string; 
     read?: boolean; 
-    createdAt?: string 
+    createdAt?: string;
   }
 ): Promise<AppNotification> {
-  const id = item.id || 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+  const id = item.id || 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+  const now = new Date().toISOString();
+  
+  // تحديد الحالة الافتراضية بناءً على الجدولة
+  let status = item.status;
+  if (!status) {
+    if (item.scheduledAt && new Date(item.scheduledAt).getTime() > Date.now()) {
+      status = 'scheduled';
+    } else {
+      status = 'sent';
+    }
+  }
+
   const newNotif: AppNotification = {
     ...item,
     id,
-    read: item.read ?? false,
-    createdAt: item.createdAt || new Date().toISOString(),
+    userId: item.userId || 'all',
+    type: item.type || 'system',
+    priority: item.priority || 'normal',
+    channels: item.channels && item.channels.length > 0 ? item.channels : ['inbox'],
+    status,
+    read: false,
+    createdAt: item.createdAt || now,
+    stats: item.stats || { recipients: 0, views: 0, clicks: 0, dismissals: 0 },
   };
 
   if (isFirebaseConfigured) {
@@ -1221,9 +1363,7 @@ export async function createNotification(
       console.error('Firestore createNotification error:', e);
       try {
         handleFirestoreError(e, OperationType.CREATE, `notifications/${id}`);
-      } catch {
-        // preserve flow for caller
-      }
+      } catch {}
     }
   }
 
@@ -1232,62 +1372,63 @@ export async function createNotification(
   list.unshift(newNotif);
   setLocal(STORAGE_KEYS.notifications, list);
 
-  // إشعار فوري لجميع النوافذ والمكونات
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('pharma_notifications_updated'));
   }
 
-  // إرسال إشعار Push حقيقي عبر OneSignal والـ Worker (Fire-and-forget)
-  // لا ترسل Push عندما يكون المرسِل غير أدمن، لأن الـ Worker يقبل الأدمن فقط حسب ADMIN_EMAILS
-  try {
-    const currentUser = useAuthStore.getState().user;
-    if (currentUser && currentUser.role === 'admin') {
-      const baseUrl = 'https://mirolab17-cloud.github.io/linkpharma/#';
-      let targetPath = '/app/prices';
-      if (newNotif.metadata?.actionUrl) {
-        targetPath = newNotif.metadata.actionUrl.startsWith('/')
-          ? newNotif.metadata.actionUrl
-          : `/${newNotif.metadata.actionUrl}`;
-      } else if (newNotif.type === 'order_update') {
-        targetPath = '/app/orders';
-      } else if (newNotif.type === 'price_alert') {
-        targetPath = '/app/prices';
-      } else if (newNotif.type === 'status_change') {
-        targetPath = '/app/profile';
+  // إرسال Push Notification إذا كانت القناة push وكان المستخدم أدمن
+  if (newNotif.channels?.includes('push')) {
+    try {
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser && currentUser.role === 'admin') {
+        const baseUrl = 'https://mirolab17-cloud.github.io/linkpharma/#';
+        let targetPath = newNotif.actionUrl || '/app/prices';
+        if (!targetPath.startsWith('/')) targetPath = `/${targetPath}`;
+
+        const fullUrl = `${baseUrl}${targetPath}`;
+        const isUsers = newNotif.audience?.type === 'users' && (newNotif.audience.userIds?.length || 0) > 0;
+        const externalIds = isUsers ? newNotif.audience?.userIds : (newNotif.userId && newNotif.userId !== 'all' ? [newNotif.userId] : undefined);
+
+        sendPush({
+          title: newNotif.title,
+          message: newNotif.message,
+          url: fullUrl,
+          audience: externalIds && externalIds.length > 0 ? 'users' : 'all',
+          externalIds,
+          sendAfter: newNotif.scheduledAt,
+          priority: newNotif.priority,
+          image: newNotif.imageUrl,
+        }).then((res) => {
+          if (res?.ok && res.id) {
+            updateNotification(id, { pushIds: [res.id] }).catch(() => {});
+          }
+        }).catch((pushErr) => {
+          console.warn('sendPush background call caught:', pushErr);
+        });
       }
-
-      const fullUrl = `${baseUrl}${targetPath}`;
-      const isAll = !newNotif.userId || newNotif.userId === 'all';
-      const userIds = isAll ? undefined : [newNotif.userId];
-
-      sendPush({
-        title: newNotif.title,
-        message: newNotif.message,
-        url: fullUrl,
-        userIds,
-      }).catch((pushErr) => {
-        console.warn('Fire-and-forget sendPush caught:', pushErr);
-      });
+    } catch (pushErr) {
+      console.warn('sendPush error:', pushErr);
     }
-  } catch (pushErr) {
-    console.warn('sendPush trigger error:', pushErr);
   }
 
   return newNotif;
 }
 
-export async function markNotificationAsRead(id: string): Promise<void> {
+export async function updateNotification(
+  id: string,
+  updates: Partial<AppNotification>
+): Promise<void> {
   if (isFirebaseConfigured) {
     try {
-      await updateDoc(doc(db, 'notifications', id), { read: true });
+      await updateDoc(doc(db, 'notifications', id), updates);
     } catch (e) {
-      console.error('Firestore markNotificationAsRead error:', e);
+      console.error('Firestore updateNotification error:', e);
     }
   }
 
   const list = getLocal<AppNotification>(STORAGE_KEYS.notifications).map((n) => {
     if (n.id === id) {
-      return { ...n, read: true };
+      return { ...n, ...updates };
     }
     return n;
   });
@@ -1298,119 +1439,291 @@ export async function markNotificationAsRead(id: string): Promise<void> {
   }
 }
 
-export async function markAllNotificationsAsRead(userId: string): Promise<void> {
-  const list = getLocal<AppNotification>(STORAGE_KEYS.notifications);
-  const idsToUpdate: string[] = [];
+/**
+ * تحديد إشعار كمقروء لمستخدم محدد عبر collection منفصلة notification_reads
+ */
+export async function markNotificationAsRead(id: string, uid?: string): Promise<void> {
+  const currentUid = uid || useAuthStore.getState().user?.uid;
+  const now = new Date().toISOString();
 
-  const updated = list.map((n) => {
-    if ((n.userId === userId || n.userId === 'all') && !n.read) {
-      idsToUpdate.push(n.id);
-      return { ...n, read: true };
+  if (currentUid && isFirebaseConfigured) {
+    try {
+      const readRef = doc(db, 'notification_reads', `${currentUid}_${id}`);
+      await setDoc(readRef, {
+        uid: currentUid,
+        notifId: id,
+        readAt: now,
+      }, { merge: true });
+    } catch (e) {
+      console.error('Firestore markNotificationAsRead read_ref error:', e);
     }
-    return n;
-  });
-  setLocal(STORAGE_KEYS.notifications, updated);
+  }
 
-  if (isFirebaseConfigured && idsToUpdate.length > 0) {
+  // تحديث محلي لسجل القراءات
+  if (currentUid) {
+    const reads = getLocal<UserNotificationRead>(STORAGE_KEYS.notificationReads);
+    const existingIdx = reads.findIndex((r) => r.uid === currentUid && r.notifId === id);
+    if (existingIdx >= 0) {
+      reads[existingIdx].readAt = now;
+    } else {
+      reads.push({ uid: currentUid, notifId: id, readAt: now });
+    }
+    setLocal(STORAGE_KEYS.notificationReads, reads);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('pharma_notifications_updated'));
+  }
+}
+
+/**
+ * تحديد كافة الإشعارات كمقروءة للمستخدم
+ */
+export async function markAllNotificationsAsRead(userId: string): Promise<void> {
+  if (!userId) return;
+  const now = new Date().toISOString();
+
+  const notifs = getLocal<AppNotification>(STORAGE_KEYS.notifications);
+  const userNotifs = notifs.filter(
+    (n) => n.userId === userId || n.userId === 'all' || n.audience?.type === 'all' || (n.audience?.userIds && n.audience.userIds.includes(userId))
+  );
+
+  if (isFirebaseConfigured && userNotifs.length > 0) {
     try {
       const batch = writeBatch(db);
-      idsToUpdate.forEach((id) => {
-        batch.update(doc(db, 'notifications', id), { read: true });
+      userNotifs.forEach((n) => {
+        const readRef = doc(db, 'notification_reads', `${userId}_${n.id}`);
+        batch.set(readRef, { uid: userId, notifId: n.id, readAt: now }, { merge: true });
       });
       await batch.commit();
     } catch (e) {
-      console.error('Firestore markAllNotificationsAsRead batch error:', e);
+      console.error('Firestore markAllNotificationsAsRead error:', e);
     }
   }
+
+  const reads = getLocal<UserNotificationRead>(STORAGE_KEYS.notificationReads);
+  userNotifs.forEach((n) => {
+    const idx = reads.findIndex((r) => r.uid === userId && r.notifId === n.id);
+    if (idx >= 0) {
+      reads[idx].readAt = now;
+    } else {
+      reads.push({ uid: userId, notifId: n.id, readAt: now });
+    }
+  });
+  setLocal(STORAGE_KEYS.notificationReads, reads);
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('pharma_notifications_updated'));
   }
 }
 
-export async function deleteNotification(id: string): Promise<void> {
+/**
+ * تسجيل أحداث التفاعل مع الإشعار (مشاهدة / نقر / إغلاق / إخفاء)
+ */
+export async function recordNotificationEvent(
+  notifId: string,
+  uid: string,
+  event: 'view' | 'click' | 'dismiss'
+): Promise<void> {
+  if (!notifId || !uid) return;
+  const now = new Date().toISOString();
+
   if (isFirebaseConfigured) {
     try {
-      await deleteDoc(doc(db, 'notifications', id));
+      const readRef = doc(db, 'notification_reads', `${uid}_${notifId}`);
+      const updateData: Record<string, any> = {
+        uid,
+        notifId,
+      };
+
+      if (event === 'view') {
+        updateData.lastShownAt = now;
+      } else if (event === 'click') {
+        updateData.readAt = now;
+      } else if (event === 'dismiss') {
+        updateData.dismissed = true;
+      }
+
+      await setDoc(readRef, updateData, { merge: true });
+
+      // تحديث الإحصائيات في مستند الإشعار الرئيسي إذا وُجد
+      const notifDoc = await getDoc(doc(db, 'notifications', notifId)).catch(() => null);
+      if (notifDoc && notifDoc.exists()) {
+        const stats = notifDoc.data().stats || { recipients: 0, views: 0, clicks: 0, dismissals: 0 };
+        if (event === 'view') stats.views = (stats.views || 0) + 1;
+        if (event === 'click') stats.clicks = (stats.clicks || 0) + 1;
+        if (event === 'dismiss') stats.dismissals = (stats.dismissals || 0) + 1;
+
+        await updateDoc(doc(db, 'notifications', notifId), { stats }).catch(() => {});
+      }
     } catch (e) {
-      console.error('Firestore deleteNotification error:', e);
+      console.warn('recordNotificationEvent error:', e);
     }
   }
 
-  const list = getLocal<AppNotification>(STORAGE_KEYS.notifications).filter((n) => n.id !== id);
-  setLocal(STORAGE_KEYS.notifications, list);
-
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('pharma_notifications_updated'));
+  // تحديث محلي
+  const reads = getLocal<UserNotificationRead>(STORAGE_KEYS.notificationReads);
+  const idx = reads.findIndex((r) => r.uid === uid && r.notifId === notifId);
+  const current = idx >= 0 ? reads[idx] : { uid, notifId };
+  if (event === 'view') {
+    current.shownCount = (current.shownCount || 0) + 1;
+    current.lastShownAt = now;
+  } else if (event === 'click') {
+    current.readAt = now;
+  } else if (event === 'dismiss') {
+    current.dismissed = true;
   }
+  if (idx >= 0) reads[idx] = current;
+  else reads.push(current);
+  setLocal(STORAGE_KEYS.notificationReads, reads);
 }
 
-export function subscribeToNotifications(
-  userId: string,
-  callback: (notifications: AppNotification[]) => void
-): () => void {
-  let unsubFirestore: (() => void) | null = null;
+/**
+ * حذف الإشعار (إذا كان أدمن: حذف فعلي من السحابة؛ إذا كان مستخدم عادي: إخفاء dismissed فقط)
+ */
+export async function deleteNotification(
+  id: string,
+  uid?: string,
+  isAdmin?: boolean
+): Promise<void> {
+  const currentUid = uid || useAuthStore.getState().user?.uid;
 
-  if (isFirebaseConfigured) {
-    try {
-      const targetIds = userId ? [userId, 'all'] : ['all'];
-      const q = query(
-        collection(db, 'notifications'),
-        where('userId', 'in', targetIds)
-      );
-
-      unsubFirestore = onSnapshot(
-        q,
-        (snapshot) => {
-          const remoteList: AppNotification[] = snapshot.docs.map(
-            (d) => ({ id: d.id, ...d.data() } as AppNotification)
-          );
-          remoteList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-          // مزامنة المحلية مع السحابة
-          const localList = getLocal<AppNotification>(STORAGE_KEYS.notifications);
-          const map = new Map<string, AppNotification>();
-          remoteList.forEach((n) => map.set(n.id, n));
-          localList.forEach((n) => {
-            if (!map.has(n.id)) map.set(n.id, n);
-          });
-          setLocal(STORAGE_KEYS.notifications, Array.from(map.values()));
-
-          callback(remoteList);
-        },
-        (error) => {
-          console.warn('Firestore notification onSnapshot error:', error);
-          try {
-            handleFirestoreError(error, OperationType.GET, 'notifications');
-          } catch {
-            // fallback
+  if (isAdmin) {
+    if (isFirebaseConfigured) {
+      try {
+        const notifDoc = await getDoc(doc(db, 'notifications', id)).catch(() => null);
+        if (notifDoc && notifDoc.exists()) {
+          const pushIds: string[] = notifDoc.data().pushIds || [];
+          for (const pid of pushIds) {
+            cancelScheduledPush(pid).catch(() => {});
           }
         }
-      );
+        await deleteDoc(doc(db, 'notifications', id));
+      } catch (e) {
+        console.error('Firestore deleteNotification error:', e);
+      }
+    }
+
+    const list = getLocal<AppNotification>(STORAGE_KEYS.notifications).filter((n) => n.id !== id);
+    setLocal(STORAGE_KEYS.notifications, list);
+  } else if (currentUid) {
+    // إخفاء للمستخدم فقط دون التأثير على البقية
+    await recordNotificationEvent(id, currentUid, 'dismiss');
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('pharma_notifications_updated'));
+  }
+}
+
+/**
+ * اشتراك ذكي يدمج مستندات الإشعارات مع حالة القراءة الخاصة بالمستخدم
+ */
+export function subscribeToNotifications(
+  userId: string,
+  callback: (notifications: AppNotification[]) => void,
+  isAdmin?: boolean
+): () => void {
+  let unsubNotifications: (() => void) | null = null;
+  let unsubReads: (() => void) | null = null;
+
+  let currentNotifs: AppNotification[] = [];
+  let userReadsMap = new Map<string, UserNotificationRead>();
+
+  const computeAndEmit = () => {
+    const nowIso = new Date().toISOString();
+
+    const merged = currentNotifs
+      .map((notif) => {
+        const readRecord = userReadsMap.get(notif.id);
+        const isRead = Boolean(readRecord?.readAt) || (notif.userId === userId && Boolean(notif.read));
+        const isDismissed = Boolean(readRecord?.dismissed);
+        const shownCount = readRecord?.shownCount || 0;
+        const lastShownAt = readRecord?.lastShownAt;
+
+        return {
+          ...notif,
+          read: isRead,
+          dismissed: isDismissed,
+          shownCount,
+          lastShownAt,
+        };
+      })
+      .filter((n) => {
+        if (isAdmin) return true;
+        // استبعاد المحذوف / المغلق
+        if (n.dismissed) return false;
+        // استبعاد المجدول الذي لم يحن وقته بعد
+        if (n.scheduledAt && n.scheduledAt > nowIso) return false;
+        // استبعاد المنتهي
+        if (n.expiresAt && n.expiresAt <= nowIso) return false;
+        // استبعاد غير المرسل إن وُجد حقل status
+        if (n.status && n.status !== 'sent') return false;
+
+        // مطابقة الجمهور
+        if (n.userId === 'all' || !n.userId) return true;
+        if (n.userId === userId) return true;
+        if (n.audience) {
+          if (n.audience.type === 'all') return true;
+          if (n.audience.type === 'users' && n.audience.userIds?.includes(userId)) return true;
+        }
+        return false;
+      });
+
+    merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    callback(merged);
+  };
+
+  if (isFirebaseConfigured) {
+    try {
+      // الاستماع لمجموعة notifications
+      const notifsCol = collection(db, 'notifications');
+      unsubNotifications = onSnapshot(notifsCol, (snapshot) => {
+        currentNotifs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as AppNotification));
+        computeAndEmit();
+      }, (err) => {
+        console.warn('Firestore notifications snapshot error:', err);
+      });
+
+      // الاستماع لسجل قراءات المستخدم الحالي
+      if (userId) {
+        const qReads = query(collection(db, 'notification_reads'), where('uid', '==', userId));
+        unsubReads = onSnapshot(qReads, (snapshot) => {
+          userReadsMap.clear();
+          snapshot.docs.forEach((d) => {
+            const data = d.data() as UserNotificationRead;
+            userReadsMap.set(data.notifId, data);
+          });
+          computeAndEmit();
+        }, (err) => {
+          console.warn('Firestore notification_reads snapshot error:', err);
+        });
+      }
     } catch (err) {
-      console.warn('Failed to initialize Firestore notification listener:', err);
+      console.warn('Failed to setup Firestore notification listeners:', err);
     }
   }
 
+  // الاسترجاع المحلي الأولي والمزامنة
   const notifyFromLocal = () => {
-    const local = getLocal<AppNotification>(STORAGE_KEYS.notifications);
-    const filtered = local.filter((n) => n.userId === userId || n.userId === 'all');
-    filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    callback(filtered);
+    currentNotifs = getLocal<AppNotification>(STORAGE_KEYS.notifications);
+    if (userId) {
+      const localReads = getLocal<UserNotificationRead>(STORAGE_KEYS.notificationReads);
+      userReadsMap.clear();
+      localReads.filter((r) => r.uid === userId).forEach((r) => userReadsMap.set(r.notifId, r));
+    }
+    computeAndEmit();
   };
 
-  // استدعاء فوري أولي
   notifyFromLocal();
 
-  // استماع للتحديثات المحلية عبر CustomEvent
   if (typeof window !== 'undefined') {
     window.addEventListener('pharma_notifications_updated', notifyFromLocal);
   }
 
   return () => {
-    if (unsubFirestore) {
-      unsubFirestore();
-    }
+    if (unsubNotifications) unsubNotifications();
+    if (unsubReads) unsubReads();
     if (typeof window !== 'undefined') {
       window.removeEventListener('pharma_notifications_updated', notifyFromLocal);
     }

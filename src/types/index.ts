@@ -31,6 +31,10 @@ export interface UserProfile {
   createdAt?: string;
   favorites?: string[]; // Array of favorite product IDs
   priceAlerts?: Record<string, number>; // productId -> target price
+  pushEnabled?: boolean;
+  pushToken?: string;
+  pushUpdatedAt?: string;
+  city?: string;
 }
 
 export interface ActiveIngredient {
@@ -158,15 +162,93 @@ export interface CartItem {
 }
 
 export type NotificationType = 'status_change' | 'admin_announcement' | 'order_update' | 'system' | 'price_alert';
+export type NotificationChannel = 'push' | 'inbox' | 'modal' | 'banner';
+export type NotificationPriority = 'normal' | 'high' | 'urgent';
+export type NotificationStatus = 'draft' | 'scheduled' | 'sent' | 'cancelled' | 'expired';
+export type NotificationRepeatMode = 'once' | 'every_session' | 'every_hours' | 'daily' | 'until_dismissed';
+
+export interface NotificationRepeat {
+  mode: NotificationRepeatMode;
+  everyHours?: number;
+  maxShows?: number;
+  allowDismiss?: boolean;
+}
+
+export interface NotificationAudience {
+  type: 'all' | 'users' | 'status' | 'city';
+  userIds?: string[];
+  statuses?: UserStatus[];
+  cities?: string[];
+}
+
+export interface NotificationStats {
+  recipients: number;
+  views: number;
+  clicks: number;
+  dismissals: number;
+}
+
+export interface NotificationSettings {
+  ticker: {
+    enabled: boolean;
+    visibleCount: number;
+    intervalSeconds: number;
+    maxItems: number;
+    style: 'vertical' | 'horizontal' | 'cards';
+    pauseOnHover: boolean;
+  };
+  modal: {
+    cooldownMinutes: number;
+    maxPerSession: number;
+  };
+  toast: {
+    enabled: boolean;
+    maxVisible: number;
+  };
+  push: {
+    defaultUrl: string;
+    defaultIcon: string;
+    quietHours: {
+      enabled: boolean;
+      start: string;
+      end: string;
+    };
+  };
+}
+
+export interface UserNotificationRead {
+  id?: string;
+  uid: string;
+  notifId: string;
+  readAt?: string;
+  dismissed?: boolean;
+  lastShownAt?: string;
+  shownCount?: number;
+}
 
 export interface AppNotification {
   id: string;
-  userId: string; // Specific user UID or 'all' for broadcasts
+  userId?: string; // UID or 'all' for broadcasts
   title: string;
   message: string;
   type: NotificationType;
-  read: boolean;
+  priority?: NotificationPriority;
+  channels?: NotificationChannel[];
+  audience?: NotificationAudience;
+  actionUrl?: string;
+  imageUrl?: string;
+  repeat?: NotificationRepeat;
+  scheduledAt?: string;
+  expiresAt?: string;
+  status?: NotificationStatus;
+  pushIds?: string[];
   createdAt: string;
+  createdBy?: string;
+  stats?: NotificationStats;
+  read?: boolean;
+  shownCount?: number;
+  lastShownAt?: string;
+  dismissed?: boolean;
   metadata?: {
     oldStatus?: UserStatus;
     newStatus?: UserStatus;
@@ -174,7 +256,7 @@ export interface AppNotification {
     expiresAt?: string;
     actionUrl?: string;
     senderName?: string;
-    priority?: 'normal' | 'high' | 'urgent';
+    priority?: NotificationPriority;
     orderId?: string;
     orderStatus?: OrderStatus;
     productId?: string;
