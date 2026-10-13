@@ -55,6 +55,13 @@ jobs:
           npm run build
           mkdir -p ../dist/v1
           cp -r dist/. ../dist/v1/
+          cd ..
+          # Build v2 (new pharmacy home dashboard) and publish it under /v2/
+          cd v2
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v2
+          cp -r dist/. ../dist/v2/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
