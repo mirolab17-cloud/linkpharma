@@ -113,6 +113,20 @@ export function translateAuthError(error: any): TranslatedAuthError {
     };
   }
 
+  // Firestore رفض قراءة/إنشاء ملف المستخدم بعد نجاح مصادقة Google.
+  if (
+    rawCode === 'permission-denied' ||
+    rawCode === 'firestore/permission-denied' ||
+    rawMessage.includes('Missing or insufficient permissions')
+  ) {
+    return {
+      code: 'firestore/permission-denied',
+      title: 'تعذر تحميل ملف الحساب',
+      message: 'تم التحقق من حساب Google، لكن قواعد Firestore منعت قراءة ملف المستخدم أو حفظه.',
+      actionTip: 'تحقق من نشر firestore.rules إلى مشروع Firebase الصحيح، ومن السماح للمستخدم المسجل بقراءة وإنشاء مستنده users/{uid} فقط.',
+    };
+  }
+
   // 7. حساب مسجل مسبقاً ببيانات اعتماد مختلفة (Account Exists With Different Credential)
   if (
     rawCode === 'auth/account-exists-with-different-credential' ||

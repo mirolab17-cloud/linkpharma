@@ -85,10 +85,8 @@ export const Login: React.FC = () => {
         const currentUser = useAuthStore.getState().user;
         if (currentUser?.role === 'admin') {
           useToastStore.getState().success('مرحباً بك في لوحة الإدارة');
-          navigate('/admin', { replace: true });
         } else {
           useToastStore.getState().success('مرحباً بك في منصة الصيدلية');
-          navigate('/app/prices', { replace: true });
         }
       }
     } finally {

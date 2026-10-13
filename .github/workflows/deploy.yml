@@ -32,7 +32,8 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        # Firebase 12 and rules-unit-testing 6 currently declare incompatible peer ranges.
+        run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Build application
         env:

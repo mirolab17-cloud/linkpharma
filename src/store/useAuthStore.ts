@@ -61,6 +61,43 @@ interface AuthState {
   getRemainingDays: () => number;
 }
 
+/** Wait until Firebase's auth listener has published the matching profile in Zustand. */
+function waitForUserProfile(uid: string, timeoutMs = 15000): Promise<UserProfile> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let unsubscribe: (() => void) | null = null;
+    let timeout: ReturnType<typeof setTimeout>;
+
+    const finish = (callback: (value: any) => void, value: any) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      unsubscribe?.();
+      callback(value);
+    };
+
+    const checkState = (state: AuthState) => {
+      if (state.user?.uid === uid) {
+        finish(resolve, state.user);
+      } else if (auth.currentUser?.uid === uid && state.lastAuthError) {
+        finish(reject, Object.assign(new Error(state.lastAuthError.message), {
+          code: state.lastAuthError.code,
+        }));
+      }
+    };
+
+    timeout = setTimeout(() => {
+      finish(reject, Object.assign(
+        new Error('تم تسجيل الدخول إلى Google لكن تعذر تحميل ملف المستخدم من Firestore خلال المهلة المحددة.'),
+        { code: 'auth/profile-timeout' },
+      ));
+    }, timeoutMs);
+
+    unsubscribe = useAuthStore.subscribe((state) => checkState(state));
+    checkState(useAuthStore.getState());
+  });
+}
+
 let activeGoogleSignInPromise: Promise<boolean> | null = null;
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -238,9 +275,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 isGoogleUser: isGoogle
               });
             } else {
-              // مستخدم جديد يسجل لأول مرة عبر Google -> تفعيل مباشر بحساب نشط ومفتوح
+              // إنشاء ملف Google جديد وفق سياسة التجربة التي تسمح بها قواعد Firestore.
               const now = Date.now();
-              const activePeriodDays = 365;
+              const configuredTrialDays = Number(get().defaultTrialDays);
+              const activePeriodDays = Number.isFinite(configuredTrialDays) && configuredTrialDays > 0
+                ? Math.min(Math.floor(configuredTrialDays), 365)
+                : DEFAULT_TRIAL_DAYS;
               const expiresAtMillis = now + activePeriodDays * 24 * 60 * 60 * 1000;
               const expiresAt = new Date(expiresAtMillis).toISOString();
 
@@ -249,8 +289,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 name: fbUser.displayName || fbUser.email?.split('@')[0] || (isRuntimeAdmin ? 'مدير النظام' : 'صيدلي جديد'),
                 email: fbUser.email || '',
                 role: isRuntimeAdmin ? 'admin' : 'pharmacy',
-                status: 'active', // تفعيل فوري ومباشر
-                subscriptionStatus: 'active', // تفعيل مباشر كحساب نشط بدون قيود
+                status: 'active',
+                subscriptionStatus: 'trial',
                 trialDays: activePeriodDays,
                 pharmacyName: isRuntimeAdmin ? 'الإدارة المركزية' : 'صيدليتي',
                 allowedSuppliers: [],
@@ -262,7 +302,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 }),
               };
 
-              await setDoc(userDocRef, newProfile).catch(() => null);
+              // لا تخفِ رفض Firestore؛ يلزم حفظ الملف قبل إعلان اكتمال تسجيل الدخول.
+              await setDoc(userDocRef, newProfile);
 
               if (isRuntimeAdmin) {
                 try {
@@ -286,19 +327,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             }
           } catch (innerErr) {
             console.error('Error handling user doc snapshot:', innerErr);
-            set({ loading: false, initialized: true });
+            set({
+              loading: false,
+              initialized: true,
+              lastAuthError: translateAuthError(innerErr),
+            });
           }
         }, (snapErr) => {
           clearTimeout(docTimeout);
           if (safetyTimer) clearTimeout(safetyTimer);
           console.error('User doc onSnapshot error:', snapErr);
-          set({ loading: false, initialized: true });
+          set({
+            loading: false,
+            initialized: true,
+            lastAuthError: translateAuthError(snapErr),
+          });
         });
       } catch (err: any) {
         clearTimeout(docTimeout);
         if (safetyTimer) clearTimeout(safetyTimer);
         console.error('Error in auth state changed:', err);
-        set({ user: null, loading: false, initialized: true, isPasswordUser: false, isGoogleUser: false });
+        set({
+          user: null,
+          loading: false,
+          initialized: true,
+          isPasswordUser: false,
+          isGoogleUser: false,
+          lastAuthError: translateAuthError(err),
+        });
       }
     });
 
@@ -434,12 +490,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         // إذا كان المستخدم مسجلاً بالفعل
         if (auth.currentUser) {
+          await waitForUserProfile(auth.currentUser.uid);
           set({ lastAuthError: null });
           return true;
         }
 
         try {
-          await signInWithPopup(auth, googleProvider);
+          const credential = await signInWithPopup(auth, googleProvider);
+          await waitForUserProfile(credential.user.uid);
           set({ lastAuthError: null });
           return true;
         } catch (popupError: any) {
@@ -450,15 +508,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             popupError?.message?.includes('Pending promise was never set') ||
             popupError?.message?.includes('INTERNAL ASSERTION FAILED')
           ) {
-            console.warn('Checking auth.currentUser following popup assertion event...');
-            for (let i = 0; i < 5; i++) {
-              if (auth.currentUser) {
-                set({ lastAuthError: null });
-                return true;
+              console.warn('Checking auth.currentUser following popup assertion event...');
+              for (let i = 0; i < 5; i++) {
+                if (auth.currentUser) {
+                  await waitForUserProfile(auth.currentUser.uid);
+                  set({ lastAuthError: null });
+                  return true;
               }
               await new Promise((r) => setTimeout(r, 200));
             }
             if (auth.currentUser) {
+              await waitForUserProfile(auth.currentUser.uid);
               set({ lastAuthError: null });
               return true;
             }
