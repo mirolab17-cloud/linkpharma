@@ -49,6 +49,12 @@ jobs:
         run: |
           npm run build
           touch dist/.nojekyll
+          # Build v1 (LinkPharma_Final) and publish it under /v1/
+          cd v1
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v1
+          cp -r dist/. ../dist/v1/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
