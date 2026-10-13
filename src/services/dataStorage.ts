@@ -894,8 +894,11 @@ export async function getSystemSettings(): Promise<SystemSettings> {
 
   if (isFirebaseConfigured) {
     try {
-      const snap = await getDoc(doc(db, 'settings', 'system'));
-      if (snap.exists()) {
+      const user = useAuthStore.getState().user;
+      const isAdminUser = user?.role === 'admin';
+      const targetDoc = isAdminUser ? 'system' : 'public';
+      const snap = await getDoc(doc(db, 'settings', targetDoc)).catch(() => null);
+      if (snap && snap.exists()) {
         const data = snap.data() as SystemSettings;
         const merged: SystemSettings = {
           ...fallbackSettings,
@@ -941,7 +944,19 @@ export async function updateSystemSettings(settings: Partial<SystemSettings>): P
 
   if (isFirebaseConfigured) {
     try {
+      // 1. المستند الحساس للإدارة (settings/system)
       await setDoc(doc(db, 'settings', 'system'), updated, { merge: true });
+
+      // 2. المستند العام لجميع المستخدمين (settings/public) مجرد من adminEmails
+      const publicPayload: Record<string, any> = {
+        defaultTrialDays: updated.defaultTrialDays ?? 7,
+        updatedAt: updated.updatedAt,
+      };
+      if (updated.currency) publicPayload.currency = updated.currency;
+      if (updated.supportWhatsApp) publicPayload.supportWhatsApp = updated.supportWhatsApp;
+      if (updated.warehouseSupportWhatsApp) publicPayload.warehouseSupportWhatsApp = updated.warehouseSupportWhatsApp;
+
+      await setDoc(doc(db, 'settings', 'public'), publicPayload, { merge: true });
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'settings/system');
     }
@@ -1440,13 +1455,29 @@ export async function updateNotification(
 }
 
 /**
- * تحديد إشعار كمقروء لمستخدم محدد عبر collection منفصلة notification_reads
+ * تنظيف كاش الإشعارات وسجلات القراءة المحلية عند تبديل الحساب أو تسجيل الخروج
+ */
+export function clearNotificationCache(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.notificationReads);
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('seen_notifs_') || key.startsWith('pharma_notification_reads'))) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch (_) {}
+}
+
+/**
+ * تحديد إشعار كمقروء لمستخدم محدد عبر collection منفصلة notification_reads حصراً
  */
 export async function markNotificationAsRead(id: string, uid?: string): Promise<void> {
   const currentUid = uid || useAuthStore.getState().user?.uid;
+  if (!currentUid) return;
   const now = new Date().toISOString();
 
-  if (currentUid && isFirebaseConfigured) {
+  if (isFirebaseConfigured) {
     try {
       const readRef = doc(db, 'notification_reads', `${currentUid}_${id}`);
       await setDoc(readRef, {
@@ -1460,16 +1491,14 @@ export async function markNotificationAsRead(id: string, uid?: string): Promise<
   }
 
   // تحديث محلي لسجل القراءات
-  if (currentUid) {
-    const reads = getLocal<UserNotificationRead>(STORAGE_KEYS.notificationReads);
-    const existingIdx = reads.findIndex((r) => r.uid === currentUid && r.notifId === id);
-    if (existingIdx >= 0) {
-      reads[existingIdx].readAt = now;
-    } else {
-      reads.push({ uid: currentUid, notifId: id, readAt: now });
-    }
-    setLocal(STORAGE_KEYS.notificationReads, reads);
+  const reads = getLocal<UserNotificationRead>(STORAGE_KEYS.notificationReads);
+  const existingIdx = reads.findIndex((r) => r.uid === currentUid && r.notifId === id);
+  if (existingIdx >= 0) {
+    reads[existingIdx].readAt = now;
+  } else {
+    reads.push({ uid: currentUid, notifId: id, readAt: now });
   }
+  setLocal(STORAGE_KEYS.notificationReads, reads);
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('pharma_notifications_updated'));
@@ -1477,23 +1506,49 @@ export async function markNotificationAsRead(id: string, uid?: string): Promise<
 }
 
 /**
- * تحديد كافة الإشعارات كمقروءة للمستخدم
+ * تحديد كافة الإشعارات كمقروءة للمستخدم في notification_reads
  */
-export async function markAllNotificationsAsRead(userId: string): Promise<void> {
+export async function markAllNotificationsAsRead(userId: string, notifIds?: string[]): Promise<void> {
   if (!userId) return;
   const now = new Date().toISOString();
 
-  const notifs = getLocal<AppNotification>(STORAGE_KEYS.notifications);
-  const userNotifs = notifs.filter(
-    (n) => n.userId === userId || n.userId === 'all' || n.audience?.type === 'all' || (n.audience?.userIds && n.audience.userIds.includes(userId))
-  );
+  let targetIds = notifIds;
+  if (!targetIds || targetIds.length === 0) {
+    if (isFirebaseConfigured) {
+      try {
+        const snap = await getDocs(collection(db, 'notifications'));
+        targetIds = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as AppNotification))
+          .filter((n) => {
+            if (n.userId === userId || n.userId === 'all' || !n.userId) return true;
+            if (n.audience?.type === 'all') return true;
+            if (n.audience?.type === 'users' && n.audience?.userIds?.includes(userId)) return true;
+            return false;
+          })
+          .map((n) => n.id);
+      } catch (e) {
+        console.warn('Firestore fetch for markAllNotificationsAsRead fallback:', e);
+      }
+    }
+  }
 
-  if (isFirebaseConfigured && userNotifs.length > 0) {
+  if (!targetIds || targetIds.length === 0) {
+    const notifs = getLocal<AppNotification>(STORAGE_KEYS.notifications);
+    targetIds = notifs
+      .filter((n) => n.userId === userId || n.userId === 'all' || !n.userId || n.audience?.type === 'all' || (n.audience?.userIds && n.audience.userIds.includes(userId)))
+      .map((n) => n.id);
+  }
+
+  if (isFirebaseConfigured && targetIds.length > 0) {
     try {
       const batch = writeBatch(db);
-      userNotifs.forEach((n) => {
-        const readRef = doc(db, 'notification_reads', `${userId}_${n.id}`);
-        batch.set(readRef, { uid: userId, notifId: n.id, readAt: now }, { merge: true });
+      targetIds.forEach((nid) => {
+        const readRef = doc(db, 'notification_reads', `${userId}_${nid}`);
+        batch.set(readRef, {
+          uid: userId,
+          notifId: nid,
+          readAt: now,
+        }, { merge: true });
       });
       await batch.commit();
     } catch (e) {
@@ -1502,12 +1557,12 @@ export async function markAllNotificationsAsRead(userId: string): Promise<void> 
   }
 
   const reads = getLocal<UserNotificationRead>(STORAGE_KEYS.notificationReads);
-  userNotifs.forEach((n) => {
-    const idx = reads.findIndex((r) => r.uid === userId && r.notifId === n.id);
+  targetIds.forEach((nid) => {
+    const idx = reads.findIndex((r) => r.uid === userId && r.notifId === nid);
     if (idx >= 0) {
       reads[idx].readAt = now;
     } else {
-      reads.push({ uid: userId, notifId: n.id, readAt: now });
+      reads.push({ uid: userId, notifId: nid, readAt: now });
     }
   });
   setLocal(STORAGE_KEYS.notificationReads, reads);
@@ -1518,7 +1573,7 @@ export async function markAllNotificationsAsRead(userId: string): Promise<void> 
 }
 
 /**
- * تسجيل أحداث التفاعل مع الإشعار (مشاهدة / نقر / إغلاق / إخفاء)
+ * تسجيل أحداث التفاعل مع الإشعار في notification_reads فقط بدون المساس بـ stats الإشعار العام
  */
 export async function recordNotificationEvent(
   notifId: string,
@@ -1545,17 +1600,6 @@ export async function recordNotificationEvent(
       }
 
       await setDoc(readRef, updateData, { merge: true });
-
-      // تحديث الإحصائيات في مستند الإشعار الرئيسي إذا وُجد
-      const notifDoc = await getDoc(doc(db, 'notifications', notifId)).catch(() => null);
-      if (notifDoc && notifDoc.exists()) {
-        const stats = notifDoc.data().stats || { recipients: 0, views: 0, clicks: 0, dismissals: 0 };
-        if (event === 'view') stats.views = (stats.views || 0) + 1;
-        if (event === 'click') stats.clicks = (stats.clicks || 0) + 1;
-        if (event === 'dismiss') stats.dismissals = (stats.dismissals || 0) + 1;
-
-        await updateDoc(doc(db, 'notifications', notifId), { stats }).catch(() => {});
-      }
     } catch (e) {
       console.warn('recordNotificationEvent error:', e);
     }
@@ -1617,7 +1661,7 @@ export async function deleteNotification(
 }
 
 /**
- * اشتراك ذكي يدمج مستندات الإشعارات مع حالة القراءة الخاصة بالمستخدم
+ * اشتراك ذكي يدمج مستندات الإشعارات مع حالة القراءة الخاصة بالمستخدم من notification_reads حصراً
  */
 export function subscribeToNotifications(
   userId: string,
@@ -1628,7 +1672,7 @@ export function subscribeToNotifications(
   let unsubReads: (() => void) | null = null;
 
   let currentNotifs: AppNotification[] = [];
-  let userReadsMap = new Map<string, UserNotificationRead>();
+  const userReadsMap = new Map<string, UserNotificationRead>();
 
   const computeAndEmit = () => {
     const nowIso = new Date().toISOString();
@@ -1636,7 +1680,8 @@ export function subscribeToNotifications(
     const merged = currentNotifs
       .map((notif) => {
         const readRecord = userReadsMap.get(notif.id);
-        const isRead = Boolean(readRecord?.readAt) || (notif.userId === userId && Boolean(notif.read));
+        // حالة القراءة الوحيدة والمطلقة: وجود readAt في notification_reads لهذا المستخدم
+        const isRead = Boolean(readRecord?.readAt);
         const isDismissed = Boolean(readRecord?.dismissed);
         const shownCount = readRecord?.shownCount || 0;
         const lastShownAt = readRecord?.lastShownAt;
@@ -1717,16 +1762,25 @@ export function subscribeToNotifications(
 
   notifyFromLocal();
 
+  let onUpdateHandler: (() => void) | null = null;
   if (typeof window !== 'undefined') {
-    window.addEventListener('pharma_notifications_updated', notifyFromLocal);
+    onUpdateHandler = () => notifyFromLocal();
+    window.addEventListener('pharma_notifications_updated', onUpdateHandler);
   }
 
   return () => {
-    if (unsubNotifications) unsubNotifications();
-    if (unsubReads) unsubReads();
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('pharma_notifications_updated', notifyFromLocal);
+    if (unsubNotifications) {
+      unsubNotifications();
+      unsubNotifications = null;
     }
+    if (unsubReads) {
+      unsubReads();
+      unsubReads = null;
+    }
+    if (typeof window !== 'undefined' && onUpdateHandler) {
+      window.removeEventListener('pharma_notifications_updated', onUpdateHandler);
+    }
+    userReadsMap.clear();
   };
 }
 

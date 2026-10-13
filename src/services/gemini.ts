@@ -1,7 +1,7 @@
 // src/services/gemini.ts
 import { GoogleGenAI } from '@google/genai';
 import { cleanPrice } from '../utils/formatPrice';
-import { db, doc, getDoc, setDoc, deleteDoc } from '../firebase';
+import { auth, db, doc, getDoc, setDoc, deleteDoc } from '../firebase';
 
 export interface ExtractedPriceItem {
   id: string;
@@ -92,10 +92,16 @@ export async function deleteGeminiKey(): Promise<void> {
 export async function extractPricesFromText(text: string, customApiKey?: string): Promise<ExtractedPriceItem[]> {
   // 1. محاولة استدعاء خادم الـ API الآمن (Cloud Proxy / Function) أولاً
   try {
+    const idToken = await (auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null));
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (idToken) {
+      headers['Authorization'] = `Bearer ${idToken}`;
+    }
+
     const res = await fetch('/api/gemini/extract-text', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, customApiKey })
+      headers,
+      body: JSON.stringify({ text })
     });
     if (res.ok) {
       const data = await res.json();
@@ -183,13 +189,18 @@ export async function extractPricesFromImage(file: File, customApiKey?: string):
 
   // 1. محاولة استدعاء خادم الـ API الآمن (Cloud Proxy / Function) أولاً
   try {
+    const idToken = await (auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null));
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (idToken) {
+      headers['Authorization'] = `Bearer ${idToken}`;
+    }
+
     const res = await fetch('/api/gemini/extract-image', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         imageBase64: base64Data,
-        mimeType: file.type || 'image/jpeg',
-        customApiKey
+        mimeType: file.type || 'image/jpeg'
       })
     });
     if (res.ok) {

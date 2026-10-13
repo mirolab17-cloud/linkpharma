@@ -28,6 +28,8 @@ import { GoogleAuthProvider } from 'firebase/auth';
 import { useToastStore } from './useToastStore';
 import { setSystemCurrency } from '../utils/formatPrice';
 import { loginPush, logoutPush } from '../services/push';
+import { useNotificationStore } from './useNotificationStore';
+import { clearNotificationCache } from '../services/dataStorage';
 
 // فترة التجربة الافتراضية بالأيام
 export const DEFAULT_TRIAL_DAYS = 7;
@@ -116,7 +118,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }, 5000);
 
     try {
-      unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (settingsSnap) => {
+      unsubSettings = onSnapshot(doc(db, 'settings', 'public'), (settingsSnap) => {
         if (settingsSnap.exists()) {
           const data = settingsSnap.data();
           if (typeof data.defaultTrialDays === 'number') {
@@ -127,10 +129,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           }
         }
       }, (err) => {
-        console.warn('Settings subscription error:', err);
+        console.warn('Public settings subscription error:', err);
       });
     } catch (e) {
-      console.warn('Failed to listen to settings:', e);
+      console.warn('Failed to listen to public settings:', e);
     }
 
     // استماع لحالة المصادقة السحابية في Firebase
@@ -145,6 +147,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!fbUser) {
         if (safetyTimer) clearTimeout(safetyTimer);
         logoutPush().catch(() => {});
+        useNotificationStore.getState().reset();
+        clearNotificationCache();
         set({ user: null, loading: false, initialized: true, isPasswordUser: false, isGoogleUser: false });
         return;
       }
@@ -167,18 +171,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const userDocRef = doc(db, 'users', fbUser.uid);
         let isRuntimeAdmin = false;
 
-        // التحقق مما إذا كان المستخدم مسجلاً في مجموعة المشرفين أو قائمة إيميلات المدراء بالإعدادات السحابية
+        // التحقق مما إذا كان المستخدم مسجلاً في مجموعة admins أو يحمل custom claims أو المشرف الأساسي
         try {
-          const [adminSnap, settingsSnap] = await Promise.all([
-            getDoc(doc(db, 'admins', fbUser.uid)).catch(() => null),
-            getDoc(doc(db, 'settings', 'system')).catch(() => null),
-          ]);
-          if (adminSnap && adminSnap.exists()) {
+          const tokenRes = await fbUser.getIdTokenResult().catch(() => null);
+          if (tokenRes?.claims?.admin === true) {
             isRuntimeAdmin = true;
-          }
-          if (settingsSnap && settingsSnap.exists()) {
-            const adminEmails: string[] = settingsSnap.data().adminEmails || [];
-            if (fbUser.email && adminEmails.map((e) => e.trim().toLowerCase()).includes(fbUser.email.trim().toLowerCase())) {
+          } else {
+            const adminSnap = await getDoc(doc(db, 'admins', fbUser.uid)).catch(() => null);
+            if (adminSnap && adminSnap.exists()) {
+              isRuntimeAdmin = true;
+            } else if (fbUser.email && fbUser.email.trim().toLowerCase() === 'mirolab17@gmail.com') {
               isRuntimeAdmin = true;
             }
           }
@@ -585,6 +587,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     try {
+      useNotificationStore.getState().reset();
+      clearNotificationCache();
       if (isFirebaseConfigured) {
         await fbSignOut(auth);
       }
@@ -595,6 +599,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (e) {
       console.error(e);
       await logoutPush();
+      useNotificationStore.getState().reset();
+      clearNotificationCache();
       set({ user: null });
     }
   },

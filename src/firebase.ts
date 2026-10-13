@@ -39,15 +39,15 @@ import {
   serverTimestamp,
   onSnapshot
 } from 'firebase/firestore';
-// Firebase configuration: environment variables first, then fallback from firebase-applet-config.json
+// Firebase configuration: environment variables only
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyDgKxltoVlUxjOAqqhACmZagGLHLbvoP_I',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'refined-might-8mn89.firebaseapp.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'refined-might-8mn89',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'refined-might-8mn89.firebasestorage.app',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '652233191904',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:652233191904:web:df3333c93f1281619f3b85',
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || 'ai-studio-db7166d9-197a-4088-a47b-4865511559c0',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || '',
 };
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);

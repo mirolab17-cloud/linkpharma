@@ -11,6 +11,7 @@ import {
   markAllNotificationsAsRead as apiMarkAllRead,
   deleteNotification as apiDelete,
   recordNotificationEvent,
+  clearNotificationCache,
   DEFAULT_NOTIFICATION_SETTINGS
 } from '../services/dataStorage';
 import { useToastStore } from './useToastStore';
@@ -23,8 +24,10 @@ interface NotificationState {
   activeBannerNotif: AppNotification | null;
   isInitialized: boolean;
   init: (uid: string, role?: string) => () => void;
+  reset: () => void;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  markAllAsReadOptimisticAndSync: (delayMs?: number) => void;
   deleteNotification: (id: string) => Promise<void>;
   closeModal: (dontShowAgain?: boolean) => Promise<void>;
   closeBanner: () => Promise<void>;
@@ -54,7 +57,8 @@ function playChime() {
   } catch {}
 }
 
-function getSeenIds(uid: string): string[] {
+// تخزين محلي فقط لمنع تكرار نغمة التوست في نفس الجلسة
+function getSeenChimeIds(uid: string): string[] {
   try {
     const raw = localStorage.getItem(`seen_notifs_${uid}`);
     return raw ? JSON.parse(raw) : [];
@@ -63,12 +67,12 @@ function getSeenIds(uid: string): string[] {
   }
 }
 
-function addSeenId(uid: string, notifId: string): void {
+function addSeenChimeId(uid: string, notifId: string): void {
   try {
-    const list = getSeenIds(uid);
+    const list = getSeenChimeIds(uid);
     if (!list.includes(notifId)) {
       list.unshift(notifId);
-      const capped = list.slice(0, 200);
+      const capped = list.slice(0, 100);
       localStorage.setItem(`seen_notifs_${uid}`, JSON.stringify(capped));
     }
   } catch {}
@@ -81,6 +85,7 @@ let sessionStartTime = 0;
 let isInitialSnapshot = true;
 let sessionModalsShown = 0;
 let lastModalShownTimestamp = 0;
+let pendingDebounceTimer: any = null;
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
@@ -90,10 +95,48 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   activeBannerNotif: null,
   isInitialized: false,
 
-  init: (uid: string, role?: string) => {
-    if (!uid) return () => {};
+  reset: () => {
+    if (pendingDebounceTimer) {
+      clearTimeout(pendingDebounceTimer);
+      pendingDebounceTimer = null;
+    }
+    if (unsubNotifs) {
+      unsubNotifs();
+      unsubNotifs = null;
+    }
+    if (unsubSettings) {
+      unsubSettings();
+      unsubSettings = null;
+    }
+    activeUid = null;
+    sessionStartTime = 0;
+    isInitialSnapshot = true;
+    sessionModalsShown = 0;
+    lastModalShownTimestamp = 0;
 
-    // حماية ضد إعادة التسجيل المتكررة في React StrictMode لنفس المستخدم
+    clearNotificationCache();
+
+    set({
+      notifications: [],
+      unreadCount: 0,
+      activeModalNotif: null,
+      activeBannerNotif: null,
+      isInitialized: false,
+    });
+  },
+
+  init: (uid: string, role?: string) => {
+    if (!uid) {
+      get().reset();
+      return () => {};
+    }
+
+    // إذا تغير المستخدم، نقوم بتنظيف فوري لمنع تسرب البيانات
+    if (activeUid && activeUid !== uid) {
+      get().reset();
+    }
+
+    // حماية ضد إعادة التسجيل المتكررة في React لنفس المستخدم
     if (activeUid === uid && unsubNotifs) {
       return () => {};
     }
@@ -105,8 +148,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     lastModalShownTimestamp = 0;
 
     // تنظيف أي اشتراك سابق
-    if (unsubNotifs) unsubNotifs();
-    if (unsubSettings) unsubSettings();
+    if (unsubNotifs) {
+      unsubNotifs();
+      unsubNotifs = null;
+    }
+    if (unsubSettings) {
+      unsubSettings();
+      unsubSettings = null;
+    }
 
     // 1) استماع لإعدادات الإشعارات
     unsubSettings = subscribeToNotificationSettings((newSettings) => {
@@ -115,7 +164,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
     // 2) استماع لقائمة الإشعارات
     unsubNotifs = subscribeToNotifications(uid, (list) => {
-      const seenSet = new Set(getSeenIds(uid));
+      const seenSet = new Set(getSeenChimeIds(uid));
       const unread = list.filter((n) => !n.read).length;
       const currentSettings = get().settings;
 
@@ -141,9 +190,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       });
 
       if (newItems.length > 0 && currentSettings.toast?.enabled !== false) {
-        // نأخذ إشعاراً واحداً فقط كطابور
         const newest = newItems[0];
-        addSeenId(uid, newest.id);
+        addSeenChimeId(uid, newest.id);
         playChime();
         useToastStore.getState().info(newest.message, newest.title);
       }
@@ -172,8 +220,10 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
 
   markAsRead: async (id: string) => {
-    if (!activeUid) return;
-    await apiMarkRead(id, activeUid);
+    const currentUid = activeUid;
+    if (!currentUid) return;
+
+    // Optimistic UI update
     set((state) => {
       const updated = state.notifications.map((n) => (n.id === id ? { ...n, read: true } : n));
       return {
@@ -181,20 +231,60 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         unreadCount: updated.filter((n) => !n.read).length,
       };
     });
+
+    await apiMarkRead(id, currentUid);
   },
 
   markAllAsRead: async () => {
-    if (!activeUid) return;
-    await apiMarkAllRead(activeUid);
+    const currentUid = activeUid;
+    if (!currentUid) return;
+
+    const notifIds = get().notifications.map((n) => n.id);
+
+    // Optimistic UI update
     set((state) => ({
       notifications: state.notifications.map((n) => ({ ...n, read: true })),
       unreadCount: 0,
     }));
+
+    await apiMarkAllRead(currentUid, notifIds);
+  },
+
+  /**
+   * تصفير فوري تفاؤلي للعداد عند فتح الجرس، مع مزامنة مؤجلة (~500ms) مع Firestore
+   */
+  markAllAsReadOptimisticAndSync: (delayMs = 500) => {
+    const currentUid = activeUid;
+    if (!currentUid) return;
+
+    const notifIds = get().notifications.map((n) => n.id);
+
+    // 1. تصفير العداد وتحديث الحالة في الواجهة فوراً (Optimistic)
+    set((state) => ({
+      notifications: state.notifications.map((n) => ({ ...n, read: true })),
+      unreadCount: 0,
+    }));
+
+    // 2. مزامنة مع Firestore بتأخير ~500ms
+    if (pendingDebounceTimer) {
+      clearTimeout(pendingDebounceTimer);
+    }
+
+    pendingDebounceTimer = setTimeout(async () => {
+      try {
+        await apiMarkAllRead(currentUid, notifIds);
+      } catch (err) {
+        console.warn('Deferred markAllAsRead sync error:', err);
+      } finally {
+        pendingDebounceTimer = null;
+      }
+    }, delayMs);
   },
 
   deleteNotification: async (id: string) => {
-    if (!activeUid) return;
-    await apiDelete(id, activeUid, false);
+    const currentUid = activeUid;
+    if (!currentUid) return;
+
     set((state) => {
       const updated = state.notifications.filter((n) => n.id !== id);
       return {
@@ -202,6 +292,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         unreadCount: updated.filter((n) => !n.read).length,
       };
     });
+
+    await apiDelete(id, currentUid, false);
   },
 
   closeModal: async (dontShowAgain = false) => {
@@ -242,7 +334,7 @@ function checkEligibleModalAndBanner(
   const store = useNotificationStore.getState();
   const now = Date.now();
 
-  // 1) فحص الـ Banner
+  // 1) فحص الـ Banner (لا يُعلّم كمقروء)
   if (!store.activeBannerNotif) {
     const bannerCandidate = list.find((n) => {
       if (n.dismissed) return false;
@@ -253,7 +345,7 @@ function checkEligibleModalAndBanner(
     }
   }
 
-  // 2) فحص الـ Modal
+  // 2) فحص الـ Modal (لا يُعلّم كمقروء عند الظهور)
   if (store.activeModalNotif) return;
 
   const maxPerSession = settings.modal?.maxPerSession ?? 1;
@@ -294,7 +386,6 @@ function checkEligibleModalAndBanner(
       }
     }
 
-    // الوضع الافتراضي: مرة واحدة
     return shownCount === 0;
   });
 

@@ -225,6 +225,8 @@ export default function App() {
     if (user?.uid) {
       const unsubNotifs = useNotificationStore.getState().init(user.uid, user.role);
       return () => unsubNotifs();
+    } else {
+      useNotificationStore.getState().reset();
     }
   }, [user?.uid, user?.role]);
 

@@ -32,6 +32,7 @@ export const NotificationBell: React.FC = () => {
     unreadCount, 
     markAsRead, 
     markAllAsRead, 
+    markAllAsReadOptimisticAndSync,
     deleteNotification 
   } = useNotificationStore();
   const { success } = useToastStore();
@@ -162,11 +163,20 @@ export const NotificationBell: React.FC = () => {
     return <Info className="w-4 h-4 text-sky-600" />;
   };
 
+  const handleToggleBell = () => {
+    const nextOpen = !isOpen;
+    setIsOpen(nextOpen);
+    if (nextOpen && unreadCount > 0) {
+      // Optimistic instant zeroing of badge + 500ms debounced Firestore write
+      markAllAsReadOptimisticAndSync(500);
+    }
+  };
+
   return (
     <div className="relative" ref={dropdownRef} dir="rtl">
       {/* زر الجرس مع شارة الإشعارات */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggleBell}
         className="relative p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition focus:outline-hidden cursor-pointer"
         title="الإشعارات والتنبيهات المباشرة"
         aria-label="الإشعارات"
