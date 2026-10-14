@@ -8,10 +8,13 @@ import {
   ShoppingCart, 
   LogOut, 
   Menu, 
-  X
+  X,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { PWAInstallButton } from './PWAInstallButton';
+import { useThemeStore } from '../store/useThemeStore';
 
 interface NavbarProps {
   onToggleSidebar?: () => void;
@@ -20,6 +23,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }) => {
   const { user, logout } = useAuthStore();
+  const { isDark, toggleTheme } = useThemeStore();
   const cartItemsCount = useCartStore((s) => s.getTotalItemsCount());
   const navigate = useNavigate();
 
@@ -101,6 +105,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }
 
         {/* الجانب الأيسر: الإشعارات والسلة ومعلومات الحساب وتثبيت التطبيق */}
         <div className="flex items-center gap-2 sm:gap-3">
+          <button type="button" onClick={toggleTheme} className="p-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition" aria-label={isDark ? 'تفعيل الوضع النهاري' : 'تفعيل الوضع الليلي'} title={isDark ? 'الوضع النهاري' : 'الوضع الليلي'}>
+            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+
           {/* زر تثبيت PWA */}
           <PWAInstallButton className="hidden sm:flex" />
 
@@ -128,7 +136,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }
             <div className="flex items-center gap-2.5 pr-2 border-r border-slate-200 dark:border-slate-800">
               <div className="text-right hidden sm:block">
                 <div className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-tight">
-                  {user.pharmacyName || user.name}
+                  {user.pharmacyName && user.pharmacyName !== 'صيدليتي' ? user.pharmacyName : user.name}
                 </div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1 justify-end">
                   <span

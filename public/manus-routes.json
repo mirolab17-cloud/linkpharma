@@ -1,0 +1,1 @@
+{"routes":[{"path":"/","title":"الرئيسية"},{"path":"/login","title":"تسجيل الدخول"},{"path":"/app/prices","title":"مقارنة الأسعار"},{"path":"/app/suppliers","title":"الموردون"},{"path":"/app/cart","title":"السلة"},{"path":"/app/orders","title":"طلباتي"},{"path":"/app/profile","title":"الملف الشخصي"},{"path":"/admin","title":"الإدارة"}]}

@@ -48,6 +48,7 @@ import { CardSkeleton } from '../../components/Loader';
 import { EmptyState } from '../../components/EmptyState';
 import { PharmacyGlobalSearch, SearchScope } from '../../components/PharmacyGlobalSearch';
 import { LatestNotificationsTicker } from '../../components/LatestNotificationsTicker';
+import { triggerHaptic } from '../../utils/profile';
 
 export const PharmacyPrices: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -440,6 +441,7 @@ export const PharmacyPrices: React.FC = () => {
       },
       qty
     );
+    triggerHaptic(12);
 
     // وميض تأكيد الإضافة
     setAddedItemKey(key);
@@ -538,6 +540,20 @@ export const PharmacyPrices: React.FC = () => {
 
       {/* شريط آخر الإشعارات والتحديثات الحية */}
       <LatestNotificationsTicker />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6" aria-label="ملخص المنصة">
+        <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-xs"><div className="text-[11px] text-slate-500 dark:text-slate-400">الأصناف المتاحة</div><div className="mt-1 text-xl font-black text-slate-900 dark:text-white">{products.length}</div></div>
+        <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-xs"><div className="text-[11px] text-slate-500 dark:text-slate-400">عروض الأسعار</div><div className="mt-1 text-xl font-black text-[#0f9d7a]">{prices.length}</div></div>
+        <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-xs"><div className="text-[11px] text-slate-500 dark:text-slate-400">المفضلة</div><div className="mt-1 text-xl font-black text-amber-600">{userFavorites.length}</div></div>
+        <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-cyan-50 dark:from-emerald-950/40 dark:to-cyan-950/30 border border-emerald-200 dark:border-emerald-900 p-4 shadow-xs"><div className="text-[11px] text-emerald-800 dark:text-emerald-300">تحديث الأسعار</div><div className="mt-1 text-sm font-black text-emerald-900 dark:text-emerald-200">مباشر الآن</div></div>
+      </div>
+      {userFavorites.length > 0 && priceHistory.length > 0 && (
+        <div className="mb-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-xs" aria-label="مخطط اتجاه أسعار المفضلة">
+          <div className="flex items-center justify-between mb-3"><div><h2 className="text-sm font-black text-slate-900 dark:text-white">اتجاه أسعار مفضلاتك</h2><p className="text-[11px] text-slate-500 dark:text-slate-400">مؤشر حي مبني على آخر تحديثات الأسعار</p></div><TrendingDown className="w-5 h-5 text-[#0f9d7a]" /></div>
+          <div className="flex items-end gap-1 h-16" role="img" aria-label="مخطط مصغر لاتجاه الأسعار">
+            {priceHistory.filter((h) => userFavorites.includes(h.productId)).slice(0, 18).map((h, i) => <span key={`${h.productId}-${h.importedAt}-${i}`} className="flex-1 rounded-t bg-gradient-to-t from-[#0f9d7a] to-cyan-300 min-h-[8px]" style={{ height: `${Math.max(12, Math.min(100, (h.price / Math.max(...priceHistory.map((x) => x.price), 1)) * 100))}%` }} title={`${h.price}`} />)}
+          </div>
+        </div>
+      )}
 
       {/* شريط البحث المتقدم والفلاتر السريعة */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-xs mb-6 space-y-4">
