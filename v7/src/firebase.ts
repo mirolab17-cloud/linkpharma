@@ -2,11 +2,15 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
   getAuth, 
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
   GoogleAuthProvider, 
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
-  signInWithPopup,
+  signInWithPopup as rawSignInWithPopup,
   sendPasswordResetEmail,
   updatePassword,
   reauthenticateWithCredential,
@@ -54,7 +58,7 @@ export const db = (() => {
   const databaseId = firebaseConfig.firestoreDatabaseId;
   try {
     return initializeFirestore(app, {
-      experimentalAutoDetectLongPolling: true,
+      experimentalForceLongPolling: true,
       ignoreUndefinedProperties: true,
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
@@ -65,7 +69,20 @@ export const db = (() => {
   }
 })();
 
-export const auth = getAuth(app);
+// تهيئة المصادقة بدون محلّل إعادة التوجيه: تحميل الـ iframe الخاص به كان يؤخر
+// أول استدعاء لـ onAuthStateChanged حوالي 15 ثانية على بعض الشبكات.
+// نمرّر المحلّل صراحةً عند تسجيل الدخول بالنافذة المنبثقة فقط.
+export const auth = (() => {
+  try {
+    return initializeAuth(app, {
+      persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+    });
+  } catch {
+    return getAuth(app);
+  }
+})();
+const signInWithPopup: typeof rawSignInWithPopup = (a, provider) =>
+  rawSignInWithPopup(a, provider, browserPopupRedirectResolver);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 

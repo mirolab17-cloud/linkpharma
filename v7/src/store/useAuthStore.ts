@@ -57,6 +57,24 @@ interface AuthState {
 
 let activeGoogleSignInPromise: Promise<boolean> | null = null;
 
+const PROFILE_CACHE_KEY = 'pharma_profile_cache_v7';
+const readCachedProfile = (uid: string): UserProfile | null => {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && parsed.uid === uid ? (parsed as UserProfile) : null;
+  } catch {
+    return null;
+  }
+};
+const writeCachedProfile = (profile: UserProfile) => {
+  try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile)); } catch {}
+};
+const clearCachedProfile = () => {
+  try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {}
+};
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   loading: true,
@@ -137,6 +155,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!fbUser) {
         if (safetyTimer) clearTimeout(safetyTimer);
         logoutPush().catch(() => {});
+        clearCachedProfile();
         set({ user: null, loading: false, initialized: true, isPasswordUser: false, isGoogleUser: false });
         return;
       }
@@ -149,6 +168,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       // المستخدم موجود في Firebase Auth: لم يعد المؤقت الأمني الأول مطلوباً
       if (safetyTimer) clearTimeout(safetyTimer);
+
+      // استعادة فورية للملف الشخصي المحفوظ محلياً (دخول لحظي عند إعادة التحميل)،
+      // ثم يتولى الاستماع المباشر لـ Firestore تحديثه
+      const cachedProfile = readCachedProfile(fbUser.uid);
+      if (cachedProfile) {
+        set({
+          user: cachedProfile,
+          loading: false,
+          initialized: true,
+          isPasswordUser: isPassword,
+          isGoogleUser: isGoogle,
+        });
+      }
 
       // مؤقت أخير لملف المستخدم (يبقى المستخدم في شاشة التحميل ولا يُعاد لصفحة الدخول قبل ذلك)
       const docTimeout = setTimeout(() => {
@@ -215,6 +247,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 }
               }
 
+              writeCachedProfile({ ...profile, uid: fbUser.uid, role: shouldBeAdmin ? 'admin' : (profile.role || 'pharmacy') });
               set({ 
                 user: { ...profile, uid: fbUser.uid, role: shouldBeAdmin ? 'admin' : (profile.role || 'pharmacy') }, 
                 loading: false, 
@@ -262,6 +295,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 }
               }
 
+              writeCachedProfile(newProfile);
               set({ 
                 user: newProfile, 
                 loading: false, 
@@ -574,6 +608,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await fbSignOut(auth);
       }
       await logoutPush();
+      clearCachedProfile();
       localStorage.removeItem('pharma_local_user');
       set({ user: null });
       useToastStore.getState().info('تم تسجيل الخروج بنجاح.');
