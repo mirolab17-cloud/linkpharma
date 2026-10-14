@@ -83,6 +83,7 @@ jobs:
           npm run build
           mkdir -p ../dist/v5
           cp -r dist/. ../dist/v5/
+          cd ..
 
           # Build v6 (auth session restoration fix) under /v6/
           cd v6
