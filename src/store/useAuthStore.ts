@@ -61,8 +61,8 @@ interface AuthState {
   getRemainingDays: () => number;
 }
 
-/** Wait until Firebase's auth listener has published the matching profile in Zustand. */
-function waitForUserProfile(uid: string, timeoutMs = 15000): Promise<UserProfile> {
+/** Wait briefly for the auth listener to publish the matching profile; never block sign-in for 15 seconds. */
+function waitForUserProfile(uid: string, timeoutMs = 6000): Promise<UserProfile> {
   return new Promise((resolve, reject) => {
     let settled = false;
     let unsubscribe: (() => void) | null = null;
@@ -488,8 +488,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           return false;
         }
 
-        // إذا كان المستخدم مسجلاً بالفعل
+        // إذا كان المستخدم مسجلاً بالفعل وملفه موجود في الحالة، لا تنتظر جلبه مرة أخرى.
         if (auth.currentUser) {
+          const currentProfile = get().user;
+          if (currentProfile?.uid === auth.currentUser.uid) {
+            set({ lastAuthError: null, loading: false });
+            return true;
+          }
           await waitForUserProfile(auth.currentUser.uid);
           set({ lastAuthError: null });
           return true;
