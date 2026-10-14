@@ -93,6 +93,14 @@ jobs:
           cp -r dist/. ../dist/v6/
           cd ..
 
+          # Build v7 (v5 design + login delay fix) under /v7/
+          cd v7
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v7
+          cp -r dist/. ../dist/v7/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
