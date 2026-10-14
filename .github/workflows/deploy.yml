@@ -76,6 +76,13 @@ jobs:
           npm run build
           mkdir -p ../dist/v4
           cp -r dist/. ../dist/v4/
+          cd ..
+          # Build v5 (Pharma Link branding, light theme, PWA and Firebase permissions fix) under /v5/
+          cd v5
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v5
+          cp -r dist/. ../dist/v5/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

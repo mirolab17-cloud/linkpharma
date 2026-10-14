@@ -1,0 +1,228 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account and profile information for administrators and pharmacies",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "description": "Unique user ID" },
+        "name": { "type": "string", "maxLength": 150, "description": "Full name or pharmacist name" },
+        "email": { "type": "string", "maxLength": 200, "description": "User email address" },
+        "role": { "type": "string", "enum": ["admin", "pharmacy"], "description": "System role" },
+        "status": { "type": "string", "enum": ["pending", "active", "suspended"], "description": "Account approval status" },
+        "subscriptionStatus": { "type": "string", "enum": ["trial", "active", "expired"], "description": "Current subscription status" },
+        "subscriptionExpiresAt": { "type": "string", "maxLength": 64, "description": "Subscription or trial expiration date ISO string" },
+        "subscriptionExpiresAtMillis": { "type": "number", "description": "Subscription expiration timestamp in milliseconds" },
+        "trialDays": { "type": "number", "description": "Number of trial days granted upon registration" },
+        "pharmacyName": { "type": "string", "maxLength": 200, "description": "Pharmacy commercial name" },
+        "address": { "type": "string", "maxLength": 500, "description": "Physical pharmacy address" },
+        "phone": { "type": "string", "maxLength": 50, "description": "Contact phone number" },
+        "allowedSuppliers": { "type": "array", "description": "IDs of suppliers the pharmacy can view" },
+        "profileComplete": { "type": "boolean", "description": "Whether registration profile details are completed" },
+        "createdAt": { "type": "string", "maxLength": 64, "description": "Creation timestamp" }
+      },
+      "required": ["uid", "name", "email", "role", "status"]
+    },
+    "ActiveIngredient": {
+      "title": "ActiveIngredient",
+      "description": "Active scientific chemical or pharmaceutical ingredient",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "description": "Ingredient identifier" },
+        "name": { "type": "string", "maxLength": 250, "description": "Ingredient generic name" },
+        "normalizedName": { "type": "string", "maxLength": 250, "description": "Search-normalized name" },
+        "category": { "type": "string", "maxLength": 150, "description": "Therapeutic category" },
+        "createdAt": { "type": "string", "maxLength": 64, "description": "Creation timestamp" },
+        "productCount": { "type": "number", "description": "Count of associated products" }
+      },
+      "required": ["id", "name", "category"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Commercial pharmaceutical medicine item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "description": "Product identifier" },
+        "tradeName": { "type": "string", "maxLength": 250, "description": "Commercial brand name" },
+        "normalizedName": { "type": "string", "maxLength": 250, "description": "Search-normalized name" },
+        "form": { "type": "string", "maxLength": 100, "description": "Dosage form (tablets, syrup, etc.)" },
+        "strength": { "type": "string", "maxLength": 100, "description": "Dosage strength" },
+        "manufacturer": { "type": "string", "maxLength": 200, "description": "Manufacturer pharma company" },
+        "category": { "type": "string", "maxLength": 150, "description": "Therapeutic category" },
+        "barcode": { "type": "string", "maxLength": 100, "description": "Item barcode" },
+        "activeIngredientId": { "type": "string", "maxLength": 128, "description": "Referenced active ingredient ID" },
+        "createdAt": { "type": "string", "maxLength": 64, "description": "Creation timestamp" }
+      },
+      "required": ["id", "tradeName", "form", "manufacturer", "activeIngredientId"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Pharmaceutical warehouse or distributor supplier",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "description": "Supplier identifier" },
+        "name": { "type": "string", "maxLength": 250, "description": "Supplier warehouse name" },
+        "whatsapp": { "type": "string", "maxLength": 50, "description": "WhatsApp contact number" },
+        "address": { "type": "string", "maxLength": 500, "description": "Physical warehouse address" },
+        "notes": { "type": "string", "maxLength": 1000, "description": "Operational notes and conditions" },
+        "status": { "type": "string", "enum": ["active", "paused"], "description": "Supplier active status" },
+        "importTemplate": { "type": "object", "description": "Excel file parsing format template" },
+        "lastPriceUpdate": { "type": "string", "maxLength": 64, "description": "Timestamp of most recent price upload" },
+        "createdAt": { "type": "string", "maxLength": 64, "description": "Creation timestamp" }
+      },
+      "required": ["id", "name", "whatsapp", "status"]
+    },
+    "PriceRecord": {
+      "title": "PriceRecord",
+      "description": "Current price and availability of a product at a specific supplier",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "description": "Composite key {supplierId}_{productId}" },
+        "productId": { "type": "string", "maxLength": 128, "description": "Referenced product ID" },
+        "supplierId": { "type": "string", "maxLength": 128, "description": "Referenced supplier ID" },
+        "price": { "type": "number", "description": "Pharmacy purchase price" },
+        "publicPrice": { "type": "number", "description": "Public / retail price" },
+        "available": { "type": "boolean", "description": "In stock flag" },
+        "expiry": { "type": "string", "maxLength": 50, "description": "Batch expiry date" },
+        "updatedAt": { "type": "string", "maxLength": 64, "description": "Update timestamp" }
+      },
+      "required": ["productId", "supplierId", "price", "available"]
+    },
+    "PriceHistory": {
+      "title": "PriceHistory",
+      "description": "Historical audit log of price changes per product and supplier",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "description": "History log identifier" },
+        "productId": { "type": "string", "maxLength": 128, "description": "Referenced product ID" },
+        "supplierId": { "type": "string", "maxLength": 128, "description": "Referenced supplier ID" },
+        "price": { "type": "number", "description": "Historical price" },
+        "publicPrice": { "type": "number", "description": "Historical public price" },
+        "available": { "type": "boolean", "description": "Historical availability" },
+        "importedAt": { "type": "string", "maxLength": 64, "description": "Import timestamp" },
+        "importBatchId": { "type": "string", "maxLength": 128, "description": "Referenced import batch ID" }
+      },
+      "required": ["id", "productId", "supplierId", "price", "importBatchId"]
+    },
+    "ImportBatch": {
+      "title": "ImportBatch",
+      "description": "Record of bulk price list import operation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "description": "Batch identifier" },
+        "supplierId": { "type": "string", "maxLength": 128, "description": "Target supplier ID" },
+        "supplierName": { "type": "string", "maxLength": 250, "description": "Target supplier name" },
+        "fileName": { "type": "string", "maxLength": 250, "description": "Source file name" },
+        "rowsCount": { "type": "number", "description": "Number of price rows processed" },
+        "createdBy": { "type": "string", "maxLength": 128, "description": "User ID of importer" },
+        "createdAt": { "type": "string", "maxLength": 64, "description": "Creation timestamp" }
+      },
+      "required": ["id", "supplierId", "fileName", "rowsCount", "createdBy", "createdAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Purchase order sent by pharmacy to warehouse",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "description": "Order identifier" },
+        "pharmacyId": { "type": "string", "maxLength": 128, "description": "Purchasing pharmacy user UID" },
+        "pharmacyName": { "type": "string", "maxLength": 200, "description": "Pharmacy name" },
+        "pharmacyAddress": { "type": "string", "maxLength": 500, "description": "Pharmacy address" },
+        "pharmacyPhone": { "type": "string", "maxLength": 50, "description": "Pharmacy contact phone" },
+        "supplierId": { "type": "string", "maxLength": 128, "description": "Destination supplier ID" },
+        "supplierName": { "type": "string", "maxLength": 250, "description": "Destination supplier name" },
+        "items": { "type": "array", "description": "Ordered products list with quantities and prices" },
+        "total": { "type": "number", "description": "Total order amount" },
+        "status": { "type": "string", "enum": ["sent", "confirmed", "cancelled"], "description": "Order status" },
+        "createdAt": { "type": "string", "maxLength": 64, "description": "Creation timestamp" }
+      },
+      "required": ["id", "pharmacyId", "pharmacyName", "supplierId", "items", "total", "status", "createdAt"]
+    },
+    "AdminDoc": {
+      "title": "AdminDoc",
+      "description": "Document marking user as authorized system administrator",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "description": "Admin user UID" },
+        "email": { "type": "string", "maxLength": 200, "description": "Admin email address" },
+        "addedAt": { "type": "string", "maxLength": 64, "description": "Timestamp when admin role was granted" }
+      },
+      "required": ["uid", "email"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "Real-time alerts and updates for pharmacy owners and admins",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "description": "Notification identifier" },
+        "userId": { "type": "string", "maxLength": 128, "description": "Recipient pharmacy user UID or 'all' for broadcasts" },
+        "title": { "type": "string", "maxLength": 250, "description": "Notification title" },
+        "message": { "type": "string", "maxLength": 2000, "description": "Detailed message content" },
+        "type": { "type": "string", "enum": ["status_change", "admin_announcement", "order_update", "system"], "description": "Notification category" },
+        "read": { "type": "boolean", "description": "Read flag" },
+        "createdAt": { "type": "string", "maxLength": 64, "description": "Creation timestamp ISO string" },
+        "metadata": { "type": "object", "description": "Additional event context or routing info" }
+      },
+      "required": ["id", "userId", "title", "message", "type", "read", "createdAt"]
+    },
+    "SystemSettings": {
+      "title": "SystemSettings",
+      "description": "Global application configuration such as default trial period days and authorized admin emails",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "description": "Setting identifier" },
+        "defaultTrialDays": { "type": "number", "description": "Default trial duration in days for newly registered pharmacies" },
+        "adminEmails": { "type": "array", "description": "List of authorized administrator email addresses" },
+        "updatedAt": { "type": "string", "maxLength": 64, "description": "Last update timestamp ISO string" },
+        "updatedBy": { "type": "string", "maxLength": 128, "description": "Admin UID who last updated the settings" }
+      },
+      "required": ["id", "defaultTrialDays"]
+    }
+  },
+  "firestore": {
+    "/settings/{settingId}": {
+      "schema": "SystemSettings",
+      "description": "Global application settings such as default trial period"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile records for pharmacists and admins"
+    },
+    "/admins/{adminId}": {
+      "schema": "AdminDoc",
+      "description": "Trusted administrative privilege records"
+    },
+    "/activeIngredients/{ingredientId}": {
+      "schema": "ActiveIngredient",
+      "description": "Scientific active ingredients catalog"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Pharma products and medicine items catalog"
+    },
+    "/suppliers/{supplierId}": {
+      "schema": "Supplier",
+      "description": "Suppliers and medicine warehouses"
+    },
+    "/prices/{priceId}": {
+      "schema": "PriceRecord",
+      "description": "Current supplier prices per product"
+    },
+    "/priceHistory/{historyId}": {
+      "schema": "PriceHistory",
+      "description": "Audit trail of supplier price imports"
+    },
+    "/importBatches/{batchId}": {
+      "schema": "ImportBatch",
+      "description": "Metadata for bulk price import files"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Medicine purchase orders placed by pharmacies"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "AppNotification",
+      "description": "Real-time notifications and announcements for pharmacy owners"
+    }
+  }
+}
