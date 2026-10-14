@@ -161,7 +161,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         let latestProfile: UserProfile | null = null;
 
         // افحص صلاحيات الإدارة بالتوازي مع تحميل ملف المستخدم حتى لا يتوقف فتح التطبيق على قراءتي admins و settings.
-        const adminCheckPromise = Promise.all([
+        Promise.all([
           getDoc(doc(db, 'admins', fbUser.uid)).catch(() => null),
           getDoc(doc(db, 'settings', 'system')).catch(() => null),
         ]).then(([adminSnap, settingsSnap]) => {
