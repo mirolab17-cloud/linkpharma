@@ -147,42 +147,49 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const isPassword = fbUser.providerData.some(p => p.providerId === 'password');
       const isGoogle = fbUser.providerData.some(p => p.providerId === 'google.com');
 
-      // مؤقت إضافي لملف المستخدم
+      // المستخدم موجود في Firebase Auth: لم يعد المؤقت الأمني الأول مطلوباً
+      if (safetyTimer) clearTimeout(safetyTimer);
+
+      // مؤقت أخير لملف المستخدم (يبقى المستخدم في شاشة التحميل ولا يُعاد لصفحة الدخول قبل ذلك)
       const docTimeout = setTimeout(() => {
-        if (get().loading) {
+        if (get().loading || !get().user) {
           console.warn('User profile fetch exceeded timeout, unlocking state');
           set({ loading: false, initialized: true });
         }
-      }, 4000);
+      }, 10000);
 
       try {
         const userDocRef = doc(db, 'users', fbUser.uid);
         let isRuntimeAdmin = false;
+        let lastUserSnap: any = null;
 
-        // التحقق مما إذا كان المستخدم مسجلاً في مجموعة المشرفين أو قائمة إيميلات المدراء بالإعدادات السحابية
-        try {
-          const [adminSnap, settingsSnap] = await Promise.all([
-            getDoc(doc(db, 'admins', fbUser.uid)).catch(() => null),
-            getDoc(doc(db, 'settings', 'system')).catch(() => null),
-          ]);
+        // فحص صلاحية المشرف يعمل في الخلفية ولا يؤخر الدخول (كان سبب التأخير 15 ثانية)
+        const adminCheck: Promise<void> = Promise.all([
+          getDoc(doc(db, 'admins', fbUser.uid)).catch(() => null),
+          getDoc(doc(db, 'settings', 'system')).catch(() => null),
+        ]).then(([adminSnap, settingsSnap]) => {
+          let found = false;
           if (adminSnap && adminSnap.exists()) {
-            isRuntimeAdmin = true;
+            found = true;
           }
           if (settingsSnap && settingsSnap.exists()) {
             const adminEmails: string[] = settingsSnap.data().adminEmails || [];
             if (fbUser.email && adminEmails.map((e) => e.trim().toLowerCase()).includes(fbUser.email.trim().toLowerCase())) {
-              isRuntimeAdmin = true;
+              found = true;
             }
           }
-        } catch (e) {
+          if (found && !isRuntimeAdmin) {
+            isRuntimeAdmin = true;
+            // إعادة تطبيق آخر نسخة من ملف المستخدم لترقية الصلاحية فوراً
+            if (lastUserSnap && lastUserSnap.exists()) {
+              void handleUserSnap(lastUserSnap);
+            }
+          }
+        }).catch((e) => {
           console.warn('Admin check error:', e);
-        }
+        });
 
-        // استماع فوري لتغيرات ملف المستخدم (تعديل الاشتراك، انتهاء التجربة، إلخ)
-        unsubUserDoc = onSnapshot(userDocRef, async (userSnap) => {
-          clearTimeout(docTimeout);
-          if (safetyTimer) clearTimeout(safetyTimer);
-
+        const handleUserSnap = async (userSnap: any) => {
           try {
             if (userSnap.exists()) {
               const profile = userSnap.data() as UserProfile;
@@ -216,7 +223,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 isGoogleUser: isGoogle
               });
             } else {
-              // مستخدم جديد يسجل لأول مرة عبر Google -> تفعيل مباشر بحساب نشط ومفتوح
+              // مستخدم جديد يسجل لأول مرة عبر Google -> ننتظر فحص المشرف بحد أقصى 3 ثوانٍ فقط
+              await Promise.race([adminCheck, new Promise<void>((r) => setTimeout(r, 3000))]);
               const now = Date.now();
               const activePeriodDays = 365;
               const expiresAtMillis = now + activePeriodDays * 24 * 60 * 60 * 1000;
@@ -266,6 +274,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             console.error('Error handling user doc snapshot:', innerErr);
             set({ loading: false, initialized: true });
           }
+        };
+
+        // استماع فوري لتغيرات ملف المستخدم (يعرض النسخة المخزنة محلياً فوراً عند إعادة التحميل)
+        unsubUserDoc = onSnapshot(userDocRef, (userSnap) => {
+          clearTimeout(docTimeout);
+          lastUserSnap = userSnap;
+          void handleUserSnap(userSnap);
         }, (snapErr) => {
           clearTimeout(docTimeout);
           if (safetyTimer) clearTimeout(safetyTimer);
