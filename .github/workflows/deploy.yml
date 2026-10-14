@@ -69,6 +69,13 @@ jobs:
           npm run build
           mkdir -p ../dist/v3
           cp -r dist/. ../dist/v3/
+          cd ..
+          # Build v4 (admin control center, Gaza locations and owner profile) under /v4/
+          cd v4
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v4
+          cp -r dist/. ../dist/v4/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
