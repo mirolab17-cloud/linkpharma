@@ -1,0 +1,6 @@
+{
+  "name": "مقارنة أسعار الأدوية",
+  "description": "منصة مقارنة أسعار الأدوية بين المستودعات وإرسال طلبيات الصيدليات عبر واتساب",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

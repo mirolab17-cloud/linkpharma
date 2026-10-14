@@ -1,0 +1,35 @@
+# Firebase v5
+
+## سبب الخطأ
+
+كان إنشاء المستخدم الجديد في `useAuthStore.ts` يتم بحالة `subscriptionStatus: active`، بينما كانت قواعد Firestore تسمح بإنشاء المستخدم الأول فقط عندما تكون الحالة `trial`. لذلك كان إنشاء مستند `users/{uid}` يفشل بصمت، ثم يفشل حفظ الملف لاحقاً برسالة `missing or insufficient permissions`.
+
+## التعديل المطلوب
+
+تم تعديل قاعدة إنشاء المستخدم في `firestore.rules` لتسمح بالحالتين `active` و`trial` مع بقاء التحقق من UID ومدة الاشتراك.
+
+بعد رفع القواعد إلى Firebase يجب تنفيذ:
+
+```bash
+firebase deploy --only firestore:rules
+```
+
+أو نسخ محتوى ملف `v5/firestore.rules` إلى Firebase Console ثم الضغط على Publish.
+
+## تنبيه أمني
+
+لا تستخدم `allow read, write: if true`؛ القواعد الحالية تمنع قراءة الأسعار والطلبات من غير المستخدمين المصرح لهم، وتمنع تعديل الدور والحالة والاشتراك من الصيدلية.
+
+## الإشعارات خارج الموقع
+
+v5 مجهز بـ OneSignal وPWA. التشغيل يحتاج:
+
+1. إنشاء تطبيق Web في OneSignal.
+2. إضافة الموقع HTTPS: `https://mirolab17-cloud.github.io/linkpharma/v5/`.
+3. ضبط Web Configuration وService Worker.
+4. وضع App ID في GitHub Secret باسم `VITE_ONESIGNAL_APP_ID`.
+5. إذا أردت الإرسال من النظام، ضع رابط Cloudflare Worker في `VITE_PUSH_WORKER_URL`.
+6. يدخل المستخدم إلى المنصة، يفتح الملف الشخصي، يضغط تفعيل الإشعارات، ثم يسمح من المتصفح.
+7. في الهاتف يفضّل تثبيت PWA من خيار Add to Home Screen.
+
+بعد الاشتراك سيستمر المتصفح أو تطبيق PWA في استقبال الإشعارات حتى لو كانت صفحة الموقع مغلقة، ما دام المستخدم لم يمنع الإشعارات أو يمسح بيانات المتصفح.
