@@ -83,36 +83,11 @@ export const SplashHero: React.FC<SplashHeroProps> = ({
   const currentStepData = steps[motionStep];
 
   return (
-    <div className="w-full text-right hero-3d-shell" dir="rtl">
+    <div className="w-full text-right" dir="rtl">
       {/* الشارة الترحيبية الاحترافية مع أيقونة المنصة */}
       <div className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 text-xs font-bold mb-4">
         <PharmacyBrandLoader size="xs" glow={false} />
         <span>منصة توريد ومقارنة أسعار الأدوية الأولى للصيدليات</span>
-      </div>
-
-      {/* مشهد 3D خفيف يشرح فكرة الربط بين الصيدلية والمستودعات */}
-      <div className="pharma-3d-stage" aria-label="مشهد ثلاثي الأبعاد يوضح مقارنة أسعار الأدوية">
-        <div className="stage-grid" aria-hidden="true" />
-        <div className="stage-orbit stage-orbit-one" aria-hidden="true" />
-        <div className="stage-orbit stage-orbit-two" aria-hidden="true" />
-        <div className="stage-glow stage-glow-one" aria-hidden="true" />
-        <div className="stage-glow stage-glow-two" aria-hidden="true" />
-        <div className="pharma-cube pharma-cube-main">
-          <div className="cube-face cube-face-front">
-            <Pill className="w-10 h-10 text-white rotate-45" strokeWidth={1.6} />
-            <span>LinkPharma</span>
-          </div>
-          <div className="cube-face cube-face-side" aria-hidden="true" />
-          <div className="cube-face cube-face-top" aria-hidden="true" />
-        </div>
-        <div className="stage-float-card stage-float-card-top">
-          <span className="stage-card-dot" />
-          <span>50+ مستودع متصل</span>
-        </div>
-        <div className="stage-float-card stage-float-card-bottom">
-          <TrendingDown className="w-4 h-4 text-emerald-600" />
-          <span>توفير يصل إلى 25%</span>
-        </div>
       </div>
 
       {/* العنوان الرئيسي الجذاب والواضح */}

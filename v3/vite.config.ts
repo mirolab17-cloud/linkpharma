@@ -12,7 +12,7 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'OneSignalSDKWorker.js'],
+        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
           id: '/',
           name: 'مقارنة أسعار الأدوية',
@@ -47,11 +47,6 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
-          skipWaiting: true,
-          clientsClaim: true,
-          cleanupOutdatedCaches: true,
-          inlineWorkboxRuntime: true,
-          navigateFallback: null,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           importScripts: ['https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js'],
           runtimeCaching: [
@@ -86,7 +81,8 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: false,
+          enabled: true,
+          type: 'module',
         },
       }),
     ],

@@ -36,7 +36,7 @@ export const PharmacyProfile: React.FC = () => {
     }
 
     if (!isValidSaudiLocalPhone(phone)) {
-      useToastStore.getState().error('رقم الجوال غير صالح. أدخل رقماً يبدأ بـ 05 ويتكون من 10 أرقام، مثل 05XXXXXXXX.');
+      useToastStore.getState().error('رقم الجوال غير صالح. يجب أن يبدأ بـ 05 ويتكون من 10 أرقام.');
       return;
     }
 
@@ -51,7 +51,7 @@ export const PharmacyProfile: React.FC = () => {
     setSaving(false);
 
     if (success && isFirstTime) {
-      navigate('/app/prices');
+      navigate('/app/home');
     }
   };
 
@@ -62,7 +62,7 @@ export const PharmacyProfile: React.FC = () => {
           <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="text-xs text-amber-800 leading-relaxed">
             <strong className="block text-sm font-bold mb-0.5">خطوة إلزامية لإكمال الحساب:</strong>
-            يرجى إكمال بيانات الصيدلية (اسم الصيدلية أو الصيدلي، العنوان، ورقم الجوال المحلي) لتتمكن من مقارنة الأسعار وإرسال الطلبيات للموردين عبر واتساب.
+            يرجى إكمال بيانات الصيدلية (الاسم، العنوان، ورقم الجوال) لتتمكن من مقارنة الأسعار وإرسال الطلبيات للموردين عبر واتساب.
           </div>
         </div>
       )}
@@ -139,7 +139,7 @@ export const PharmacyProfile: React.FC = () => {
               />
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
-              أدخل رقماً محلياً يبدأ بـ 05 ويتكون من 10 أرقام. لا يوجد تحقق برسالة SMS حالياً.
+              أدخل رقماً محلياً يبدأ بـ 05 ويتكون من 10 أرقام. لا يوجد تحقق SMS حالياً.
             </p>
           </div>
 
@@ -147,7 +147,7 @@ export const PharmacyProfile: React.FC = () => {
             {!isFirstTime && (
               <button
                 type="button"
-                onClick={() => navigate('/app/prices')}
+                onClick={() => navigate('/app/home')}
                 className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition"
               >
                 إلغاء

@@ -9,6 +9,7 @@ import {
   LogOut, 
   Menu, 
   X,
+  User as UserIcon,
   Moon,
   Sun
 } from 'lucide-react';
@@ -47,7 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }
             </button>
           )}
 
-          <Link to={user?.role === 'admin' ? '/admin' : '/app/prices'} className="flex items-center gap-2.5">
+          <Link to={user?.role === 'admin' ? '/admin' : '/app/home'} className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-[#0f9d7a] text-white flex items-center justify-center shadow-xs">
               <Pill className="w-5 h-5 rotate-45" />
             </div>
@@ -65,6 +66,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }
         {/* الجانب الأوسط: روابط الصيدلية على الشاشات الكبيرة */}
         {user?.role === 'pharmacy' && user?.status === 'active' && user?.profileComplete && (
           <nav className="hidden md:flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl">
+            <Link
+              to="/app/home"
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 hover:text-[#0f9d7a] hover:bg-white transition"
+            >
+              الرئيسية
+            </Link>
             <Link
               to="/app/prices"
               className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 hover:text-[#0f9d7a] hover:bg-white transition"
@@ -105,9 +112,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }
 
         {/* الجانب الأيسر: الإشعارات والسلة ومعلومات الحساب وتثبيت التطبيق */}
         <div className="flex items-center gap-2 sm:gap-3">
-          <button type="button" onClick={toggleTheme} className="p-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition" aria-label={isDark ? 'تفعيل الوضع النهاري' : 'تفعيل الوضع الليلي'} title={isDark ? 'الوضع النهاري' : 'الوضع الليلي'}>
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
+          <button type="button" onClick={toggleTheme} className="p-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="تبديل الوضع الليلي">{isDark ? <Sun className="w-4 h-4"/> : <Moon className="w-4 h-4"/>}</button>
 
           {/* زر تثبيت PWA */}
           <PWAInstallButton className="hidden sm:flex" />
@@ -128,6 +133,17 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }
                   {cartItemsCount}
                 </span>
               )}
+            </Link>
+          )}
+
+          {/* الملف الشخصي على الجوال (أُزيل من الشريط السفلي) */}
+          {user?.role === 'pharmacy' && user?.status === 'active' && (
+            <Link
+              to="/app/profile"
+              className="md:hidden p-2.5 rounded-xl text-slate-600 hover:text-[#0f9d7a] hover:bg-slate-100 transition"
+              aria-label="الملف الشخصي"
+            >
+              <UserIcon className="w-5 h-5" />
             </Link>
           )}
 

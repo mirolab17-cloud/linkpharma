@@ -2,14 +2,26 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useCartStore } from '../store/useCartStore';
-import { Search, ShoppingCart, ClipboardList, User, Truck } from 'lucide-react';
+import { Home, Search, ShoppingCart, ClipboardList } from 'lucide-react';
 
 export const PharmacyBottomNav: React.FC = () => {
   const cartItemsCount = useCartStore((s) => s.getTotalItemsCount());
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 md:hidden pb-safe">
-      <div className="grid grid-cols-5 h-16">
+      <div className="grid grid-cols-4 h-16">
+        <NavLink
+          to="/app/home"
+          className={({ isActive }) =>
+            `flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition ${
+              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 hover:text-slate-800'
+            }`
+          }
+        >
+          <Home className="w-5 h-5" />
+          <span>الرئيسية</span>
+        </NavLink>
+
         <NavLink
           to="/app/prices"
           className={({ isActive }) =>
@@ -20,18 +32,6 @@ export const PharmacyBottomNav: React.FC = () => {
         >
           <Search className="w-5 h-5" />
           <span>الأسعار</span>
-        </NavLink>
-
-        <NavLink
-          to="/app/suppliers"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition ${
-              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 hover:text-slate-800'
-            }`
-          }
-        >
-          <Truck className="w-5 h-5" />
-          <span>الموردون</span>
         </NavLink>
 
         <NavLink
@@ -63,18 +63,6 @@ export const PharmacyBottomNav: React.FC = () => {
         >
           <ClipboardList className="w-5 h-5" />
           <span>طلباتي</span>
-        </NavLink>
-
-        <NavLink
-          to="/app/profile"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition ${
-              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 hover:text-slate-800'
-            }`
-          }
-        >
-          <User className="w-5 h-5" />
-          <span>الملف</span>
         </NavLink>
       </div>
     </nav>

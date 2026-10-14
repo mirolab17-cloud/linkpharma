@@ -9,8 +9,6 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
   signOut as fbSignOut,
   sendPasswordResetEmail as fbResetEmail,
   updatePassword,
@@ -28,9 +26,6 @@ import { GoogleAuthProvider } from 'firebase/auth';
 import { useToastStore } from './useToastStore';
 import { setSystemCurrency } from '../utils/formatPrice';
 import { loginPush, logoutPush } from '../services/push';
-import { useNotificationStore } from './useNotificationStore';
-import { clearNotificationCache } from '../services/dataStorage';
-import { translateAuthError, TranslatedAuthError } from '../utils/authErrorTranslator';
 import { isProfileComplete } from '../utils/profile';
 
 // فترة التجربة الافتراضية بالأيام
@@ -44,9 +39,7 @@ interface AuthState {
   isPasswordUser: boolean;
   isGoogleUser: boolean;
   pendingGoogleCredential: { credential: any; email: string } | null;
-  lastAuthError: TranslatedAuthError | null;
   
-  clearAuthError: () => void;
   clearPendingGoogleCredential: () => void;
   setDefaultTrialDays: (days: number) => void;
   linkGoogleWithPassword: (password: string) => Promise<boolean>;
@@ -62,43 +55,6 @@ interface AuthState {
   getRemainingDays: () => number;
 }
 
-/** Wait until Firebase's auth listener has published the matching profile in Zustand. */
-function waitForUserProfile(uid: string, timeoutMs = 15000): Promise<UserProfile> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let unsubscribe: (() => void) | null = null;
-    let timeout: ReturnType<typeof setTimeout>;
-
-    const finish = (callback: (value: any) => void, value: any) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      unsubscribe?.();
-      callback(value);
-    };
-
-    const checkState = (state: AuthState) => {
-      if (state.user?.uid === uid) {
-        finish(resolve, state.user);
-      } else if (auth.currentUser?.uid === uid && state.lastAuthError) {
-        finish(reject, Object.assign(new Error(state.lastAuthError.message), {
-          code: state.lastAuthError.code,
-        }));
-      }
-    };
-
-    timeout = setTimeout(() => {
-      finish(reject, Object.assign(
-        new Error('تم تسجيل الدخول إلى Google لكن تعذر تحميل ملف المستخدم من Firestore خلال المهلة المحددة.'),
-        { code: 'auth/profile-timeout' },
-      ));
-    }, timeoutMs);
-
-    unsubscribe = useAuthStore.subscribe((state) => checkState(state));
-    checkState(useAuthStore.getState());
-  });
-}
-
 let activeGoogleSignInPromise: Promise<boolean> | null = null;
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -109,9 +65,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isPasswordUser: false,
   isGoogleUser: false,
   pendingGoogleCredential: null,
-  lastAuthError: null,
 
-  clearAuthError: () => set({ lastAuthError: null }),
   clearPendingGoogleCredential: () => set({ pendingGoogleCredential: null }),
   setDefaultTrialDays: (days: number) => set({ defaultTrialDays: days }),
 
@@ -140,21 +94,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return () => {};
     }
 
-    // التحقق من نتيجة إعادة التوجيه لـ Google OAuth (signInWithRedirect) في حال العودة من مسار خارجي
-    try {
-      getRedirectResult(auth)
-        .then((result) => {
-          if (result && result.user) {
-            set({ lastAuthError: null });
-          }
-        })
-        .catch((err) => {
-          console.warn('getRedirectResult warning:', err);
-          const translated = translateAuthError(err);
-          set({ lastAuthError: translated });
-        });
-    } catch (_) {}
-
     // استماع مباشر لإعدادات النظام العامة (أيام التجربة المحددة من الإدارة والعملة)
     let unsubSettings: (() => void) | null = null;
     let safetyTimer: any = null;
@@ -169,7 +108,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }, 5000);
 
     try {
-      unsubSettings = onSnapshot(doc(db, 'settings', 'public'), (settingsSnap) => {
+      unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (settingsSnap) => {
         if (settingsSnap.exists()) {
           const data = settingsSnap.data();
           if (typeof data.defaultTrialDays === 'number') {
@@ -179,11 +118,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             setSystemCurrency(data.currency);
           }
         }
-      }, () => {
-        // استخدام الإعدادات الافتراضية بهدوء في حال عدم تسجيل الدخول أو تأخر نشر القواعد
+      }, (err) => {
+        console.warn('Settings subscription error:', err);
       });
     } catch (e) {
-      console.warn('Failed to listen to public settings:', e);
+      console.warn('Failed to listen to settings:', e);
     }
 
     // استماع لحالة المصادقة السحابية في Firebase
@@ -198,8 +137,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!fbUser) {
         if (safetyTimer) clearTimeout(safetyTimer);
         logoutPush().catch(() => {});
-        useNotificationStore.getState().reset();
-        clearNotificationCache();
         set({ user: null, loading: false, initialized: true, isPasswordUser: false, isGoogleUser: false });
         return;
       }
@@ -222,16 +159,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const userDocRef = doc(db, 'users', fbUser.uid);
         let isRuntimeAdmin = false;
 
-        // التحقق مما إذا كان المستخدم مسجلاً في مجموعة admins أو يحمل custom claims أو المشرف الأساسي
+        // التحقق مما إذا كان المستخدم مسجلاً في مجموعة المشرفين أو قائمة إيميلات المدراء بالإعدادات السحابية
         try {
-          const tokenRes = await fbUser.getIdTokenResult().catch(() => null);
-          if (tokenRes?.claims?.admin === true) {
+          const [adminSnap, settingsSnap] = await Promise.all([
+            getDoc(doc(db, 'admins', fbUser.uid)).catch(() => null),
+            getDoc(doc(db, 'settings', 'system')).catch(() => null),
+          ]);
+          if (adminSnap && adminSnap.exists()) {
             isRuntimeAdmin = true;
-          } else {
-            const adminSnap = await getDoc(doc(db, 'admins', fbUser.uid)).catch(() => null);
-            if (adminSnap && adminSnap.exists()) {
-              isRuntimeAdmin = true;
-            } else if (fbUser.email && fbUser.email.trim().toLowerCase() === 'mirolab17@gmail.com') {
+          }
+          if (settingsSnap && settingsSnap.exists()) {
+            const adminEmails: string[] = settingsSnap.data().adminEmails || [];
+            if (fbUser.email && adminEmails.map((e) => e.trim().toLowerCase()).includes(fbUser.email.trim().toLowerCase())) {
               isRuntimeAdmin = true;
             }
           }
@@ -247,7 +186,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           try {
             if (userSnap.exists()) {
               const profile = userSnap.data() as UserProfile;
-              // لا نعتبر الاسم الافتراضي أو الجوال غير المحلي ملفاً مكتملاً.
               profile.profileComplete = profile.role === 'admin' ? true : isProfileComplete(profile);
               const shouldBeAdmin = isRuntimeAdmin || profile.role === 'admin';
 
@@ -278,12 +216,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 isGoogleUser: isGoogle
               });
             } else {
-              // إنشاء ملف Google جديد وفق سياسة التجربة التي تسمح بها قواعد Firestore.
+              // مستخدم جديد يسجل لأول مرة عبر Google -> تفعيل مباشر بحساب نشط ومفتوح
               const now = Date.now();
-              const configuredTrialDays = Number(get().defaultTrialDays);
-              const activePeriodDays = Number.isFinite(configuredTrialDays) && configuredTrialDays > 0
-                ? Math.min(Math.floor(configuredTrialDays), 365)
-                : DEFAULT_TRIAL_DAYS;
+              const activePeriodDays = 365;
               const expiresAtMillis = now + activePeriodDays * 24 * 60 * 60 * 1000;
               const expiresAt = new Date(expiresAtMillis).toISOString();
 
@@ -292,12 +227,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 name: fbUser.displayName || fbUser.email?.split('@')[0] || (isRuntimeAdmin ? 'مدير النظام' : 'صيدلي جديد'),
                 email: fbUser.email || '',
                 role: isRuntimeAdmin ? 'admin' : 'pharmacy',
-                status: 'active',
-                subscriptionStatus: 'trial',
+                status: 'active', // تفعيل فوري ومباشر
+                subscriptionStatus: 'active', // تفعيل مباشر كحساب نشط بدون قيود
                 trialDays: activePeriodDays,
                 pharmacyName: isRuntimeAdmin ? 'الإدارة المركزية' : 'صيدليتي',
                 allowedSuppliers: [],
-                profileComplete: isRuntimeAdmin,
+                profileComplete: false,
                 createdAt: new Date().toISOString(),
                 ...(isRuntimeAdmin ? {} : {
                   subscriptionExpiresAt: expiresAt,
@@ -305,8 +240,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 }),
               };
 
-              // لا تخفِ رفض Firestore؛ يلزم حفظ الملف قبل إعلان اكتمال تسجيل الدخول.
-              await setDoc(userDocRef, newProfile);
+              await setDoc(userDocRef, newProfile).catch(() => null);
 
               if (isRuntimeAdmin) {
                 try {
@@ -330,34 +264,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             }
           } catch (innerErr) {
             console.error('Error handling user doc snapshot:', innerErr);
-            set({
-              loading: false,
-              initialized: true,
-              lastAuthError: translateAuthError(innerErr),
-            });
+            set({ loading: false, initialized: true });
           }
         }, (snapErr) => {
           clearTimeout(docTimeout);
           if (safetyTimer) clearTimeout(safetyTimer);
           console.error('User doc onSnapshot error:', snapErr);
-          set({
-            loading: false,
-            initialized: true,
-            lastAuthError: translateAuthError(snapErr),
-          });
+          set({ loading: false, initialized: true });
         });
       } catch (err: any) {
         clearTimeout(docTimeout);
         if (safetyTimer) clearTimeout(safetyTimer);
         console.error('Error in auth state changed:', err);
-        set({
-          user: null,
-          loading: false,
-          initialized: true,
-          isPasswordUser: false,
-          isGoogleUser: false,
-          lastAuthError: translateAuthError(err),
-        });
+        set({ user: null, loading: false, initialized: true, isPasswordUser: false, isGoogleUser: false });
       }
     });
 
@@ -370,38 +289,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   loginWithEmail: async (email, pass) => {
-    set({ loading: true, lastAuthError: null });
+    set({ loading: true });
     try {
       if (!isFirebaseConfigured) {
         const localUsers = JSON.parse(localStorage.getItem('pharma_db_users') || '[]');
-        const found = localUsers.find((u: any) => u.email === email.trim());
+        const found = localUsers.find((u: any) => u.email === email);
         if (found) {
           localStorage.setItem('pharma_local_user', JSON.stringify(found));
-          set({ user: found, loading: false, lastAuthError: null });
+          set({ user: found, loading: false });
           useToastStore.getState().success(`أهلاً بك مجدداً`);
           return true;
         }
-        const err = translateAuthError({ code: 'auth/user-not-found' });
-        set({ lastAuthError: err, loading: false });
-        useToastStore.getState().error(err.message);
+        useToastStore.getState().error('البريد الإلكتروني غير مسجل.');
+        set({ loading: false });
         return false;
       }
 
-      await signInWithEmailAndPassword(auth, email.trim(), pass);
-      set({ lastAuthError: null, loading: false });
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
       useToastStore.getState().success('تم تسجيل الدخول بنجاح');
       return true;
     } catch (error: any) {
       set({ loading: false });
-      const translated = translateAuthError(error);
-      set({ lastAuthError: translated });
-      useToastStore.getState().error(`${translated.title}: ${translated.message}`);
+      let msg = 'فشل تسجيل الدخول. تأكد من صحة البريد وكلمة المرور.';
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        msg = 'البريد الإلكتروني أو كلمة المرور غير صحيحة.';
+      } else if (error.code === 'auth/too-many-requests') {
+        msg = 'تم حظر المحاولات مؤقتاً بسبب تكرار المحاولات الخاطئة. انتظر قليلاً.';
+      }
+      useToastStore.getState().error(msg);
       return false;
     }
   },
 
   signupWithEmail: async (email, pass, name) => {
-    set({ loading: true, lastAuthError: null });
+    set({ loading: true });
     try {
       const now = Date.now();
       const expiresAtMillis = now + DEFAULT_TRIAL_DAYS * 24 * 60 * 60 * 1000;
@@ -428,8 +349,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         existingUsers.push(newLocalUser);
         localStorage.setItem('pharma_db_users', JSON.stringify(existingUsers));
         localStorage.setItem('pharma_local_user', JSON.stringify(newLocalUser));
-        set({ user: newLocalUser, loading: false, lastAuthError: null });
-        useToastStore.getState().success('أهلاً بك! تم تفعيل تجربتك المجانية بنجاح.');
+        set({ user: newLocalUser, loading: false });
+        useToastStore.getState().success('أهلاً بك! تم تفعيل تجربتك المجانية لمدة 7 أيام بنجاح.');
         return true;
       }
 
@@ -455,7 +376,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         trialDays: isRuntimeAdmin ? 0 : DEFAULT_TRIAL_DAYS,
         pharmacyName: isRuntimeAdmin ? 'الإدارة المركزية' : 'صيدليتي',
         allowedSuppliers: [],
-        profileComplete: isRuntimeAdmin,
+        profileComplete: false,
         createdAt: new Date().toISOString(),
         ...(isRuntimeAdmin ? {} : {
           subscriptionExpiresAt: expiresAt,
@@ -464,14 +385,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       };
 
       await setDoc(doc(db, 'users', cred.user.uid), newProfile);
-      set({ user: newProfile, loading: false, lastAuthError: null });
-      useToastStore.getState().success('أهلاً بك! تم إنشاء وتفعيل حسابك بنجاح.');
+      set({ user: newProfile, loading: false });
+      useToastStore.getState().success('أهلاً بك! تم تفعيل تجربتك المجانية لمدة 7 أيام بنجاح.');
       return true;
     } catch (error: any) {
       set({ loading: false });
-      const translated = translateAuthError(error);
-      set({ lastAuthError: translated });
-      useToastStore.getState().error(`${translated.title}: ${translated.message}`);
+      let msg = 'تعذر إنشاء الحساب.';
+      if (error.code === 'auth/email-already-in-use') {
+        msg = 'هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول.';
+      } else if (error.code === 'auth/weak-password') {
+        msg = 'كلمة المرور ضعيفة جداً. استخدم 6 خانات على الأقل.';
+      }
+      useToastStore.getState().error(msg);
       return false;
     }
   },
@@ -482,58 +407,42 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     activeGoogleSignInPromise = (async () => {
-      set({ loading: true, lastAuthError: null });
+      set({ loading: true });
       try {
         if (!isFirebaseConfigured) {
-          const err = translateAuthError({ code: 'auth/invalid-api-key', message: 'إعدادات Firebase غير مكتملة' });
-          set({ lastAuthError: err });
-          useToastStore.getState().error(err.message);
+          useToastStore.getState().error('يرجى التحقق من إعدادات الاتصال بـ Firebase.');
           return false;
         }
 
         // إذا كان المستخدم مسجلاً بالفعل
         if (auth.currentUser) {
-          await waitForUserProfile(auth.currentUser.uid);
-          set({ lastAuthError: null });
           return true;
         }
 
         try {
-          const credential = await signInWithPopup(auth, googleProvider);
-          await waitForUserProfile(credential.user.uid);
-          set({ lastAuthError: null });
+          await signInWithPopup(auth, googleProvider);
           return true;
         } catch (popupError: any) {
-          console.warn('Google signInWithPopup error:', popupError);
-
           // معالجة خطأ الـ internal assertion الناتج عن race-condition في نوافذ الـ popup
           if (
             popupError?.message?.includes('Pending promise was never set') ||
             popupError?.message?.includes('INTERNAL ASSERTION FAILED')
           ) {
-              console.warn('Checking auth.currentUser following popup assertion event...');
-              for (let i = 0; i < 5; i++) {
-                if (auth.currentUser) {
-                  await waitForUserProfile(auth.currentUser.uid);
-                  set({ lastAuthError: null });
-                  return true;
+            console.warn('Recovered from Firebase popup internal race condition:', popupError.message);
+            // إعطاء مهلة قصيرة لاكتمال ربط الحساب بواسطة onAuthStateChanged
+            for (let i = 0; i < 5; i++) {
+              if (auth.currentUser) {
+                return true;
               }
               await new Promise((r) => setTimeout(r, 200));
             }
-            if (auth.currentUser) {
-              await waitForUserProfile(auth.currentUser.uid);
-              set({ lastAuthError: null });
-              return true;
-            }
+            return Boolean(auth.currentUser);
           }
 
-          // المستخدم أغلق النافذة بنفسه قبل الاختيار
           if (
             popupError?.code === 'auth/popup-closed-by-user' || 
             popupError?.code === 'auth/cancelled-popup-request'
           ) {
-            const translated = translateAuthError(popupError);
-            set({ lastAuthError: translated });
             return false;
           }
 
@@ -550,16 +459,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 email,
               },
             });
-            const translated = translateAuthError(error);
-            set({ lastAuthError: translated });
-            useToastStore.getState().info(translated.message);
+            useToastStore.getState().info('هذا البريد مسجل مسبقاً بكلمة مرور. أدخل كلمة المرور لربط حساب Google تلقائياً.');
             return false;
           }
         }
-
-        const translated = translateAuthError(error);
-        set({ lastAuthError: translated });
-        useToastStore.getState().error(`${translated.title}: ${translated.message}`);
+        if (
+          error.code === 'auth/popup-closed-by-user' || 
+          error.code === 'auth/cancelled-popup-request' ||
+          error?.message?.includes('Pending promise was never set') ||
+          error?.message?.includes('INTERNAL ASSERTION FAILED')
+        ) {
+          return Boolean(auth.currentUser);
+        }
+        useToastStore.getState().error('تعذر تسجيل الدخول عبر Google: ' + (error.message || ''));
         return false;
       } finally {
         set({ loading: false });
@@ -643,8 +555,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     try {
-      useNotificationStore.getState().reset();
-      clearNotificationCache();
       if (isFirebaseConfigured) {
         await fbSignOut(auth);
       }
@@ -655,8 +565,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (e) {
       console.error(e);
       await logoutPush();
-      useNotificationStore.getState().reset();
-      clearNotificationCache();
       set({ user: null });
     }
   },

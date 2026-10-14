@@ -16,11 +16,16 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    // Admin authorization: Relies solely on custom claims or trusted admins collection
+    // Bootstrapped Admin: Determined via custom claims, admins collection, or adminEmails in system settings
     function isAdmin() {
       return isSignedIn() && (
         (request.auth.token.keys().hasAll(['admin']) && request.auth.token.admin == true) ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (
+          exists(/databases/$(database)/documents/settings/system) &&
+          'adminEmails' in get(/databases/$(database)/documents/settings/system).data &&
+          request.auth.token.email in get(/databases/$(database)/documents/settings/system).data.adminEmails
+        )
       );
     }
 
@@ -61,9 +66,9 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // System Settings: Public settings readable by anyone; notification settings for signed-in users; sensitive settings (system, gemini, etc.) strictly for admin
+    // System Settings (Gemini key restricted strictly to admins; general settings readable by signed-in users)
     match /settings/{settingId} {
-      allow read: if settingId == 'public' || (settingId == 'notifications' && isSignedIn()) || isAdmin();
+      allow read: if settingId == 'gemini' ? isAdmin() : isSignedIn();
       allow write: if isAdmin();
     }
 
@@ -73,17 +78,11 @@ service cloud.firestore {
       allow list: if isAdmin();
 
       // Instant registration: User can create their own initial profile with trial period configured by admin
-      // Strict key allowlist via hasOnly prevents ghost fields
+      // Admins can create any user
       allow create: if isSignedIn() && (
         isAdmin() ||
         (
           isCurrentUser(userId) &&
-          request.resource.data.keys().hasOnly([
-            'uid', 'name', 'email', 'role', 'status', 'subscriptionStatus',
-            'subscriptionExpiresAt', 'subscriptionExpiresAtMillis', 'trialDays',
-            'pharmacyName', 'phone', 'address', 'city', 'commercialRegister',
-            'profileComplete', 'allowedSuppliers', 'createdAt', 'updatedAt'
-          ]) &&
           request.resource.data.role == 'pharmacy' &&
           request.resource.data.status == 'active' &&
           request.resource.data.subscriptionStatus == 'trial' &&
@@ -92,13 +91,15 @@ service cloud.firestore {
         )
       );
 
-      // Users cannot elevate their role, status, subscription, or write unpermitted fields
+      // Users cannot change their role, status, subscription, or allowedSuppliers
       allow update: if isAdmin() || (
         isCurrentUser(userId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'name', 'pharmacyName', 'phone', 'address', 'city',
-          'commercialRegister', 'profileComplete', 'updatedAt'
-        ])
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.status == resource.data.status &&
+        (!('subscriptionStatus' in resource.data) || request.resource.data.subscriptionStatus == resource.data.subscriptionStatus) &&
+        (!('subscriptionExpiresAt' in resource.data) || request.resource.data.subscriptionExpiresAt == resource.data.subscriptionExpiresAt) &&
+        (!('subscriptionExpiresAtMillis' in resource.data) || request.resource.data.subscriptionExpiresAtMillis == resource.data.subscriptionExpiresAtMillis) &&
+        (!('allowedSuppliers' in resource.data) || request.resource.data.allowedSuppliers == resource.data.allowedSuppliers)
       );
 
       allow delete: if isAdmin();
@@ -158,69 +159,24 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Notifications collection:
-    // Regular users cannot broadcast with userId=='all'. Only admins can manage broadcasts & stats.
+    // Notifications
     match /notifications/{notificationId} {
-      allow get: if isAdmin() || (
-        isSignedIn() && (
-          resource.data.userId == request.auth.uid ||
-          resource.data.userId == 'all' ||
-          !('audience' in resource.data) ||
-          resource.data.audience.type == 'all' ||
-          ('userIds' in resource.data.audience && request.auth.uid in resource.data.audience.userIds)
-        )
-      );
-
-      allow list: if isAdmin() || (
-        isSignedIn() && (
-          resource.data.userId == request.auth.uid ||
-          resource.data.userId == 'all' ||
-          !('audience' in resource.data) ||
-          resource.data.audience.type == 'all' ||
-          ('userIds' in resource.data.audience && request.auth.uid in resource.data.audience.userIds)
-        )
-      );
-
-      // Only admins can broadcast; regular users can only create private notifications for themselves
-      allow create: if isAdmin() || (
-        isSignedIn() &&
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.userId != 'all'
-      );
-
-      // Only admins can update notification documents (stats and content). Regular user interactions belong in notification_reads.
-      allow update: if isAdmin();
-
-      // Only admins or private owners can delete
-      allow delete: if isAdmin() || (
-        isSignedIn() &&
-        resource.data.userId == request.auth.uid &&
-        resource.data.userId != 'all'
-      );
-    }
-
-    // User-specific notification reads and interaction status
-    match /notification_reads/{readId} {
-      allow get, list: if isSignedIn() && (isAdmin() || resource.data.uid == request.auth.uid);
+      allow get: if isAdmin() || (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.userId == 'all'));
+      allow list: if isAdmin() || (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.userId == 'all'));
 
       allow create: if isSignedIn() && (
-        isAdmin() || (
-          request.resource.data.uid == request.auth.uid &&
-          readId == request.auth.uid + '_' + request.resource.data.notifId &&
-          request.resource.data.keys().hasOnly(['uid', 'notifId', 'readAt', 'shownCount', 'lastShownAt', 'dismissed'])
-        )
+        isAdmin() || 
+        request.resource.data.userId == request.auth.uid || 
+        request.resource.data.userId == 'all'
       );
 
-      allow update: if isSignedIn() && (
-        isAdmin() || (
-          resource.data.uid == request.auth.uid &&
-          request.resource.data.uid == request.auth.uid &&
-          request.resource.data.notifId == resource.data.notifId &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt', 'shownCount', 'lastShownAt', 'dismissed'])
-        )
+      allow update: if isAdmin() || (
+        isSignedIn() && 
+        (resource.data.userId == request.auth.uid || resource.data.userId == 'all') && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
       );
 
-      allow delete: if isSignedIn() && (isAdmin() || resource.data.uid == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
   }
 }

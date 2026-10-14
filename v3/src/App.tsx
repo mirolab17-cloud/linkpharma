@@ -19,16 +19,14 @@ import { Spinner, PharmacyBrandLoader } from './components/Loader';
 import { SubscriptionExpiredScreen } from './components/SubscriptionExpiredScreen';
 import { SubscriptionWarningBanner } from './components/SubscriptionWarningBanner';
 import { OfflineIndicator } from './components/OfflineIndicator';
-import { OnboardingGuide } from './components/OnboardingGuide';
 import { initPush } from './services/push';
-
-import { NotificationModalHost } from './components/NotificationModalHost';
-import { NotificationBannerHost } from './components/NotificationBannerHost';
-import { useNotificationStore } from './store/useNotificationStore';
+import { invalidateCache } from './services/dataStorage';
+import { PullToRefresh } from './components/PullToRefresh';
+import { PageSkeleton } from './components/Skeleton';
+import { OnboardingGuide } from './components/OnboardingGuide';
 
 // Auth Pages
 import { Login } from './pages/auth/Login';
-const AdminLogin = lazy(() => import('./pages/admin/AdminLogin').then(m => ({ default: m.AdminLogin })));
 const PendingApproval = lazy(() => import('./pages/auth/PendingApproval').then(m => ({ default: m.PendingApproval })));
 
 // Admin Pages (Lazy loaded to reduce initial bundle size)
@@ -39,10 +37,10 @@ const Suppliers = lazy(() => import('./pages/admin/Suppliers').then(m => ({ defa
 const ImportPrices = lazy(() => import('./pages/admin/ImportPrices').then(m => ({ default: m.ImportPrices })));
 const Pharmacies = lazy(() => import('./pages/admin/Pharmacies').then(m => ({ default: m.Pharmacies })));
 const AdminOrders = lazy(() => import('./pages/admin/Orders').then(m => ({ default: m.AdminOrders })));
-const AdminNotifications = lazy(() => import('./pages/admin/Notifications').then(m => ({ default: m.Notifications })));
 
 // Pharmacy Pages (Prices loaded directly or fast-suspensed)
 import { PharmacyPrices } from './pages/pharmacy/Prices';
+const PharmacyHome = lazy(() => import('./pages/pharmacy/Home').then(m => ({ default: m.PharmacyHome })));
 const PharmacySuppliers = lazy(() => import('./pages/pharmacy/Suppliers').then(m => ({ default: m.PharmacySuppliers })));
 const PharmacyCart = lazy(() => import('./pages/pharmacy/Cart').then(m => ({ default: m.PharmacyCart })));
 const MyOrders = lazy(() => import('./pages/pharmacy/MyOrders').then(m => ({ default: m.MyOrders })));
@@ -86,19 +84,30 @@ const AdminLayout: React.FC = () => {
 // ======================= Pharmacy Layout =======================
 const PharmacyLayout: React.FC = () => {
   const { user } = useAuthStore();
+  // السحب للتحديث: نفرغ الكاش ثم نعيد تركيب الصفحة الحالية ليعاد جلب بياناتها
+  const [refreshKey, setRefreshKey] = useState(0);
+  const handleRefresh = React.useCallback(async () => {
+    invalidateCache();
+    setRefreshKey((k) => k + 1);
+    await new Promise((resolve) => setTimeout(resolve, 700));
+  }, []);
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col pb-16 md:pb-0">
-      <Navbar />
-      <NotificationBannerHost />
-      <SubscriptionWarningBanner />
-      <main className="flex-1 min-w-0">
-        <Suspense fallback={<PageFallback />}>
-          <Outlet />
-        </Suspense>
-      </main>
-      <PharmacyBottomNav />
-      {user?.role === 'pharmacy' && user.profileComplete && <OnboardingGuide />}
-    </div>
+    <PullToRefresh onRefresh={handleRefresh}>
+      <div className="min-h-screen bg-slate-50 flex flex-col pb-16 md:pb-0">
+        <Navbar />
+        <SubscriptionWarningBanner />
+        <main className="flex-1 min-w-0">
+          <Suspense fallback={<PageSkeleton />}>
+            <div key={refreshKey}>
+              <Outlet />
+            </div>
+          </Suspense>
+        </main>
+        <PharmacyBottomNav />
+        {user?.role === 'pharmacy' && user.profileComplete && <OnboardingGuide />}
+      </div>
+    </PullToRefresh>
   );
 };
 
@@ -211,11 +220,11 @@ const RootRedirect: React.FC = () => {
     return <Navigate to="/app/profile" replace />;
   }
 
-  return <Navigate to="/app/prices" replace />;
+  return <Navigate to="/app/home" replace />;
 };
 
 export default function App() {
-  const { user, initializeAuth } = useAuthStore();
+  const { initializeAuth } = useAuthStore();
   const { initializeTheme } = useThemeStore();
 
   useEffect(() => {
@@ -224,15 +233,6 @@ export default function App() {
     const unsub = initializeAuth();
     return () => unsub();
   }, [initializeAuth, initializeTheme]);
-
-  useEffect(() => {
-    if (user?.uid) {
-      const unsubNotifs = useNotificationStore.getState().init(user.uid, user.role);
-      return () => unsubNotifs();
-    } else {
-      useNotificationStore.getState().reset();
-    }
-  }, [user?.uid, user?.role]);
 
   if (!isFirebaseConfigured) {
     return (
@@ -260,10 +260,9 @@ export default function App() {
 
   return (
     <HashRouter>
-      {/* حاوية الإشعارات العائمة ومؤشر عدم الاتصال والنافذة المنبثقة الترحيبية */}
+      {/* حاوية الإشعارات العائمة ومؤشر عدم الاتصال */}
       <ToastContainer />
       <OfflineIndicator />
-      <NotificationModalHost />
 
       <Routes>
         {/* المسار الجذري */}
@@ -273,8 +272,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Navigate to="/login" replace />} />
 
-        {/* بوابة دخول الإدارة المركزية */}
-        <Route path="/admin/login" element={<Suspense fallback={<PageFallback />}><AdminLogin /></Suspense>} />
+        {/* مدخل الإدارة محول تلقائياً إلى صفحة الدخول الموحدة */}
+        <Route path="/admin/login" element={<Navigate to="/login" replace />} />
 
         {/* صفحة بانتظار التفعيل */}
         <Route
@@ -302,7 +301,6 @@ export default function App() {
           <Route path="import" element={<ImportPrices />} />
           <Route path="pharmacies" element={<Pharmacies />} />
           <Route path="orders" element={<AdminOrders />} />
-          <Route path="notifications" element={<AdminNotifications />} />
         </Route>
 
         {/* مسارات تطبيق الصيدلية */}
@@ -314,7 +312,8 @@ export default function App() {
             </ProtectedPharmacyRoute>
           }
         >
-          <Route index element={<Navigate to="/app/prices" replace />} />
+          <Route index element={<Navigate to="/app/home" replace />} />
+          <Route path="home" element={<PharmacyHome />} />
           <Route path="prices" element={<PharmacyPrices />} />
           <Route path="suppliers" element={<PharmacySuppliers />} />
           <Route path="cart" element={<PharmacyCart />} />

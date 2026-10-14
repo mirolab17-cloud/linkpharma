@@ -23,6 +23,7 @@ import {
 } from '../../services/gemini';
 import { ProductMatcher, MatchResult } from '../../utils/fuzzyMatch';
 import { normalizeArabic } from '../../utils/arabicNormalize';
+import { classifyProduct } from '../../services/importQuality';
 import { formatCurrency } from '../../utils/formatPrice';
 import { formatGregorianDateTime } from '../../utils/formatDate';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -447,13 +448,13 @@ export const ImportPrices: React.FC = () => {
   // حفظ الصنف الجديد وربطه فوراً بالصف
   const handleSaveNewProductAndLink = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProdTradeName.trim() || !newProdActiveIngId) return;
+    if (!newProdTradeName.trim()) return;
 
     try {
       const savedProd = await saveProduct({
         tradeName: newProdTradeName.trim(),
         normalizedName: normalizeArabic(newProdTradeName.trim()),
-        activeIngredientId: newProdActiveIngId,
+        activeIngredientId: newProdActiveIngId || '',
         form: newProdForm,
         strength: newProdStrength.trim(),
         manufacturer: newProdManufacturer.trim(),
@@ -479,6 +480,41 @@ export const ImportPrices: React.FC = () => {
     } catch (err: any) {
       error('تعذر إنشاء الصنف: ' + err.message);
     }
+  };
+
+  // إنشاء كل الأصناف غير المربوطة دفعة واحدة، مع تجنب الأسماء المكررة داخل الملف وقاعدة البيانات.
+  const handleCreateAllUnlinked = async () => {
+    const unlinked = matchRows.filter((r) => r.status === 'none' && !r.selectedProductId && r.originalName.trim());
+    if (!unlinked.length) { info('لا توجد أصناف غير مربوطة لإضافتها.'); return; }
+    setLoading(true);
+    try {
+      const known = new Map(products.map((p) => [normalizeArabic(p.tradeName), p]));
+      const byName = new Map<string, Product>();
+      let created = 0;
+      for (const row of unlinked) {
+        const key = normalizeArabic(row.originalName);
+        if (!key) continue;
+        let product = known.get(key) || byName.get(key);
+        if (!product) {
+          product = await saveProduct({
+            tradeName: row.originalName.trim(),
+            normalizedName: key,
+            activeIngredientId: '',
+            form: '', strength: '', manufacturer: '', category: classifyProduct(row.originalName),
+          });
+          byName.set(key, product);
+          created++;
+        }
+        setMatchRows((prev) => prev.map((item) => normalizeArabic(item.originalName) === key && item.status === 'none'
+          ? { ...item, selectedProductId: product!.id, status: 'exact' }
+          : item));
+      }
+      if (byName.size) setProducts((prev) => [...byName.values(), ...prev]);
+      success(`تم إنشاء ${created} صنف جديد وربط الأصناف المتكررة بالاسم نفسه. راجع النتائج قبل اعتماد الأسعار.`);
+    } catch (err: any) {
+      error('تعذر إكمال الإضافة الجماعية: ' + (err?.message || 'خطأ غير معروف') + '. راجع الأصناف التي تم إنشاؤها قبل إعادة المحاولة.');
+      await loadBaseData();
+    } finally { setLoading(false); }
   };
 
   // قبول كل المطابقات التلقائية
@@ -1349,6 +1385,15 @@ export const ImportPrices: React.FC = () => {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
+                  onClick={handleCreateAllUnlinked}
+                  disabled={loading || matchStats.none === 0}
+                  className="px-3.5 py-2 rounded-xl bg-indigo-50 text-indigo-800 hover:bg-indigo-100 border border-indigo-200 text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>إضافة كل الأصناف غير المربوطة ({matchStats.none})</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleAcceptAllAutoMatches}
                   className="px-3.5 py-2 rounded-xl bg-emerald-50 text-[#0f9d7a] hover:bg-emerald-100 border border-emerald-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
                 >
@@ -1779,13 +1824,13 @@ export const ImportPrices: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">المادة الفعالة *</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">المادة الفعالة (اختياري)</label>
             <select
               value={newProdActiveIngId}
               onChange={(e) => setNewProdActiveIngId(e.target.value)}
-              required
               className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a] bg-white"
             >
+              <option value="">بدون مادة فعالة / صنف غير دوائي</option>
               {ingredients.map((i) => (
                 <option key={i.id} value={i.id}>
                   {i.name}

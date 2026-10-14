@@ -28,8 +28,8 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { isProfileComplete, triggerHaptic, playSuccessSound } from '../../utils/profile';
 import { EmptyState } from '../../components/EmptyState';
+import { isProfileComplete, triggerHaptic, playSuccessSound } from '../../utils/profile';
 
 export const PharmacyCart: React.FC = () => {
   const { user } = useAuthStore();
@@ -196,7 +196,7 @@ export const PharmacyCart: React.FC = () => {
     if (!user) return;
 
     if (!isProfileComplete(user)) {
-      warning('يرجى استكمال بيانات ملف الصيدلية أولاً قبل إرسال الطلبية.');
+      warning('لا يمكن إرسال الطلبية قبل إكمال الاسم والعنوان ورقم جوال يبدأ بـ 05 ويتكون من 10 أرقام.');
       navigate('/app/profile');
       return;
     }
@@ -252,7 +252,7 @@ export const PharmacyCart: React.FC = () => {
   // إرسال لجميع الموردين واحداً تلو الآخر
   const handleSendAllOrders = async () => {
     if (!isProfileComplete(user)) {
-      warning('لا يمكن إرسال الطلبية قبل إكمال اسم الصيدلية أو الصيدلي والعنوان ورقم جوال يبدأ بـ 05 ويتكون من 10 أرقام.');
+      warning('يرجى إكمال الاسم والعنوان ورقم الجوال قبل إرسال الطلبات.');
       navigate('/app/profile');
       return;
     }

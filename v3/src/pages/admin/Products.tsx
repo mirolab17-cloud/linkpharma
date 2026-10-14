@@ -198,8 +198,8 @@ export const Products: React.FC = () => {
 
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tradeName.trim() || !activeIngredientId) {
-      error('يرجى تعبئة اسم الصنف واختيار المادة الفعالة.');
+    if (!tradeName.trim()) {
+      error('يرجى تعبئة اسم الصنف. المادة الفعالة اختيارية للأصناف غير الدوائية.');
       return;
     }
 
@@ -209,7 +209,7 @@ export const Products: React.FC = () => {
         id: editingProduct ? editingProduct.id : undefined,
         tradeName: tradeName.trim(),
         normalizedName: normalizeArabic(tradeName.trim()),
-        activeIngredientId,
+        activeIngredientId: activeIngredientId || '',
         form: form.trim(),
         strength: strength.trim(),
         manufacturer: manufacturer.trim(),
@@ -435,6 +435,7 @@ export const Products: React.FC = () => {
               className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-hidden focus:border-[#0f9d7a]"
             >
               <option value="all">كل المواد الفعالة ({ingredients.length})</option>
+              <option value="">بدون مادة فعالة / صنف غير دوائي</option>
               {ingredients.map((i) => (
                 <option key={i.id} value={i.id}>
                   {i.name}
@@ -619,8 +620,7 @@ export const Products: React.FC = () => {
           {/* قائمة البحث عن المادة الفعالة مع خيار إضافة جديدة مصغرة */}
           <div>
             <SearchSelect
-              label="المادة الفعالة"
-              required
+              label="المادة الفعالة (اختياري للأصناف غير الدوائية)"
               options={ingredientOptions}
               value={activeIngredientId}
               onChange={(id) => setActiveIngredientId(id)}
@@ -732,7 +732,7 @@ export const Products: React.FC = () => {
       >
         <form id="mini-ingredient-form" onSubmit={handleSaveMiniIngredient} className="space-y-3">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">اسم المادة الفعالة *</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">اسم المادة الفعالة (اختياري)</label>
             <input
               type="text"
               required

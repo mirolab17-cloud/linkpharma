@@ -52,6 +52,7 @@ export async function parseSpreadsheetFile(file: File, targetSheetName?: string)
     columnHeaders.push(XLSX.utils.encode_col(i)); // 'A', 'B', 'C', ...
   }
 
+  // احتفظ بأرقام الصفوف الأصلية حتى تكون تقارير الأخطاء دقيقة، مع إزالة الصفوف الفارغة بالكامل.
   const allRows = rawRows.map((row, idx) => ({
     rowNumber: idx + 1,
     cells: Array.from({ length: maxCols }, (_, colIdx) => {
@@ -90,10 +91,10 @@ export function processMappedRows(params: {
     const rawName = row.cells[nameColIdx] || '';
     const rawPriceCell = row.cells[priceColIdx] || '';
 
-    // تخطي الصفوف الفارغة بالكامل
-    if (!rawName.trim() && !rawPriceCell.trim()) {
-      continue;
-    }
+    // تخطي الصفوف الفارغة بالكامل حتى لو احتوى عمود غير مربوط على مسافة أو قيمة افتراضية.
+    if (!row.cells.some((cell) => String(cell ?? '').trim() !== '')) continue;
+    // صفوف لا تحتوي اسمًا ولا سعرًا لا يمكن استيرادها؛ تظل في التقرير فقط إن كان بها بيانات أخرى.
+    if (!rawName.trim() && !rawPriceCell.trim()) continue;
 
     const price = cleanPrice(rawPriceCell);
     const publicPrice = publicPriceColIdx !== undefined && publicPriceColIdx >= 0 ? cleanPrice(row.cells[publicPriceColIdx]) : null;

@@ -109,6 +109,15 @@ export const SearchSelect: React.FC<SearchSelectProps> = ({
             )}
           </div>
 
+          {/* خيار إزالة الاختيار متاح عند كون الحقل اختياريًا */}
+          {!required && value && (
+            <div className="p-1.5 border-b border-slate-100">
+              <button type="button" onClick={() => { onChange(''); setIsOpen(false); setSearchTerm(''); }} className="w-full text-right px-3 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 rounded-lg">
+                بدون مادة فعالة / إزالة الاختيار
+              </button>
+            </div>
+          )}
+
           {/* خيار إضافة عنصر جديد إن وُجد */}
           {onAddNewClick && (
             <div className="p-1.5 border-b border-slate-100 bg-emerald-50/50">
