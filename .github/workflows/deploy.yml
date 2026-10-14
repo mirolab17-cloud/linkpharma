@@ -62,6 +62,13 @@ jobs:
           npm run build
           mkdir -p ../dist/v2
           cp -r dist/. ../dist/v2/
+          cd ..
+          # Build v3 (latest pharmacy profile and mobile UX) and publish it under /v3/
+          cd v3
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v3
+          cp -r dist/. ../dist/v3/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
