@@ -45,3 +45,10 @@
 @keyframes brand-spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .animate-brand-float { animation: brand-float 3s ease-in-out infinite; }
 .animate-brand-spin { animation: brand-spin-slow 8s linear infinite; }
+
+
+html { scroll-behavior: smooth; }
+body { transition: background-color .25s ease, color .25s ease; }
+.dark body { background: #020617; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+@media (max-width: 640px) { button, a { min-height: 44px; } }

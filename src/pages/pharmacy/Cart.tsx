@@ -28,6 +28,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { isProfileComplete, triggerHaptic, playSuccessSound } from '../../utils/profile';
 import { EmptyState } from '../../components/EmptyState';
 
 export const PharmacyCart: React.FC = () => {
@@ -194,7 +195,7 @@ export const PharmacyCart: React.FC = () => {
   const handleSendSupplierOrder = async (supplierId: string) => {
     if (!user) return;
 
-    if (!user.profileComplete || !user.pharmacyName || !user.phone || !user.address) {
+    if (!isProfileComplete(user)) {
       warning('يرجى استكمال بيانات ملف الصيدلية أولاً قبل إرسال الطلبية.');
       navigate('/app/profile');
       return;
@@ -204,6 +205,7 @@ export const PharmacyCart: React.FC = () => {
     if (!group || group.items.length === 0) return;
 
     setSendingSupplierId(supplierId);
+    triggerHaptic([10, 35, 10]);
 
     try {
       // 1) إنشاء وحفظ الطلبية في Firestore بحالة sent
@@ -236,6 +238,8 @@ export const PharmacyCart: React.FC = () => {
 
       // 3) تفريغ بنود المورد من السلة بعد الإرسال
       clearSupplierItems(supplierId);
+      triggerHaptic([20, 50, 20]);
+      playSuccessSound();
       success(`تم تسجيل طلبية (${group.supplierName}) وفتح محادثة واتساب لإرسالها.`);
     } catch (err: any) {
       console.error('Failed to send order', err);
@@ -247,8 +251,8 @@ export const PharmacyCart: React.FC = () => {
 
   // إرسال لجميع الموردين واحداً تلو الآخر
   const handleSendAllOrders = async () => {
-    if (!user?.profileComplete) {
-      warning('يرجى استكمال بيانات ملف الصيدلية أولاً.');
+    if (!isProfileComplete(user)) {
+      warning('لا يمكن إرسال الطلبية قبل إكمال اسم الصيدلية أو الصيدلي والعنوان ورقم جوال يبدأ بـ 05 ويتكون من 10 أرقام.');
       navigate('/app/profile');
       return;
     }

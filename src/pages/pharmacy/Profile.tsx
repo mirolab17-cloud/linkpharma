@@ -12,7 +12,7 @@ import {
   Bell,
   CheckCircle2
 } from 'lucide-react';
-import { isValidPhone, cleanPhone } from '../../utils/phone';
+import { normalizeSaudiLocalPhone, isValidSaudiLocalPhone } from '../../utils/profile';
 import { useToastStore } from '../../store/useToastStore';
 import { getPushStatus, enablePush, PushStatus } from '../../services/push';
 
@@ -35,13 +35,13 @@ export const PharmacyProfile: React.FC = () => {
       return;
     }
 
-    if (!isValidPhone(phone)) {
-      useToastStore.getState().error('رقم الجوال غير صالح. يجب أن يحتوي على 8 إلى 15 رقماً بالصيغة الدولية.');
+    if (!isValidSaudiLocalPhone(phone)) {
+      useToastStore.getState().error('رقم الجوال غير صالح. أدخل رقماً يبدأ بـ 05 ويتكون من 10 أرقام، مثل 05XXXXXXXX.');
       return;
     }
 
     setSaving(true);
-    const cleaned = cleanPhone(phone);
+    const cleaned = normalizeSaudiLocalPhone(phone);
     const success = await updateUserProfile({
       pharmacyName: pharmacyName.trim(),
       address: address.trim(),
@@ -62,7 +62,7 @@ export const PharmacyProfile: React.FC = () => {
           <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="text-xs text-amber-800 leading-relaxed">
             <strong className="block text-sm font-bold mb-0.5">خطوة إلزامية لإكمال الحساب:</strong>
-            يرجى إكمال بيانات الصيدلية (الاسم، العنوان، ورقم الجوال) لتتمكن من مقارنة الأسعار وإرسال الطلبيات للموردين عبر واتساب.
+            يرجى إكمال بيانات الصيدلية (اسم الصيدلية أو الصيدلي، العنوان، ورقم الجوال المحلي) لتتمكن من مقارنة الأسعار وإرسال الطلبيات للموردين عبر واتساب.
           </div>
         </div>
       )}
@@ -84,7 +84,7 @@ export const PharmacyProfile: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              اسم الصيدلية <span className="text-rose-500">*</span>
+              اسم الصيدلية أو الصيدلي <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
@@ -95,7 +95,7 @@ export const PharmacyProfile: React.FC = () => {
                 required
                 value={pharmacyName}
                 onChange={(e) => setPharmacyName(e.target.value)}
-                placeholder="صيدلية الشفاء الجديدة"
+                placeholder="صيدلية الشفاء أو د. محمد"
                 className="w-full pr-10 pl-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-hidden focus:border-[#0f9d7a] focus:ring-1 focus:ring-[#0f9d7a]"
               />
             </div>
@@ -133,13 +133,13 @@ export const PharmacyProfile: React.FC = () => {
                 required
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="966501234567"
+                placeholder="05XXXXXXXX"
                 className="w-full pr-10 pl-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-hidden focus:border-[#0f9d7a] focus:ring-1 focus:ring-[#0f9d7a]"
                 dir="ltr"
               />
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
-              أدخل الرقم بالصيغة الدولية للأرقام بدون مسافات أو علامة + (مثال: 966501234567)
+              أدخل رقماً محلياً يبدأ بـ 05 ويتكون من 10 أرقام. لا يوجد تحقق برسالة SMS حالياً.
             </p>
           </div>
 

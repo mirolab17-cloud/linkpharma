@@ -18,7 +18,9 @@ import {
   User,
   Sparkles,
   ArrowRight,
-  Send
+  Send,
+  MessageCircle,
+  WifiOff
 } from 'lucide-react';
 import { SplashHero } from '../../components/SplashHero';
 import { PharmacyBrandLoader } from '../../components/Loader';
@@ -41,6 +43,8 @@ export const Login: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'google' | 'email' | 'register'>('google');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => localStorage.getItem('pharma_remember_me') !== 'off');
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
 
   // حقول تسجيل الدخول بالبريد
   const [email, setEmail] = useState('');
@@ -56,6 +60,17 @@ export const Login: React.FC = () => {
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetEmailInput, setResetEmailInput] = useState('');
   const [isResetting, setIsResetting] = useState(false);
+
+  useEffect(() => {
+    const online = () => setIsOnline(true);
+    const offline = () => setIsOnline(false);
+    window.addEventListener('online', online); window.addEventListener('offline', offline);
+    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('pharma_remember_me', rememberMe ? 'on' : 'off');
+  }, [rememberMe]);
 
   // إذا كان المستخدم مسجلاً بالفعل، يتم توجيهه تلقائياً وفقاً لصلاحيته
   useEffect(() => {
@@ -169,6 +184,7 @@ export const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-6 sm:py-12 px-4 sm:px-6 lg:px-8" dir="rtl">
+      {!isOnline && <div className="mb-4 max-w-6xl w-full mx-auto rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 text-xs font-bold flex items-center gap-2"><WifiOff className="w-4 h-4" /> لا يوجد اتصال بالإنترنت. تحقق من الشبكة ثم أعد المحاولة.</div>}
       {/* شبكة العرض الرئيسية */}
       <div className="max-w-6xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
         
@@ -471,6 +487,11 @@ export const Login: React.FC = () => {
               </form>
             )}
 
+            <div className="mt-4 p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-2">
+              <input id="remember-me" type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
+              <label htmlFor="remember-me" className="text-xs font-bold text-slate-700">تذكرني على هذا الجهاز</label>
+            </div>
+            <p className="mt-3 text-[11px] text-slate-500 leading-relaxed text-center">بدخولك أنت توافق على استخدام بيانات الحساب لتجهيز الطلبات فقط. لا نشارك بياناتك خارج أطراف التوريد اللازمة.</p>
             {/* نقاط الأمان والموثوقية */}
             <div className="pt-4 mt-4 border-t border-slate-100 space-y-2">
               <div className="flex items-center gap-2 text-[11px] text-slate-600 font-medium">
@@ -569,6 +590,9 @@ export const Login: React.FC = () => {
           </div>
         </div>
       )}
+      <a href="https://wa.me/?text=مرحباً، أحتاج مساعدة في تسجيل الدخول إلى LinkPharma" target="_blank" rel="noreferrer" className="fixed bottom-5 left-5 z-40 inline-flex items-center gap-2 rounded-full bg-[#25D366] text-white px-4 py-3 text-xs font-black shadow-lg hover:scale-105 transition-transform" aria-label="مساعدة عبر واتساب">
+        <MessageCircle className="w-4 h-4" /> مساعدة واتساب
+      </a>
     </div>
   );
 };

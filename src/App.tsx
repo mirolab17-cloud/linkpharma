@@ -19,6 +19,7 @@ import { Spinner, PharmacyBrandLoader } from './components/Loader';
 import { SubscriptionExpiredScreen } from './components/SubscriptionExpiredScreen';
 import { SubscriptionWarningBanner } from './components/SubscriptionWarningBanner';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { OnboardingGuide } from './components/OnboardingGuide';
 import { initPush } from './services/push';
 
 import { NotificationModalHost } from './components/NotificationModalHost';
@@ -84,6 +85,7 @@ const AdminLayout: React.FC = () => {
 
 // ======================= Pharmacy Layout =======================
 const PharmacyLayout: React.FC = () => {
+  const { user } = useAuthStore();
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col pb-16 md:pb-0">
       <Navbar />
@@ -95,6 +97,7 @@ const PharmacyLayout: React.FC = () => {
         </Suspense>
       </main>
       <PharmacyBottomNav />
+      {user?.role === 'pharmacy' && user.profileComplete && <OnboardingGuide />}
     </div>
   );
 };

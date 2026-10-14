@@ -31,6 +31,7 @@ import { loginPush, logoutPush } from '../services/push';
 import { useNotificationStore } from './useNotificationStore';
 import { clearNotificationCache } from '../services/dataStorage';
 import { translateAuthError, TranslatedAuthError } from '../utils/authErrorTranslator';
+import { isProfileComplete } from '../utils/profile';
 
 // فترة التجربة الافتراضية بالأيام
 export const DEFAULT_TRIAL_DAYS = 7;
@@ -246,6 +247,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           try {
             if (userSnap.exists()) {
               const profile = userSnap.data() as UserProfile;
+              // لا نعتبر الاسم الافتراضي أو الجوال غير المحلي ملفاً مكتملاً.
+              profile.profileComplete = profile.role === 'admin' ? true : isProfileComplete(profile);
               const shouldBeAdmin = isRuntimeAdmin || profile.role === 'admin';
 
               if (shouldBeAdmin && profile.role !== 'admin') {
@@ -294,7 +297,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 trialDays: activePeriodDays,
                 pharmacyName: isRuntimeAdmin ? 'الإدارة المركزية' : 'صيدليتي',
                 allowedSuppliers: [],
-                profileComplete: true,
+                profileComplete: isRuntimeAdmin,
                 createdAt: new Date().toISOString(),
                 ...(isRuntimeAdmin ? {} : {
                   subscriptionExpiresAt: expiresAt,
@@ -417,7 +420,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           trialDays: DEFAULT_TRIAL_DAYS,
           pharmacyName: 'صيدليتي',
           allowedSuppliers: [],
-          profileComplete: true,
+          profileComplete: false,
           createdAt: new Date().toISOString(),
         };
 
@@ -452,7 +455,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         trialDays: isRuntimeAdmin ? 0 : DEFAULT_TRIAL_DAYS,
         pharmacyName: isRuntimeAdmin ? 'الإدارة المركزية' : 'صيدليتي',
         allowedSuppliers: [],
-        profileComplete: true,
+        profileComplete: isRuntimeAdmin,
         createdAt: new Date().toISOString(),
         ...(isRuntimeAdmin ? {} : {
           subscriptionExpiresAt: expiresAt,
