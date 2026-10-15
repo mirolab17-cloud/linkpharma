@@ -128,6 +128,13 @@ jobs:
           mkdir -p ../dist/v11
           cp -r dist/. ../dist/v11/
           cd ..
+          # Build v12 (stable Android Google session recovery) under /v12/
+          cd v12
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v12
+          cp -r dist/. ../dist/v12/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

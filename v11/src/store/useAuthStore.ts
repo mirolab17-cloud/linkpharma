@@ -177,14 +177,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.warn('Failed to listen to settings:', e);
     }
 
-    // استهلاك نتيجة redirect إن وُجدت. حالة Auth نفسها هي المصدر النهائي، لذلك لا ننتظر هذه العملية.
-    getRedirectResult(auth).catch((error: any) => {
-      if (error?.code && !['auth/no-auth-event', 'auth/popup-closed-by-user'].includes(error.code)) {
-        console.warn('[auth] redirect result:', error.code);
-      }
-    });
-
-    // استماع لحالة المصادقة السحابية في Firebase
+    // استماع لحالة المصادقة السحابية قبل استهلاك نتيجة redirect.
+    // هذا الترتيب مهم على Android حتى لا تضيع إشارة تسجيل الدخول بين إعادة تحميل الصفحة.
     let unsubUserDoc: (() => void) | null = null;
 
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
@@ -394,6 +388,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     });
 
+    // بعد تركيب المستمع، نستهلك نتيجة Google redirect ونترك onAuthStateChanged
+    // يتولى تحميل الملف الشخصي والصلاحيات بنفس المسار المستخدم للبريد.
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) console.info('[auth] redirect returned uid=' + result.user.uid);
+    }).catch((error: any) => {
+      if (error?.code && !['auth/no-auth-event', 'auth/popup-closed-by-user'].includes(error.code)) {
+        console.warn('[auth] redirect result:', error.code);
+        useToastStore.getState().error('تعذر استعادة جلسة Google. حاول تسجيل الدخول مرة أخرى.');
+      }
+    });
+
     return () => {
       if (safetyTimer) clearTimeout(safetyTimer);
       if (unsubSettings) unsubSettings();
@@ -533,17 +538,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           return await waitForLoadedUser();
         }
 
+        const isMobile = typeof window !== 'undefined' && (window.matchMedia('(max-width: 768px)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
         try {
-          const isMobile = typeof window !== 'undefined' && (window.matchMedia('(max-width: 768px)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
-          if (isMobile) {
-            console.info('[auth] opening Google redirect on mobile');
-            await signInWithRedirect(auth, googleProvider);
-            return true;
-          }
-          console.info('[auth] opening Google popup');
+          console.info('[auth] opening Google popup' + (isMobile ? ' on mobile' : ''));
           const cred = await signInWithPopup(auth, googleProvider);
           console.info('[auth] popup returned uid=' + cred.user.uid);
-          return await waitForLoadedUser();
+          const loaded = await waitForLoadedUser(12000);
+          return loaded || Boolean(auth.currentUser);
         } catch (popupError: any) {
           // معالجة خطأ الـ internal assertion الناتج عن race-condition في نوافذ الـ popup
           if (
@@ -562,9 +563,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           }
 
           if (
-            popupError?.code === 'auth/popup-closed-by-user' || 
-            popupError?.code === 'auth/cancelled-popup-request'
+            popupError?.code === 'auth/popup-blocked' ||
+            popupError?.code === 'auth/operation-not-supported-in-this-environment' ||
+            (isMobile && popupError?.code === 'auth/popup-closed-by-user')
           ) {
+            console.info('[auth] popup unavailable; falling back to Google redirect');
+            await signInWithRedirect(auth, googleProvider);
+            return true;
+          }
+
+          if (popupError?.code === 'auth/cancelled-popup-request' || popupError?.code === 'auth/popup-closed-by-user') {
             return false;
           }
 

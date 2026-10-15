@@ -3,7 +3,6 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
   getAuth, 
   initializeAuth,
-  indexedDBLocalPersistence,
   browserLocalPersistence,
   browserPopupRedirectResolver,
   GoogleAuthProvider, 
@@ -77,7 +76,7 @@ export const db = (() => {
 export const auth = (() => {
   try {
     return initializeAuth(app, {
-      persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+      persistence: browserLocalPersistence,
       popupRedirectResolver: browserPopupRedirectResolver,
     });
   } catch {
