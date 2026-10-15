@@ -18,6 +18,7 @@ import {
   onAuthStateChanged,
   getRedirectResult,
   signInWithRedirect,
+  signInWithPopup,
   User as FirebaseUser
 } from 'firebase/auth';
 import { 
@@ -230,6 +231,7 @@ export {
   onAuthStateChanged,
   getRedirectResult,
   signInWithRedirect,
+  signInWithPopup,
   collection,
   doc,
   getDoc,
