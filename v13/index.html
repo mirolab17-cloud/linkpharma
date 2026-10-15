@@ -97,6 +97,25 @@
   </head>
   <body class="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-emerald-500 selection:text-white">
     <div id="root"></div>
+    <script>
+      // v13 cache recovery: remove stale PWA assets from older blank-screen builds once.
+      (function () {
+        try {
+          var key = 'pharma_v13_cache_recovered';
+          if (!sessionStorage.getItem(key) && 'serviceWorker' in navigator) {
+            sessionStorage.setItem(key, '1');
+            Promise.all([
+              navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                return Promise.all(registrations.map(function (registration) { return registration.unregister(); }));
+              }),
+              'caches' in window ? caches.keys().then(function (keys) {
+                return Promise.all(keys.map(function (cacheName) { return caches.delete(cacheName); }));
+              }) : Promise.resolve()
+            ]).then(function () { window.location.reload(); });
+          }
+        } catch (_) {}
+      })();
+    </script>
     <script type="module" src="src/main.tsx"></script>
   </body>
 </html>
