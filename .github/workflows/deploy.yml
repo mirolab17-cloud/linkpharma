@@ -121,6 +121,13 @@ jobs:
           mkdir -p ../dist/v10
           cp -r dist/. ../dist/v10/
           cd ..
+          # Build v11 (mobile redirect auth and resilient session recovery) under /v11/
+          cd v11
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v11
+          cp -r dist/. ../dist/v11/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
