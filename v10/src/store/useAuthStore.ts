@@ -16,6 +16,8 @@ import {
   EmailAuthProvider,
   linkWithCredential,
   onAuthStateChanged,
+  getRedirectResult,
+  signInWithRedirect,
   doc,
   getDoc,
   setDoc,
@@ -85,6 +87,28 @@ const clearCachedProfile = () => {
   try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {}
 };
 
+const profileFallback = (fbUser: any, cached?: UserProfile | null): UserProfile => ({
+  uid: fbUser.uid,
+  name: cached?.name || fbUser.displayName || fbUser.email?.split('@')[0] || 'مستخدم فارما لينك',
+  email: cached?.email || fbUser.email || '',
+  role: cached?.role || 'pharmacy',
+  status: cached?.status || 'active',
+  subscriptionStatus: cached?.subscriptionStatus || 'trial',
+  trialDays: cached?.trialDays || DEFAULT_TRIAL_DAYS,
+  pharmacyName: cached?.pharmacyName || 'صيدليتي',
+  ownerName: cached?.ownerName,
+  phone: cached?.phone,
+  address: cached?.address,
+  addressDetail: cached?.addressDetail,
+  governorate: cached?.governorate,
+  city: cached?.city,
+  allowedSuppliers: cached?.allowedSuppliers || [],
+  profileComplete: cached?.profileComplete === true || Boolean(cached && isProfileComplete(cached)),
+  createdAt: cached?.createdAt || new Date().toISOString(),
+  subscriptionExpiresAt: cached?.subscriptionExpiresAt,
+  subscriptionExpiresAtMillis: cached?.subscriptionExpiresAtMillis,
+});
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   loading: true,
@@ -152,6 +176,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (e) {
       console.warn('Failed to listen to settings:', e);
     }
+
+    // استهلاك نتيجة redirect إن وُجدت. حالة Auth نفسها هي المصدر النهائي، لذلك لا ننتظر هذه العملية.
+    getRedirectResult(auth).catch((error: any) => {
+      if (error?.code && !['auth/no-auth-event', 'auth/popup-closed-by-user'].includes(error.code)) {
+        console.warn('[auth] redirect result:', error.code);
+      }
+    });
 
     // استماع لحالة المصادقة السحابية في Firebase
     let unsubUserDoc: (() => void) | null = null;
@@ -317,7 +348,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             }
           } catch (innerErr) {
             console.error('Error handling user doc snapshot:', innerErr);
-            set({ loading: false, initialized: true });
+            const fallback = profileFallback(fbUser, readCachedProfile(fbUser.uid));
+            writeCachedProfile(fallback);
+            set({ user: fallback, loading: false, initialized: true, isPasswordUser: isPassword, isGoogleUser: isGoogle });
           }
         };
 
@@ -327,26 +360,37 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           lastUserSnap = userSnap;
           console.info('[auth] user doc snapshot exists=' + userSnap.exists() + ' fromCache=' + userSnap.metadata?.fromCache);
           void handleUserSnap(userSnap);
-        }, (snapErr) => {
+        }, async (snapErr) => {
           clearTimeout(docTimeout);
           if (safetyTimer) clearTimeout(safetyTimer);
           console.error('User doc onSnapshot error:', snapErr);
-          set({ loading: false, initialized: true });
+          // ننتظر فحص المدير القصير فقط، ولا نعيد المستخدم إلى الدخول بسبب خطأ قراءة مؤقت.
+          await Promise.race([adminCheck, new Promise<void>((resolve) => setTimeout(resolve, 1800))]);
+          const cached = get().user || readCachedProfile(fbUser.uid);
+          const fallback = profileFallback(fbUser, cached);
+          if (isRuntimeAdmin) {
+            fallback.role = 'admin';
+            fallback.status = 'active';
+            fallback.subscriptionStatus = 'active';
+            fallback.profileComplete = true;
+          }
+          writeCachedProfile(fallback);
+          set({ user: fallback, loading: false, initialized: true, isPasswordUser: isPassword, isGoogleUser: isGoogle });
           // لا نترك المستخدم عالقاً في صفحة الدخول بصمت: نوضح السبب
-          if (!get().user) {
             const code = (snapErr as any)?.code || '';
             useToastStore.getState().error(
               code === 'permission-denied'
                 ? 'تم تسجيل الدخول لكن Firestore رفض قراءة ملفك (permission-denied). يجب نشر قواعد firestore.rules الحديثة من لوحة Firebase.'
-                : 'تم تسجيل الدخول لكن تعذر تحميل ملفك الشخصي: ' + ((snapErr as any)?.message || code)
+                : 'تم تسجيل الدخول لكن تعذر تحديث ملفك الشخصي الآن. ستستمر الجلسة ويمكن إعادة المحاولة لاحقاً.'
             );
-          }
         });
       } catch (err: any) {
         clearTimeout(docTimeout);
         if (safetyTimer) clearTimeout(safetyTimer);
         console.error('Error in auth state changed:', err);
-        set({ user: null, loading: false, initialized: true, isPasswordUser: false, isGoogleUser: false });
+        const fallback = readCachedProfile(fbUser.uid) || profileFallback(fbUser);
+        writeCachedProfile(fallback);
+        set({ user: fallback, loading: false, initialized: true, isPasswordUser: isPassword, isGoogleUser: isGoogle });
       }
     });
 
@@ -490,6 +534,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
 
         try {
+          const isMobile = typeof window !== 'undefined' && (window.matchMedia('(max-width: 768px)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+          if (isMobile) {
+            console.info('[auth] opening Google redirect on mobile');
+            await signInWithRedirect(auth, googleProvider);
+            return true;
+          }
           console.info('[auth] opening Google popup');
           const cred = await signInWithPopup(auth, googleProvider);
           console.info('[auth] popup returned uid=' + cred.user.uid);

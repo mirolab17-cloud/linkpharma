@@ -36,12 +36,12 @@ export const Login: React.FC = () => {
   useEffect(() => { localStorage.setItem('pharma_remember_me', rememberMe ? 'on' : 'off'); getPublicLoginSettings().then(s => { setLoginWhatsApp(s.loginWhatsApp); setLoginWhatsAppEnabled(s.loginWhatsAppEnabled); }).catch(() => {}); }, [rememberMe]);
 
   // الحساب موجود في Firebase لكن الملف الشخصي لم يصل بعد => شاشة تحميل بدل صفحة الدخول
-  const waitingForProfile = initialized && !user && Boolean(auth.currentUser) && !gaveUpWaiting;
+  const waitingForProfile = Boolean(auth.currentUser) && !user && !gaveUpWaiting;
   const showBootLoader = !initialized || waitingForProfile;
 
   useEffect(() => {
     if (!waitingForProfile) return;
-    const t = setTimeout(() => setGaveUpWaiting(true), 12000);
+    const t = setTimeout(() => setGaveUpWaiting(true), 20000);
     return () => clearTimeout(t);
   }, [waitingForProfile]);
 

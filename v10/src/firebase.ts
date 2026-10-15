@@ -18,6 +18,8 @@ import {
   linkWithCredential,
   fetchSignInMethodsForEmail,
   onAuthStateChanged,
+  getRedirectResult,
+  signInWithRedirect,
   User as FirebaseUser
 } from 'firebase/auth';
 import { 
@@ -76,6 +78,7 @@ export const auth = (() => {
   try {
     return initializeAuth(app, {
       persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+      popupRedirectResolver: browserPopupRedirectResolver,
     });
   } catch {
     return getAuth(app);
@@ -230,6 +233,8 @@ export {
   linkWithCredential,
   fetchSignInMethodsForEmail,
   onAuthStateChanged,
+  getRedirectResult,
+  signInWithRedirect,
   collection,
   doc,
   getDoc,
