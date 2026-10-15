@@ -142,6 +142,13 @@ jobs:
           mkdir -p ../dist/v13
           cp -r dist/. ../dist/v13/
           cd ..
+          # Build v14 (v13 + Google login loop fix: Firestore timeout fallback and redirect diagnostics) under /v14/
+          cd v14
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v14
+          cp -r dist/. ../dist/v14/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
