@@ -114,6 +114,13 @@ jobs:
           mkdir -p ../dist/v9
           cp -r dist/. ../dist/v9/
           cd ..
+          # Build v10 (catalog import, normalized product matching and persistent notifications) under /v10/
+          cd v10
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v10
+          cp -r dist/. ../dist/v10/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
