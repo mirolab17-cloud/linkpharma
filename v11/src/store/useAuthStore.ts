@@ -8,7 +8,6 @@ import {
   isFirebaseConfigured,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInWithPopup,
   signOut as fbSignOut,
   sendPasswordResetEmail as fbResetEmail,
   updatePassword,
@@ -538,46 +537,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           return await waitForLoadedUser();
         }
 
-        const isMobile = typeof window !== 'undefined' && (window.matchMedia('(max-width: 768px)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
-        try {
-          console.info('[auth] opening Google popup' + (isMobile ? ' on mobile' : ''));
-          const cred = await signInWithPopup(auth, googleProvider);
-          console.info('[auth] popup returned uid=' + cred.user.uid);
-          const loaded = await waitForLoadedUser(12000);
-          return loaded || Boolean(auth.currentUser);
-        } catch (popupError: any) {
-          // معالجة خطأ الـ internal assertion الناتج عن race-condition في نوافذ الـ popup
-          if (
-            popupError?.message?.includes('Pending promise was never set') ||
-            popupError?.message?.includes('INTERNAL ASSERTION FAILED')
-          ) {
-            console.warn('Recovered from Firebase popup internal race condition:', popupError.message);
-            // إعطاء مهلة قصيرة لاكتمال ربط الحساب بواسطة onAuthStateChanged
-            for (let i = 0; i < 5; i++) {
-              if (auth.currentUser) {
-                return true;
-              }
-              await new Promise((r) => setTimeout(r, 200));
-            }
-            return await waitForLoadedUser();
-          }
-
-          if (
-            popupError?.code === 'auth/popup-blocked' ||
-            popupError?.code === 'auth/operation-not-supported-in-this-environment' ||
-            (isMobile && popupError?.code === 'auth/popup-closed-by-user')
-          ) {
-            console.info('[auth] popup unavailable; falling back to Google redirect');
-            await signInWithRedirect(auth, googleProvider);
-            return true;
-          }
-
-          if (popupError?.code === 'auth/cancelled-popup-request' || popupError?.code === 'auth/popup-closed-by-user') {
-            return false;
-          }
-
-          throw popupError;
-        }
+        console.info('[auth] opening Google redirect');
+        await signInWithRedirect(auth, googleProvider);
+        return true;
       } catch (error: any) {
         if (error.code === 'auth/account-exists-with-different-credential') {
           const email = error.customData?.email || error.email;
@@ -592,14 +554,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             useToastStore.getState().info('هذا البريد مسجل مسبقاً بكلمة مرور. أدخل كلمة المرور لربط حساب Google تلقائياً.');
             return false;
           }
-        }
-        if (
-          error.code === 'auth/popup-closed-by-user' || 
-          error.code === 'auth/cancelled-popup-request' ||
-          error?.message?.includes('Pending promise was never set') ||
-          error?.message?.includes('INTERNAL ASSERTION FAILED')
-        ) {
-          return await waitForLoadedUser();
         }
         useToastStore.getState().error('تعذر تسجيل الدخول عبر Google: ' + (error.message || ''));
         return false;

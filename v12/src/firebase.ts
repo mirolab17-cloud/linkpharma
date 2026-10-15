@@ -9,7 +9,6 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
-  signInWithPopup as rawSignInWithPopup,
   sendPasswordResetEmail,
   updatePassword,
   reauthenticateWithCredential,
@@ -83,8 +82,6 @@ export const auth = (() => {
     return getAuth(app);
   }
 })();
-const signInWithPopup: typeof rawSignInWithPopup = (a, provider) =>
-  rawSignInWithPopup(a, provider, browserPopupRedirectResolver);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
@@ -224,7 +221,6 @@ export {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
-  signInWithPopup,
   sendPasswordResetEmail,
   updatePassword,
   reauthenticateWithCredential,
