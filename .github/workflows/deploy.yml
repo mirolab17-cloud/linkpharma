@@ -149,6 +149,13 @@ jobs:
           mkdir -p ../dist/v14
           cp -r dist/. ../dist/v14/
           cd ..
+          # Build v15 (v14 + v1-style auth: getAuth + popup login + auto-detect long polling) under /v15/
+          cd v15
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v15
+          cp -r dist/. ../dist/v15/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
