@@ -7,7 +7,7 @@
 1. اللغة الافتراضية للواجهة والنصوص التي يراها المستخدم: **العربية**، واتجاه الواجهة RTL.
 2. اسم المنصة الظاهر للمستخدم: **فارما لينك**، والعملة: **الشيكل ₪**.
 3. لا تستخدم OneSignal أو أي مكتبة/Worker/SDK خارجي للإشعارات. لا تضف `react-onesignal`، ولا `VITE_ONESIGNAL_APP_ID`، ولا `VITE_PUSH_WORKER_URL`، ولا `OneSignalSDKWorker.js`، ولا `services/push.ts`. الإشعارات الحالية داخل التطبيق فقط عبر Firestore و`NotificationBell`، ولا ترسل طلبات Push خارجية.
-4. تسجيل الدخول بحساب Google يجب أن يستخدم **Firebase Redirect فقط**. ممنوع `signInWithPopup` أو أي Popup بديل. يجب تركيب `onAuthStateChanged` قبل استهلاك `getRedirectResult`، واستخدام `browserLocalPersistence` حتى لا تظهر صفحة الدخول بعد تحديث Android/iPhone ما دامت جلسة Firebase صالحة.
+4. تسجيل الدخول بحساب Google يستخدم `signInWithPopup` أولاً (لأن الـ redirect يفقد الجلسة على GitHub Pages بسبب حجب تخزين نطاق Firebase)، ثم Firebase Redirect كاحتياط فقط إذا حُجبت النافذة. يجب تركيب `onAuthStateChanged` قبل استهلاك `getRedirectResult`، واستخدام `browserLocalPersistence` حتى لا تظهر صفحة الدخول بعد تحديث Android/iPhone ما دامت جلسة Firebase صالحة.
 5. لا تغيّر قواعد Firebase أو بيانات المستخدمين بلا فحص. لا تُعد إنشاء ملف المستخدم القديم كأنه مستخدم جديد. يجب الحفاظ على UID نفسه، الطلبات، السلة، الإشعارات الداخلية، والسجل.
 6. ملف الصيدلية لا يُعتبر مكتملاً إلا عند وجود: اسم الصيدلية، اسم المالك، المحافظة، المدينة/المنطقة، العنوان التفصيلي، ورقم جوال يبدأ بـ 05 ويتكون من 10 أرقام. لا يوجد تحقق SMS حالياً.
 7. المواقع محصورة في قطاع غزة. استخدم المحافظات والمدن الموجودة في `src/utils/gaza.ts`، واجعل إعدادات المدير قابلة للتوسعة دون قبول موقع خارج القطاع.

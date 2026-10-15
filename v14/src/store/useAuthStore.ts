@@ -17,6 +17,7 @@ import {
   onAuthStateChanged,
   getRedirectResult,
   signInWithRedirect,
+  signInWithPopup,
   doc,
   getDoc,
   setDoc,
@@ -547,7 +548,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           return await waitForLoadedUser();
         }
 
-        console.info('[auth] opening Google redirect');
+        // الأولوية للنافذة المنبثقة: الـ redirect يفقد الجلسة على المتصفحات التي تحجب تخزين نطاق Firebase
+        // عندما يكون authDomain مختلفاً عن نطاق الموقع (مثل GitHub Pages).
+        try {
+          console.info('[auth] opening Google popup');
+          await signInWithPopup(auth, googleProvider);
+          return await waitForLoadedUser();
+        } catch (popupError: any) {
+          const code = popupError?.code || '';
+          if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request' || code === 'auth/user-cancelled') {
+            useToastStore.getState().info('تم إلغاء تسجيل الدخول.');
+            return false;
+          }
+          const canFallback = code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment' || code === 'auth/web-storage-unsupported';
+          if (!canFallback) throw popupError;
+        }
+
+        // احتياط: النافذة المنبثقة محجوبة أو غير مدعومة -> redirect
+        console.info('[auth] popup unavailable, opening Google redirect');
         try { sessionStorage.setItem('pharma_google_redirect_pending', '1'); } catch {}
         await signInWithRedirect(auth, googleProvider);
         return true;
