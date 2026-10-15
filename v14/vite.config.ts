@@ -91,23 +91,8 @@ export default defineConfig(() => {
       },
     },
     build: {
-      rollupOptions: {
-        output: {
-          manualChunks: (id) => {
-            if (id.includes('node_modules')) {
-              if (id.includes('firebase')) return 'firebase-vendor';
-              if (id.includes('xlsx')) return 'xlsx-vendor';
-              if (id.includes('@google/genai')) return 'genai-vendor';
-              if (id.includes('lucide-react')) return 'icons-vendor';
-              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom') || id.includes('zustand')) {
-                return 'react-vendor';
-              }
-              if (id.includes('motion')) return 'motion-vendor';
-              return 'vendor';
-            }
-          },
-        },
-      },
+      // لا نستخدم manualChunks: تقسيم المكتبات يدوياً سبب اعتماداً دائرياً بين الملفات وصفحة بيضاء.
+      chunkSizeWarningLimit: 2000,
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
