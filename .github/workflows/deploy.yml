@@ -135,6 +135,13 @@ jobs:
           mkdir -p ../dist/v12
           cp -r dist/. ../dist/v12/
           cd ..
+          # Build v13 (OneSignal removed + mobile responsive UI) under /v13/
+          cd v13
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v13
+          cp -r dist/. ../dist/v13/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>فارما لينك v12 | منصة الصيدليات والموردين</title>
+    <meta name="description" content="منصة مقارنة أسعار الأدوية بين المستودعات وإرسال طلبيات الصيدليات عبر واتساب" />
+    <meta property="og:title" content="مقارنة أسعار الأدوية" />
+    <meta property="og:description" content="منصة مقارنة أسعار الأدوية بين المستودعات وإرسال طلبيات الصيدليات عبر واتساب" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function() {
+        try {
+          var origFetch = window.fetch;
+          if (origFetch) {
+            var _fetch = typeof origFetch === 'function' ? origFetch.bind(window) : origFetch;
+            Object.defineProperty(window, 'fetch', {
+              get: function() { return _fetch; },
+              set: function(val) { _fetch = val; },
+              configurable: true,
+              enumerable: true
+            });
+          }
+        } catch (_) {}
+
+        // Filter known browser extension and Firebase Auth internal popup race condition errors
+        function isIgnoredError(msg, file) {
+          if (!msg && !file) return false;
+          var s = (msg || '') + ' ' + (file || '');
+          return s.indexOf('chrome-extension') !== -1 ||
+                 s.indexOf('Cannot set property fetch') !== -1 ||
+                 s.indexOf('Pending promise was never set') !== -1 ||
+                 s.indexOf('INTERNAL ASSERTION FAILED') !== -1 ||
+                 s.indexOf('Could not reach Cloud Firestore backend') !== -1;
+        }
+
+        try {
+          var origError = console.error;
+          console.error = function() {
+            var first = arguments[0];
+            var msg = typeof first === 'string' ? first : (first && first.message ? first.message : '');
+            if (isIgnoredError(msg)) {
+              console.warn.apply(console, arguments);
+              return;
+            }
+            origError.apply(console, arguments);
+          };
+        } catch (_) {}
+
+        window.addEventListener('error', function(event) {
+          if (!event) return;
+          var msg = event.message || (event.error && event.error.message) || '';
+          var file = event.filename || '';
+          if (isIgnoredError(msg, file)) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(event) {
+          if (!event) return;
+          var reason = event.reason;
+          var msg = typeof reason === 'string' ? reason : (reason && reason.message ? reason.message : '');
+          if (isIgnoredError(msg)) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return true;
+          }
+        }, true);
+      })();
+    </script>
+    <meta name="theme-color" content="#0f9d7a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="أسعار الأدوية" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <script>
+      (function() {
+        try {
+          localStorage.removeItem('pharma_theme');
+          document.documentElement.classList.remove('dark');
+          document.documentElement.style.colorScheme = 'light';
+        } catch (_) {}
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    </noscript>
+  </head>
+  <body class="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-emerald-500 selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="src/main.tsx"></script>
+  </body>
+</html>
+
