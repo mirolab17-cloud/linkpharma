@@ -100,6 +100,13 @@ jobs:
           mkdir -p ../dist/v7
           cp -r dist/. ../dist/v7/
           cd ..
+          # Build v8 (stable Google auth and legacy profile compatibility) under /v8/
+          cd v8
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v8
+          cp -r dist/. ../dist/v8/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
