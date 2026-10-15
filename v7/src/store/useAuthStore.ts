@@ -126,7 +126,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }, 5000);
 
     try {
-      unsubSettings = onSnapshot(doc(db, 'settings', 'system'), (settingsSnap) => {
+      unsubSettings = onSnapshot(doc(db, 'settings', 'public'), (settingsSnap) => {
         if (settingsSnap.exists()) {
           const data = settingsSnap.data();
           if (typeof data.defaultTrialDays === 'number') {
@@ -136,8 +136,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             setSystemCurrency(data.currency);
           }
         }
-      }, (err) => {
-        console.warn('Settings subscription error:', err);
+      }, () => {
+        // الإعدادات العامة اختيارية: نستخدم القيم الافتراضية بهدوء
       });
     } catch (e) {
       console.warn('Failed to listen to settings:', e);
@@ -320,6 +320,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           if (safetyTimer) clearTimeout(safetyTimer);
           console.error('User doc onSnapshot error:', snapErr);
           set({ loading: false, initialized: true });
+          // لا نترك المستخدم عالقاً في صفحة الدخول بصمت: نوضح السبب
+          if (!get().user) {
+            const code = (snapErr as any)?.code || '';
+            useToastStore.getState().error(
+              code === 'permission-denied'
+                ? 'تم تسجيل الدخول لكن Firestore رفض قراءة ملفك (permission-denied). يجب نشر قواعد firestore.rules الحديثة من لوحة Firebase.'
+                : 'تم تسجيل الدخول لكن تعذر تحميل ملفك الشخصي: ' + ((snapErr as any)?.message || code)
+            );
+          }
         });
       } catch (err: any) {
         clearTimeout(docTimeout);
