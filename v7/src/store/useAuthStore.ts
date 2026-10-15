@@ -147,6 +147,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     let unsubUserDoc: (() => void) | null = null;
 
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      console.info('[auth] onAuthStateChanged ' + (fbUser ? 'uid=' + fbUser.uid : 'signed-out'));
       if (unsubUserDoc) {
         unsubUserDoc();
         unsubUserDoc = null;
@@ -314,6 +315,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         unsubUserDoc = onSnapshot(userDocRef, (userSnap) => {
           clearTimeout(docTimeout);
           lastUserSnap = userSnap;
+          console.info('[auth] user doc snapshot exists=' + userSnap.exists() + ' fromCache=' + userSnap.metadata?.fromCache);
           void handleUserSnap(userSnap);
         }, (snapErr) => {
           clearTimeout(docTimeout);
@@ -478,7 +480,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
 
         try {
-          await signInWithPopup(auth, googleProvider);
+          console.info('[auth] opening Google popup');
+          const cred = await signInWithPopup(auth, googleProvider);
+          console.info('[auth] popup returned uid=' + cred.user.uid);
           return true;
         } catch (popupError: any) {
           // معالجة خطأ الـ internal assertion الناتج عن race-condition في نوافذ الـ popup
