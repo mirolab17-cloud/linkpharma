@@ -216,8 +216,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // مؤقت أخير لملف المستخدم (يبقى المستخدم في شاشة التحميل ولا يُعاد لصفحة الدخول قبل ذلك)
       const docTimeout = setTimeout(() => {
         if (get().loading || !get().user) {
-          console.warn('User profile fetch exceeded timeout, unlocking state');
-          set({ loading: false, initialized: true });
+          console.warn('User profile fetch exceeded timeout, using fallback profile');
+          // حساب Firebase صالح لكن Firestore لم يرد: ندخل المستخدم بملف مؤقت بدل إبقائه في صفحة الدخول
+          const fallback = profileFallback(fbUser, readCachedProfile(fbUser.uid));
+          set({ user: fallback, loading: false, initialized: true, isPasswordUser: isPassword, isGoogleUser: isGoogle });
+          useToastStore.getState().error('تم تسجيل الدخول لكن تعذر الاتصال بقاعدة البيانات. تحقق من الإنترنت أو من إعدادات Firestore.');
         }
       }, 10000);
 
@@ -386,7 +389,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // بعد تركيب المستمع، نستهلك نتيجة Google redirect ونترك onAuthStateChanged
     // يتولى تحميل الملف الشخصي والصلاحيات بنفس المسار المستخدم للبريد.
     getRedirectResult(auth).then((result) => {
-      if (result?.user) console.info('[auth] redirect returned uid=' + result.user.uid);
+      let wasPending = false;
+      try {
+        wasPending = sessionStorage.getItem('pharma_google_redirect_pending') === '1';
+        sessionStorage.removeItem('pharma_google_redirect_pending');
+      } catch {}
+      if (result?.user) {
+        console.info('[auth] redirect returned uid=' + result.user.uid);
+      } else if (wasPending && !auth.currentUser) {
+        // رجع المستخدم من Google لكن بدون جلسة: غالباً المتصفح حجب تخزين نطاق Firebase (authDomain مختلف عن نطاق الموقع)
+        console.warn('[auth] redirect returned without a user (authDomain=' + auth.config.authDomain + ', host=' + location.host + ')');
+        useToastStore.getState().error('لم يكتمل تسجيل الدخول بعد العودة من Google. جرّب فتح الموقع من متصفح آخر، وتأكد أن النطاق مضاف في Firebase Authorized domains.');
+      }
     }).catch((error: any) => {
       if (error?.code && !['auth/no-auth-event', 'auth/popup-closed-by-user'].includes(error.code)) {
         console.warn('[auth] redirect result:', error.code);
@@ -534,6 +548,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
 
         console.info('[auth] opening Google redirect');
+        try { sessionStorage.setItem('pharma_google_redirect_pending', '1'); } catch {}
         await signInWithRedirect(auth, googleProvider);
         return true;
       } catch (error: any) {
