@@ -98,7 +98,6 @@ export default defineConfig(() => {
               if (id.includes('firebase')) return 'firebase-vendor';
               if (id.includes('xlsx')) return 'xlsx-vendor';
               if (id.includes('@google/genai')) return 'genai-vendor';
-              if (id.includes('lucide-react')) return 'icons-vendor';
               if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom') || id.includes('zustand')) {
                 return 'react-vendor';
               }
