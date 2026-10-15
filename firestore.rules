@@ -58,7 +58,10 @@ service cloud.firestore {
 
     // Admins marker collection (Only admins can view or modify)
     match /admins/{adminId} {
-      allow read, write: if isAdmin();
+      // يسمح للمدير بقراءة علامة حسابه لاكتشاف الصلاحية، دون فتح الكتابة للمستخدم.
+      allow get: if isSignedIn() && (request.auth.uid == adminId || isAdmin());
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     // System Settings: Public settings readable by anyone; notification settings for signed-in users; sensitive settings (system, gemini, etc.) strictly for admin
@@ -96,8 +99,8 @@ service cloud.firestore {
       allow update: if isAdmin() || (
         isCurrentUser(userId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'name', 'pharmacyName', 'phone', 'address', 'city',
-          'commercialRegister', 'profileComplete', 'updatedAt'
+          'name', 'pharmacyName', 'ownerName', 'phone', 'address', 'addressDetail', 'governorate', 'city',
+          'commercialRegister', 'profileComplete', 'favorites', 'priceAlerts', 'updatedAt'
         ])
       );
 

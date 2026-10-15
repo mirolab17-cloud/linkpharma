@@ -107,6 +107,13 @@ jobs:
           mkdir -p ../dist/v8
           cp -r dist/. ../dist/v8/
           cd ..
+          # Build v9 (persistent auth, admin discovery and protected order queries) under /v9/
+          cd v9
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v9
+          cp -r dist/. ../dist/v9/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
