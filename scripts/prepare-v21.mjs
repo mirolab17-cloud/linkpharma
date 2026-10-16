@@ -81,7 +81,7 @@ expired = replaceOnce(expired,
   "  const selectedPlan = plans.find((p) => p.id === selectedPlanId) || plans[1];",
   "  const visiblePlans = managedPlans === null ? plans : managedPlans;\n  const selectedPlan = visiblePlans.find((p) => p.id === selectedPlanId) || visiblePlans[0] || plans[1];",
   'expiry selected plan');
-expired = expired.replace("{plans.map((plan) => (", "{visiblePlans.map((plan) => (");
+expired = expired.replace("plans.map((plan) => {", "visiblePlans.map((plan) => {");
 expired = expired.replaceAll('خطط الاشتراك', 'الباقات المتاحة');
 expired = expired.replace('const plans: Plan[] = [', 'const plans: Plan[] = [');
 write('src/components/SubscriptionExpiredScreen.tsx', expired);
