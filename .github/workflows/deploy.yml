@@ -178,6 +178,16 @@ jobs:
           cp -r dist/. ../dist/v20/
           cd ..
 
+          # Build V21 from the stable V19 source with balanced pharmacy/warehouse branding and admin-managed plans
+          cp -r v19 v21
+          node scripts/prepare-v21.mjs
+          cd v21
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v21
+          cp -r dist/. ../dist/v21/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
