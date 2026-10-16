@@ -156,6 +156,13 @@ jobs:
           mkdir -p ../dist/v15
           cp -r dist/. ../dist/v15/
           cd ..
+          # Build v18 (operations center, suggestions, price visibility and delivery rules) under /v18/
+          cd v18
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v18
+          cp -r dist/. ../dist/v18/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

@@ -225,5 +225,27 @@ service cloud.firestore {
 
       allow delete: if isSignedIn() && (isAdmin() || resource.data.uid == request.auth.uid);
     }
+
+    // v18 Suggestions: pharmacy may create and read only its own suggestions; admins manage all.
+    match /suggestions/{suggestionId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.pharmacyId == request.auth.uid);
+      allow create: if isActivePharmacy() && request.resource.data.pharmacyId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // v18 Operations activity: signed-in users can append their own event; admins can review.
+    match /platform_activity/{activityId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && (isAdmin() || request.resource.data.actorId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    // v18 Presence: each account updates only its own heartbeat; admins can monitor.
+    match /presence/{uid} {
+      allow read: if isAdmin() || isCurrentUser(uid);
+      allow create, update: if isCurrentUser(uid);
+      allow delete: if isAdmin() || isCurrentUser(uid);
+    }
+
   }
 }
