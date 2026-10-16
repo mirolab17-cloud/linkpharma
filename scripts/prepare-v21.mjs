@@ -44,6 +44,10 @@ login = login.replaceAll('بوابة الصيدلية الموحدة', 'بواب
 write('src/pages/auth/Login.tsx', login);
 
 // Admin-managed subscription plans. The settings document is shared through the existing Firebase data layer.
+// Keep generated plan settings typed in the V21 copy.
+let types = read('src/types/index.ts');
+types = types.replace('  showDeliveryDays?: boolean;', '  showDeliveryDays?: boolean;\n  subscriptionPlans?: Array<{ id: string; name: string; period?: string; price: string; active?: boolean; features?: string[]; }>;');
+write('src/types/index.ts', types);
 let control = read('src/pages/admin/ControlCenter.tsx');
 control = replaceOnce(control,
   "  const [showDeliveryDays, setShowDeliveryDays] = useState(true);",
@@ -55,7 +59,7 @@ control = replaceOnce(control,
   'admin plan loading');
 control = replaceOnce(control,
   "  const backup = () => {",
-  "  const addPlan = () => setSubscriptionPlans(prev => [...prev, { id: 'plan_' + Date.now(), name: 'باقة جديدة', period: 'شهريًا', price: '', active: true, features: [] }]);\n  const updatePlan = (id: string, patch: Record<string, any>) => setSubscriptionPlans(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p));\n  const removePlan = (id: string) => setSubscriptionPlans(prev => prev.filter(p => p.id !== id));\n  const savePlans = async () => { if (subscriptionPlans.some(p => !String(p.name || '').trim() || !String(p.price || '').trim())) { error('أكمل اسم كل باقة وسعرها قبل الحفظ'); return; } setSavingPlans(true); try { const normalized = subscriptionPlans.map(p => ({ ...p, id: String(p.id || ('plan_' + Date.now())), name: String(p.name).trim(), period: String(p.period || 'حسب الباقة'), price: String(p.price).trim(), active: p.active !== false, features: Array.isArray(p.features) ? p.features : String(p.features || '').split(/[،,\\\n]/).map((x: string) => x.trim()).filter(Boolean) })); const next = await updateSystemSettings({ subscriptionPlans: normalized, defaultTrialDays: trialDays }); setSettings(next); setSubscriptionPlans(normalized); success('تم حفظ الباقات التي ستظهر بعد انتهاء التجربة'); } catch (e: any) { error('تعذر حفظ الباقات: ' + (e?.message || 'خطأ غير معروف')); } finally { setSavingPlans(false); } };\n  const backup = () => {",
+  "  const addPlan = () => setSubscriptionPlans(prev => [...prev, { id: 'plan_' + Date.now(), name: 'باقة جديدة', period: 'شهريًا', price: '', active: true, features: [] }]);\n  const updatePlan = (id: string, patch: Record<string, any>) => setSubscriptionPlans(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p));\n  const removePlan = (id: string) => setSubscriptionPlans(prev => prev.filter(p => p.id !== id));\n  const savePlans = async () => { if (subscriptionPlans.some(p => !String(p.name || '').trim() || !String(p.price || '').trim())) { error('أكمل اسم كل باقة وسعرها قبل الحفظ'); return; } setSavingPlans(true); try { const normalized = subscriptionPlans.map(p => ({ ...p, id: String(p.id || ('plan_' + Date.now())), name: String(p.name).trim(), period: String(p.period || 'حسب الباقة'), price: String(p.price).trim(), active: p.active !== false, features: Array.isArray(p.features) ? p.features : String(p.features || '').split(/[،,]/).map((x: string) => x.trim()).filter(Boolean) })); const next = await updateSystemSettings({ subscriptionPlans: normalized, defaultTrialDays: trialDays }); setSettings(next); setSubscriptionPlans(normalized); success('تم حفظ الباقات التي ستظهر بعد انتهاء التجربة'); } catch (e: any) { error('تعذر حفظ الباقات: ' + (e?.message || 'خطأ غير معروف')); } finally { setSavingPlans(false); } };\n  const backup = () => {",
   'admin plan handlers');
 control = replaceOnce(control,
   "const tabs = [['overview','نظرة عامة'],['pharmacies','الصيدليات'],['products','الأسعار والمنتجات'],['suppliers','الموردون والمندوبون'],['settings','المواقع والنسخ']];",
