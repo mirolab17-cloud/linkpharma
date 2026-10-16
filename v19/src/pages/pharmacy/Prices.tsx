@@ -397,23 +397,27 @@ export const PharmacyPrices: React.FC = () => {
   const loadingMoreRef = useRef(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // تحميل تلقائي عند الاقتراب من آخر صنفين: كل دفعة تضيف 5 أصناف.
+  // تحميل تلقائي ثابت: دفعة واحدة عند دخول المؤشر، ثم فتحه فقط بعد خروجه.
+  // هذا يمنع IntersectionObserver من إعادة تشغيل نفسه أثناء إعادة رسم البطاقات.
   useEffect(() => {
     const target = loadMoreRef.current;
     if (!target || !hasMoreProducts) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries[0].isIntersecting || loadingMoreRef.current) return;
-      loadingMoreRef.current = true;
-      setLoadingMore(true);
-      window.setTimeout(() => {
-        setVisibleCount((count) => Math.min(count + 5, sortedProducts.length));
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) {
         loadingMoreRef.current = false;
         setLoadingMore(false);
-      }, 180);
+        return;
+      }
+      if (loadingMoreRef.current) return;
+      loadingMoreRef.current = true;
+      setLoadingMore(true);
+      setVisibleCount((count) => Math.min(count + 5, sortedProducts.length));
+      // يبقى القفل حتى يخرج المؤشر من منطقة آخر صنفين، فلا تتكرر الدفعة.
+      setLoadingMore(false);
     }, { root: null, rootMargin: '0px 0px 600px 0px', threshold: 0.01 });
     observer.observe(target);
     return () => observer.disconnect();
-  }, [visibleCount, sortedProducts.length, hasMoreProducts]);
+  }, [sortedProducts.length, hasMoreProducts]);
 
   // إعادة ضبط الفلاتر
   const handleResetFilters = () => {
@@ -428,6 +432,8 @@ export const PharmacyPrices: React.FC = () => {
     setFavoritesOnly(false);
     setSortByEffective(false);
     setVisibleCount(PAGE_SIZE);
+    loadingMoreRef.current = false;
+    setLoadingMore(false);
   };
 
   // معالجة الكمية

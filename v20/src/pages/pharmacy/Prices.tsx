@@ -1,5 +1,5 @@
 // src/pages/pharmacy/Prices.tsx
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useCartStore } from '../../store/useCartStore';
@@ -393,6 +393,31 @@ export const PharmacyPrices: React.FC = () => {
   // ترقيم الصفحات
   const paginatedProducts = useMemo(() => sortedProducts.slice(0, visibleCount), [sortedProducts, visibleCount]);
   const hasMoreProducts = visibleCount < sortedProducts.length;
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const loadingMoreRef = useRef(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // تحميل تلقائي ثابت: دفعة واحدة عند دخول المؤشر، ثم فتحه فقط بعد خروجه.
+  // هذا يمنع IntersectionObserver من إعادة تشغيل نفسه أثناء إعادة رسم البطاقات.
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || !hasMoreProducts) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+        return;
+      }
+      if (loadingMoreRef.current) return;
+      loadingMoreRef.current = true;
+      setLoadingMore(true);
+      setVisibleCount((count) => Math.min(count + 5, sortedProducts.length));
+      // يبقى القفل حتى يخرج المؤشر من منطقة آخر صنفين، فلا تتكرر الدفعة.
+      setLoadingMore(false);
+    }, { root: null, rootMargin: '0px 0px 600px 0px', threshold: 0.01 });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [sortedProducts.length, hasMoreProducts]);
 
   // إعادة ضبط الفلاتر
   const handleResetFilters = () => {
@@ -407,6 +432,8 @@ export const PharmacyPrices: React.FC = () => {
     setFavoritesOnly(false);
     setSortByEffective(false);
     setVisibleCount(PAGE_SIZE);
+    loadingMoreRef.current = false;
+    setLoadingMore(false);
   };
 
   // معالجة الكمية
@@ -1003,8 +1030,10 @@ export const PharmacyPrices: React.FC = () => {
             })}
           </div>
 
-          {/* ترقيم الصفحات */}
-          {hasMoreProducts && <div className="flex justify-center py-6"><button onClick={() => setVisibleCount((n) => n + PAGE_SIZE)} className="rounded-xl border border-slate-200 bg-white px-6 py-3 text-xs font-black text-[#0f9d7a] shadow-sm">تحميل المزيد من الأصناف</button></div>}
+          {/* التحميل التلقائي عند الوصول إلى آخر صنفين */}
+          {hasMoreProducts && <div ref={loadMoreRef} className="flex justify-center py-6 text-xs font-bold text-slate-400" aria-live="polite">
+            {loadingMore ? 'جاري تحميل 5 أصناف إضافية...' : 'اقتربت من النهاية — سيتم تحميل المزيد تلقائياً'}
+          </div>}
           {!hasMoreProducts && sortedProducts.length > PAGE_SIZE && <p className="text-center text-xs text-slate-400 py-5">تم عرض جميع الأصناف المطابقة</p>}
         </>
       )}
