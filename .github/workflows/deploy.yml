@@ -163,6 +163,20 @@ jobs:
           mkdir -p ../dist/v18
           cp -r dist/. ../dist/v18/
           cd ..
+          # Build v19 (functional UX fixes, progressive prices and online-only offline screen) under /v19/
+          cd v19
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v19
+          cp -r dist/. ../dist/v19/
+          cd ..
+          # Build v20 (security-hardened v19) under /v20/
+          cd v20
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v20
+          cp -r dist/. ../dist/v20/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
