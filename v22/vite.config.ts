@@ -14,7 +14,7 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
-          id: '/linkpharma/v19/',
+          id: '/linkpharma/v22/',
           name: 'فارما لينك',
           short_name: 'فارما لينك',
           description: 'منصة فارما لينك بين المستودعات وإرسال طلبيات الصيدليات عبر واتساب',
