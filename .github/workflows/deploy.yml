@@ -195,6 +195,14 @@ jobs:
           mkdir -p ../dist/v22
           cp -r dist/. ../dist/v22/
           cd ..
+          # Build v23 (real Firestore pagination and lightweight first load) under /v23/
+          cd v23
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run build
+          mkdir -p ../dist/v23
+          cp -r dist/. ../dist/v23/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
