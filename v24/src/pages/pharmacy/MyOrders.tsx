@@ -308,7 +308,7 @@ export const MyOrders: React.FC = () => {
                       {tpl.name}
                     </h3>
                     <span className="px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/70 text-[#0f9d7a] text-[10px] font-bold">
-                      {tpl.schedule === 'weekly' ? 'أسبوعي' : 'شهري'}
+                      {tpl.schedule === 'weekly' ? 'أسبوعي' : tpl.schedule === 'monthly' ? 'شهري' : 'قائمة محفوظة'}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">

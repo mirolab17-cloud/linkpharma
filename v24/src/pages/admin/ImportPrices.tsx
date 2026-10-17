@@ -63,6 +63,7 @@ interface RowMatchItem {
   rowId: string;
   originalName: string;
   manufacturer?: string;
+  pack?: string;
   price: number;
   publicPrice?: number;
   available: boolean;
@@ -131,6 +132,7 @@ export const ImportPrices: React.FC = () => {
   const [newProdActiveIngId, setNewProdActiveIngId] = useState('');
   const [newProdForm, setNewProdForm] = useState('أقراص');
   const [newProdStrength, setNewProdStrength] = useState('');
+  const [newProdPack, setNewProdPack] = useState('');
   const [newProdManufacturer, setNewProdManufacturer] = useState('');
   const [newProdCategory, setNewProdCategory] = useState('عام');
 
@@ -386,6 +388,7 @@ export const ImportPrices: React.FC = () => {
     let rowsToMatch: {
       rawName: string;
       manufacturer?: string;
+      pack?: string;
       price: number;
       publicPrice?: number;
       available?: boolean;
@@ -422,6 +425,7 @@ export const ImportPrices: React.FC = () => {
       rowsToMatch = validRows.map((r) => ({
         rawName: r.rawName,
         manufacturer: r.rawManufacturer,
+        pack: r.rawPack,
         price: r.rawPrice!,
         publicPrice: r.rawPublicPrice || undefined,
         available: r.rawAvailability ? !r.rawAvailability.includes('غير') && !r.rawAvailability.includes('نفد') : true,
@@ -440,12 +444,13 @@ export const ImportPrices: React.FC = () => {
     // تشغيل محرك المطابقة (Fuse.js + Normalization)
     const matcher = new ProductMatcher(products);
     const results: RowMatchItem[] = rowsToMatch.map((row, idx) => {
-      const matchResult = matcher.match(row.rawName, row.manufacturer);
+      const matchResult = matcher.match([row.rawName, row.pack].filter(Boolean).join(' '), row.manufacturer);
 
       return {
         rowId: 'row_' + idx + '_' + Date.now(),
         originalName: row.rawName,
         manufacturer: row.manufacturer,
+        pack: row.pack,
         price: row.price,
         publicPrice: row.publicPrice,
         available: row.available ?? true,
@@ -468,6 +473,7 @@ export const ImportPrices: React.FC = () => {
     setNewProdActiveIngId(ingredients[0]?.id || '');
     setNewProdForm('أقراص');
     setNewProdStrength('');
+    setNewProdPack(row.pack || '');
     setNewProdManufacturer(row.manufacturer || '');
     setNewProdCategory('عام');
     setIsNewProdModalOpen(true);
@@ -485,6 +491,7 @@ export const ImportPrices: React.FC = () => {
         activeIngredientId: newProdActiveIngId || '',
         form: newProdForm,
         strength: newProdStrength.trim(),
+        packSize: newProdPack.trim(),
         manufacturer: newProdManufacturer.trim(),
         category: newProdCategory.trim() || 'عام',
       });
@@ -1897,6 +1904,11 @@ export const ImportPrices: React.FC = () => {
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">حجم العبوة / عدد الوحدات</label>
+            <input type="text" value={newProdPack} onChange={(e) => setNewProdPack(e.target.value)} placeholder="30 قرصًا، 100 مل..." className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">

@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useCartStore } from '../../store/useCartStore';
 import { useToastStore } from '../../store/useToastStore';
-import { createOrder, updateOrderItems, getSuppliers, getPrices } from '../../services/dataStorage';
+import { createOrder, updateOrderItems, getSuppliers, getPrices, getRecurringOrderTemplates, saveRecurringOrderTemplates } from '../../services/dataStorage';
 import { buildOrderWhatsAppMessage, openWhatsAppOrder } from '../../services/whatsapp';
 import { formatCurrency, calculateEffectiveUnitPrice } from '../../utils/formatPrice';
 import { formatGregorianDate } from '../../utils/formatDate';
@@ -25,6 +25,7 @@ import {
   X,
   Share2,
   TrendingDown,
+  Bookmark,
   AlertTriangle
 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -212,6 +213,20 @@ export const PharmacyCart: React.FC = () => {
     }
   };
 
+  const saveCartAsList = async () => {
+    if (!user?.uid) return warning('سجّل الدخول أولًا لحفظ قائمة الشراء.');
+    const name = window.prompt('اسم قائمة الشراء، مثل: الطلب الأسبوعي أو النواقص:')?.trim();
+    if (!name) return;
+    try {
+      const saved = await getRecurringOrderTemplates(user.uid);
+      const list = { id: `list_${Date.now()}`, name, schedule: 'custom' as const, items: items.map((item) => ({ ...item })), createdAt: new Date().toISOString() };
+      const synced = await saveRecurringOrderTemplates(user.uid, [list, ...saved]);
+      success(synced ? 'تم حفظ القائمة ومزامنتها مع حسابك.' : 'حُفظت القائمة على هذا الجهاز فقط؛ تحقق من اتصال Firebase لمزامنتها.');
+    } catch (e: any) {
+      error('تعذر حفظ قائمة الشراء: ' + (e.message || ''));
+    }
+  };
+
   // إرسال طلبية مورد واحد
   const handleSendSupplierOrder = async (supplierId: string) => {
     if (!user) return;
@@ -328,6 +343,9 @@ export const PharmacyCart: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <button onClick={() => void saveCartAsList()} className="min-h-11 rounded-xl border border-emerald-200 px-3 text-xs font-bold text-[#0f9d7a] hover:bg-emerald-50">
+            <Bookmark className="ml-1 inline h-4 w-4" />حفظ القائمة
+          </button>
           {supplierKeys.length > 1 && (
             <button
               onClick={handleSendAllOrders}

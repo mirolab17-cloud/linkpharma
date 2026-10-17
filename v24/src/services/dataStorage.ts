@@ -1138,12 +1138,17 @@ export async function updateUserStatusAndSuppliers(
   if (allowedSuppliers !== undefined) {
     updatePayload.allowedSuppliers = allowedSuppliers;
   }
+  const localBefore = getLocal<UserProfile>(STORAGE_KEYS.users).find((user) => user.uid === uid);
+  let previous: UserProfile | undefined = localBefore;
 
   if (isFirebaseConfigured) {
     try {
+      const snapshot = await getDoc(doc(db, 'users', uid));
+      if (snapshot.exists()) previous = { uid, ...snapshot.data() } as UserProfile;
       await updateDoc(doc(db, 'users', uid), updatePayload);
     } catch (e) {
       console.error('Firestore updateUserStatus failed:', e);
+      throw e;
     }
   }
 
@@ -1154,6 +1159,20 @@ export async function updateUserStatusAndSuppliers(
     return u;
   });
   setLocal(STORAGE_KEYS.users, list);
+  await recordActivity({
+    type: 'user_access_changed',
+    actorId: auth.currentUser?.uid,
+    actorName: auth.currentUser?.displayName || auth.currentUser?.email || 'إدارة المنصة',
+    actorRole: 'admin',
+    message: `تعديل حالة/صلاحيات حساب ${previous?.pharmacyName || previous?.email || uid}`,
+    metadata: {
+      targetUid: uid,
+      previousStatus: previous?.status,
+      newStatus: status,
+      previousAllowedSuppliers: previous?.allowedSuppliers || [],
+      newAllowedSuppliers: allowedSuppliers ?? previous?.allowedSuppliers ?? [],
+    },
+  });
 
   // إرسال إشعار فوري للصيدلية بتغيير حالة الحساب
   try {

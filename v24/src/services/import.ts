@@ -17,6 +17,7 @@ export interface MappedPriceRow {
   rawPrice: number | null;
   rawPublicPrice?: number | null;
   rawManufacturer?: string;
+  rawPack?: string;
   rawAvailability?: string;
   rawExpiry?: string;
   isValid: boolean;
@@ -129,6 +130,7 @@ export function processMappedRows(params: {
       rawPrice: price,
       rawPublicPrice: publicPrice,
       rawManufacturer: manufacturer.trim() || undefined,
+      rawPack: pack.trim() || undefined,
       rawAvailability,
       rawExpiry,
       isValid,

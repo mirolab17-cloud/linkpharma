@@ -58,6 +58,7 @@ export interface Product {
   normalizedName: string;
   form: string; // أقراص، شراب، حقن، مرهم، قطرات، كبسولات...
   strength: string; // 500mg, 10mg/5ml...
+  packSize?: string;
   manufacturer: string;
   category: string;
   barcode?: string;
@@ -243,7 +244,7 @@ export interface PharmacySuggestion {
   reviewedAt?: string;
 }
 
-export type PlatformActivityType = 'login' | 'order_created' | 'order_edited' | 'pharmacy_imported' | 'suggestion_created' | 'profile_updated' | 'price_imported' | 'price_visibility_changed' | 'order_status_changed';
+export type PlatformActivityType = 'login' | 'order_created' | 'order_edited' | 'pharmacy_imported' | 'user_access_changed' | 'suggestion_created' | 'profile_updated' | 'price_imported' | 'price_visibility_changed' | 'order_status_changed';
 
 export interface PlatformActivity {
   id: string;

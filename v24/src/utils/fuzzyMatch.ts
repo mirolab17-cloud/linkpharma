@@ -26,9 +26,12 @@ export class ProductMatcher {
 
     this.fuse = new Fuse(products, {
       keys: [
-        { name: 'normalizedName', weight: 0.7 },
+        { name: 'normalizedName', weight: 0.65 },
         { name: 'tradeName', weight: 0.5 },
-        { name: 'manufacturer', weight: 0.2 },
+        { name: 'strength', weight: 0.25 },
+        { name: 'form', weight: 0.2 },
+        { name: 'packSize', weight: 0.2 },
+        { name: 'manufacturer', weight: 0.15 },
       ],
       threshold: 0.4, // حد التشابه المطلوب
       includeScore: true,

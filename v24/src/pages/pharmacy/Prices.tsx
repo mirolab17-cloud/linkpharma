@@ -865,6 +865,7 @@ export const PharmacyPrices: React.FC = () => {
                       <span className="bg-slate-50 dark:bg-slate-800/60 px-2 py-0.5 rounded-md border border-slate-100 dark:border-slate-800">
                         التركيز: <strong className="text-slate-700 dark:text-slate-200">{product.strength}</strong>
                       </span>
+                      {product.packSize && <span className="bg-slate-50 dark:bg-slate-800/60 px-2 py-0.5 rounded-md border border-slate-100 dark:border-slate-800">العبوة: <strong className="text-slate-700 dark:text-slate-200">{product.packSize}</strong></span>}
                       <span className="bg-slate-50 dark:bg-slate-800/60 px-2 py-0.5 rounded-md border border-slate-100 dark:border-slate-800">
                         الشركة: <strong className="text-slate-700 dark:text-slate-200">{product.manufacturer}</strong>
                       </span>

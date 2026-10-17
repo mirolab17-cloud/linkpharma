@@ -268,6 +268,8 @@ export const AdminOrders: React.FC = () => {
               <option value="all">كل الحالات</option>
               <option value="sent">مرسلة (Sent)</option>
               <option value="confirmed">مؤكدة (Confirmed)</option>
+              <option value="processing">قيد التجهيز (Processing)</option>
+              <option value="delivered">تم التسليم (Delivered)</option>
               <option value="cancelled">ملغاة (Cancelled)</option>
             </select>
           </div>
