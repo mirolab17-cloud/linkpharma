@@ -213,6 +213,15 @@ jobs:
           cp -r dist/. ../dist/v24/
           cd ..
 
+          # Build v25 (warehouse representatives, scoped permissions and product history) under /v25/
+          cd v25
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run build
+          mkdir -p ../dist/v25
+          cp -r dist/. ../dist/v25/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
