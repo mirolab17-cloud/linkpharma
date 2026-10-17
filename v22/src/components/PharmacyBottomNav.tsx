@@ -2,7 +2,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useCartStore } from '../store/useCartStore';
-import { Home, Search, ShoppingCart, ClipboardList, Lightbulb } from 'lucide-react';
+import { Home, Search, ShoppingCart, Store, UserRound } from 'lucide-react';
 
 export const PharmacyBottomNav: React.FC = () => {
   const cartItemsCount = useCartStore((s) => s.getTotalItemsCount());
@@ -50,30 +50,16 @@ export const PharmacyBottomNav: React.FC = () => {
               </span>
             )}
           </div>
-          <span>السلة</span>
+          <span>السلة والطلبات</span>
         </NavLink>
 
-        <NavLink
-          to="/app/orders"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition ${
-              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 hover:text-slate-800'
-            }`
-          }
-        >
-          <ClipboardList className="w-5 h-5" />
-          <span>طلباتي</span>
+        <NavLink to="/app/suppliers" className={({ isActive }) => `flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition ${isActive ? 'text-[#0f9d7a]' : 'text-slate-500 hover:text-slate-800'}`}>
+          <Store className="w-5 h-5" />
+          <span>الموردون</span>
         </NavLink>
-        <NavLink
-          to="/app/suggestions"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition ${
-              isActive ? 'text-[#0f9d7a]' : 'text-slate-500 hover:text-slate-800'
-            }`
-          }
-        >
-          <Lightbulb className="w-5 h-5" />
-          <span>اقتراح</span>
+        <NavLink to="/app/profile" className={({ isActive }) => `flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition ${isActive ? 'text-[#0f9d7a]' : 'text-slate-500 hover:text-slate-800'}`}>
+          <UserRound className="w-5 h-5" />
+          <span>ملفي</span>
         </NavLink>
       </div>
     </nav>

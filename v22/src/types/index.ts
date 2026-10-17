@@ -39,6 +39,7 @@ export interface UserProfile {
   profileComplete?: boolean;
   createdAt?: string;
   favorites?: string[]; // Array of favorite product IDs
+  supplierFavorites?: string[]; // Array of favorite supplier IDs
   priceAlerts?: Record<string, number>; // productId -> target price
 }
 

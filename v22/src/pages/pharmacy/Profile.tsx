@@ -9,6 +9,7 @@ import {
   CheckCircle, 
   ShieldAlert, 
   ShieldCheck,
+  Lightbulb,
 } from 'lucide-react';
 import { normalizeSaudiLocalPhone, isValidSaudiLocalPhone } from '../../utils/profile';
 import { useToastStore } from '../../store/useToastStore';
@@ -75,6 +76,10 @@ export const PharmacyProfile: React.FC = () => {
           </div>
         </div>
       )}
+
+      <button type="button" onClick={() => navigate('/app/suggestions')} className="w-full text-right bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between hover:bg-emerald-100 transition">
+        <span className="flex items-center gap-3"><span className="w-10 h-10 rounded-xl bg-white text-[#0f9d7a] flex items-center justify-center"><Lightbulb className="w-5 h-5" /></span><span><strong className="block text-sm text-emerald-900">الاقتراحات والملاحظات</strong><small className="text-xs text-emerald-700">ساعدنا على تحسين فارما لينك</small></span></span><span className="text-xs font-bold text-emerald-700">فتح الصفحة ←</span>
+      </button>
 
       {/* بطاقة معلومات الصيدلية */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8">

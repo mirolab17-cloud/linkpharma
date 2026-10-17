@@ -46,6 +46,7 @@ import { PharmacyPrices } from './pages/pharmacy/Prices';
 const PharmacyHome = lazy(() => import('./pages/pharmacy/Home').then(m => ({ default: m.PharmacyHome })));
 const PharmacySuppliers = lazy(() => import('./pages/pharmacy/Suppliers').then(m => ({ default: m.PharmacySuppliers })));
 const PharmacyCart = lazy(() => import('./pages/pharmacy/Cart').then(m => ({ default: m.PharmacyCart })));
+const CartAndOrders = lazy(() => import('./pages/pharmacy/CartAndOrders').then(m => ({ default: m.CartAndOrders })));
 const MyOrders = lazy(() => import('./pages/pharmacy/MyOrders').then(m => ({ default: m.MyOrders })));
 const PharmacySuggestions = lazy(() => import('./pages/pharmacy/Suggestions').then(m => ({ default: m.Suggestions })));
 const PharmacyProfile = lazy(() => import('./pages/pharmacy/Profile').then(m => ({ default: m.PharmacyProfile })));
@@ -325,8 +326,8 @@ export default function App() {
           <Route path="home" element={<PharmacyHome />} />
           <Route path="prices" element={<PharmacyPrices />} />
           <Route path="suppliers" element={<PharmacySuppliers />} />
-          <Route path="cart" element={<PharmacyCart />} />
-          <Route path="orders" element={<MyOrders />} />
+          <Route path="cart" element={<CartAndOrders />} />
+          <Route path="orders" element={<Navigate to="/app/cart" replace />} />
           <Route path="suggestions" element={<PharmacySuggestions />} />
           <Route path="profile" element={<PharmacyProfile />} />
         </Route>

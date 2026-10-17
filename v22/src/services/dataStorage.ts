@@ -703,6 +703,23 @@ export async function toggleProductFavorite(userId: string, productId: string): 
   return newFavs;
 }
 
+export async function toggleSupplierFavorite(userId: string, supplierId: string): Promise<string[]> {
+  const currentUser = useAuthStore.getState().user;
+  const current = currentUser?.supplierFavorites || [];
+  const next = current.includes(supplierId) ? current.filter((id) => id !== supplierId) : [...current, supplierId];
+  useAuthStore.setState((state) => state.user ? { user: { ...state.user, supplierFavorites: next } } : state);
+  if (!isFirebaseConfigured) {
+    const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.users) || '[]');
+    const updated = users.map((u: UserProfile) => u.uid === userId ? { ...u, supplierFavorites: next } : u);
+    localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(updated));
+    return next;
+  }
+  try {
+    await updateDoc(doc(db, 'users', userId), { supplierFavorites: next });
+  } catch (e) { console.warn('Firestore toggleSupplierFavorite error:', e); }
+  return next;
+}
+
 export async function setProductPriceAlert(
   userId: string,
   productId: string,

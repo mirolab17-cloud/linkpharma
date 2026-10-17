@@ -397,9 +397,10 @@ export const PharmacyPrices: React.FC = () => {
   const loadingMoreRef = useRef(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // تحميل تلقائي ثابت: دفعة واحدة عند دخول المؤشر، ثم فتحه فقط بعد خروجه.
-  // هذا يمنع IntersectionObserver من إعادة تشغيل نفسه أثناء إعادة رسم البطاقات.
+  // تحميل تلقائي احترافي: المؤشر يعاد ربطه بعد كل دفعة حتى لا يتوقف عند آخر عنصر.
+  // القفل يُعاد ضبطه مع كل دفعة، والتحميل يبدأ قبل نهاية القائمة بمسافة مريحة.
   useEffect(() => {
+    loadingMoreRef.current = false;
     const target = loadMoreRef.current;
     if (!target || !hasMoreProducts) return;
     const observer = new IntersectionObserver(([entry]) => {
@@ -411,13 +412,13 @@ export const PharmacyPrices: React.FC = () => {
       if (loadingMoreRef.current) return;
       loadingMoreRef.current = true;
       setLoadingMore(true);
-      setVisibleCount((count) => Math.min(count + 5, sortedProducts.length));
+      setVisibleCount((count) => Math.min(count + 10, sortedProducts.length));
       // يبقى القفل حتى يخرج المؤشر من منطقة آخر صنفين، فلا تتكرر الدفعة.
       setLoadingMore(false);
-    }, { root: null, rootMargin: '0px 0px 600px 0px', threshold: 0.01 });
+    }, { root: null, rootMargin: '0px 0px 220px 0px', threshold: 0.01 });
     observer.observe(target);
     return () => observer.disconnect();
-  }, [sortedProducts.length, hasMoreProducts]);
+  }, [visibleCount, sortedProducts.length, hasMoreProducts]);
 
   // إعادة ضبط الفلاتر
   const handleResetFilters = () => {
@@ -784,7 +785,7 @@ export const PharmacyPrices: React.FC = () => {
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <h3 className="font-extrabold text-base text-slate-900 dark:text-white leading-snug">
-                            {product.tradeName}
+                            {productDisplayName(product)}
                           </h3>
                           {/* زر المفضلة */}
                           <button
@@ -1032,7 +1033,7 @@ export const PharmacyPrices: React.FC = () => {
 
           {/* التحميل التلقائي عند الوصول إلى آخر صنفين */}
           {hasMoreProducts && <div ref={loadMoreRef} className="flex justify-center py-6 text-xs font-bold text-slate-400" aria-live="polite">
-            {loadingMore ? 'جاري تحميل 5 أصناف إضافية...' : 'اقتربت من النهاية — سيتم تحميل المزيد تلقائياً'}
+            {loadingMore ? 'جاري تحميل 10 أصناف إضافية...' : 'اقتربت من النهاية — سيتم تحميل المزيد تلقائياً'}
           </div>}
           {!hasMoreProducts && sortedProducts.length > PAGE_SIZE && <p className="text-center text-xs text-slate-400 py-5">تم عرض جميع الأصناف المطابقة</p>}
         </>
