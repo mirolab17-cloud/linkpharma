@@ -397,28 +397,43 @@ export const PharmacyPrices: React.FC = () => {
   const loadingMoreRef = useRef(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // تحميل تلقائي احترافي: المؤشر يعاد ربطه بعد كل دفعة حتى لا يتوقف عند آخر عنصر.
-  // القفل يُعاد ضبطه مع كل دفعة، والتحميل يبدأ قبل نهاية القائمة بمسافة مريحة.
+  // Infinite Scroll للهاتف والكمبيوتر: مراقب + fallback للتمرير اليدوي.
+  // لا نستخدم رقم الصفحة؛ نزيد visibleCount فقط، مع قفل زمني يمنع التكرار.
+  const lastLoadAtRef = useRef(0);
+  const loadMoreProducts = useCallback(() => {
+    const now = Date.now();
+    if (!hasMoreProducts || loadingMoreRef.current || now - lastLoadAtRef.current < 450) return;
+    loadingMoreRef.current = true;
+    lastLoadAtRef.current = now;
+    setLoadingMore(true);
+    setVisibleCount((count) => Math.min(count + 10, sortedProducts.length));
+    window.setTimeout(() => {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }, 350);
+  }, [hasMoreProducts, sortedProducts.length]);
+
   useEffect(() => {
-    loadingMoreRef.current = false;
     const target = loadMoreRef.current;
     if (!target || !hasMoreProducts) return;
     const observer = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting) {
-        loadingMoreRef.current = false;
-        setLoadingMore(false);
-        return;
-      }
-      if (loadingMoreRef.current) return;
-      loadingMoreRef.current = true;
-      setLoadingMore(true);
-      setVisibleCount((count) => Math.min(count + 10, sortedProducts.length));
-      // يبقى القفل حتى يخرج المؤشر من منطقة آخر صنفين، فلا تتكرر الدفعة.
-      setLoadingMore(false);
-    }, { root: null, rootMargin: '0px 0px 220px 0px', threshold: 0.01 });
+      if (entry.isIntersecting) loadMoreProducts();
+    }, { root: null, rootMargin: '0px 0px 420px 0px', threshold: 0.01 });
     observer.observe(target);
-    return () => observer.disconnect();
-  }, [visibleCount, sortedProducts.length, hasMoreProducts]);
+
+    // بعض WebViews على Android لا تطلق IntersectionObserver عند بقاء المؤشر
+    // في منطقة العرض؛ لذلك نتحقق من موضعه مع كل تمرير.
+    const onScroll = () => {
+      const rect = target.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 420) loadMoreProducts();
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('scroll', onScroll);
+    };
+  }, [visibleCount, sortedProducts.length, hasMoreProducts, loadMoreProducts]);
 
   // إعادة ضبط الفلاتر
   const handleResetFilters = () => {
@@ -434,6 +449,7 @@ export const PharmacyPrices: React.FC = () => {
     setSortByEffective(false);
     setVisibleCount(PAGE_SIZE);
     loadingMoreRef.current = false;
+    lastLoadAtRef.current = 0;
     setLoadingMore(false);
   };
 

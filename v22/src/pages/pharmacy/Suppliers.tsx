@@ -1,8 +1,8 @@
 // src/pages/pharmacy/Suppliers.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getSuppliers, getPrices, toggleSupplierFavorite } from '../../services/dataStorage';
-import { Supplier, PriceRecord } from '../../types';
+import { getSuppliers, getPrices, getProducts, toggleSupplierFavorite } from '../../services/dataStorage';
+import { Supplier, PriceRecord, Product } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useToastStore } from '../../store/useToastStore';
 import { createWhatsAppLink, formatPhoneNumber } from '../../utils/phone';
@@ -35,6 +35,8 @@ export const PharmacySuppliers: React.FC = () => {
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [prices, setPrices] = useState<PriceRecord[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [compareProductId, setCompareProductId] = useState('');
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
@@ -47,12 +49,14 @@ export const PharmacySuppliers: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [allSuppliers, allPrices] = await Promise.all([
+      const [allSuppliers, allPrices, allProducts] = await Promise.all([
         getSuppliers(),
-        getPrices().catch(() => [])
+        getPrices().catch(() => []),
+        getProducts().catch(() => [])
       ]);
       setSuppliers(allSuppliers);
       setPrices(allPrices);
+      setProducts(allProducts);
     } catch (err: any) {
       console.error('Error loading suppliers for pharmacy:', err);
     } finally {
@@ -94,6 +98,10 @@ export const PharmacySuppliers: React.FC = () => {
     });
     return counts;
   }, [prices]);
+
+  const favoriteSuppliers = useMemo(() => visibleSuppliers.filter((supplier) => user?.supplierFavorites?.includes(supplier.id)), [visibleSuppliers, user?.supplierFavorites]);
+  const favoriteProductOptions = useMemo(() => products.filter((product) => prices.some((price) => price.productId === product.id && favoriteSuppliers.some((supplier) => supplier.id === price.supplierId))), [products, prices, favoriteSuppliers]);
+  const comparisonRows = useMemo(() => favoriteSuppliers.map((supplier) => ({ supplier, price: prices.find((item) => item.productId === compareProductId && item.supplierId === supplier.id) })), [favoriteSuppliers, prices, compareProductId]);
 
   const handleToggleFavorite = async (supplier: Supplier, event?: React.MouseEvent) => {
     event?.stopPropagation();
@@ -166,6 +174,11 @@ export const PharmacySuppliers: React.FC = () => {
           <button type="button" onClick={() => setFavoritesOnly((value) => !value)} className={`mr-3 rounded-xl border px-3 py-2 text-xs font-bold ${favoritesOnly ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-slate-200 text-slate-600'}`}><Star className="ml-1 inline w-3.5" /> المفضلة فقط</button>
         </div>
       </div>
+
+      {favoriteSuppliers.length >= 2 && <section className="rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5 shadow-sm" dir="rtl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4"><div><h2 className="text-base font-black text-slate-900 flex items-center gap-2"><Star className="w-5 h-5 text-amber-500 fill-current" /> مقارنة المستودعات المفضلة</h2><p className="text-xs text-slate-500 mt-1">اختر صنفاً لعرض السعر والتوفر جنباً إلى جنب.</p></div><select value={compareProductId} onChange={(event) => setCompareProductId(event.target.value)} className="min-h-11 rounded-xl border border-amber-200 bg-white px-3 text-xs font-bold"><option value="">اختر الصنف للمقارنة</option>{favoriteProductOptions.map((product) => <option key={product.id} value={product.id}>{[product.tradeName, product.strength, product.form].filter(Boolean).join(' ')}</option>)}</select></div>
+        {compareProductId ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{comparisonRows.map(({ supplier, price }) => <div key={supplier.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex items-center justify-between gap-2"><strong className="text-sm text-slate-900 truncate">{supplier.name}</strong><Star className="w-4 h-4 text-amber-500 fill-current shrink-0" /></div><div className="mt-3 flex items-end justify-between gap-2"><span className="text-xl font-black text-[#0f9d7a]">{price ? `${price.price} ₪` : 'لا يوجد عرض'}</span><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${price?.available ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{price ? (price.available ? 'متوفر' : 'غير متوفر') : 'بدون سعر'}</span></div></div>)}</div> : <div className="rounded-2xl border border-dashed border-amber-200 bg-white/70 p-5 text-center text-xs text-amber-800">اختر صنفاً من القائمة لبدء المقارنة.</div>}
+      </section>}
 
       {/* قائمة المستودعات كبطاقات تفاعلية */}
       {loading ? (
