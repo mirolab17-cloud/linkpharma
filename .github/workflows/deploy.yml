@@ -204,6 +204,15 @@ jobs:
           cp -r dist/. ../dist/v23/
           cd ..
 
+          # Build v24 (refined ordering, supplier offers, import and stable pagination) under /v24/
+          cd v24
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run build
+          mkdir -p ../dist/v24
+          cp -r dist/. ../dist/v24/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
