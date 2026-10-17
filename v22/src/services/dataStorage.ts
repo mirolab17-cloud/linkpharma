@@ -944,55 +944,43 @@ export async function getPublicLoginSettings(): Promise<{ loginWhatsApp: string;
 }
 
 // إعدادات النظام العامة (الفترة التجريبية وغيرها)
+let systemSettingsWarned = false;
+
 export async function getSystemSettings(): Promise<SystemSettings> {
-  const fallbackSettings: SystemSettings = {
-    id: 'system',
-    defaultTrialDays: 7,
-    currency: '₪',
-    supportWhatsApp: '970599999999',
-    loginWhatsApp: '970599999999',
-    loginWhatsAppEnabled: true,
-    showDeliveryDays: true,
-    warehouseSupportWhatsApp: '966552223344',
-    updatedAt: new Date().toISOString(),
-  };
+  return fetchWithCache('systemSettings', async () => {
+    const fallbackSettings: SystemSettings = {
+      id: 'system', defaultTrialDays: 7, currency: '₪', supportWhatsApp: '970599999999',
+      loginWhatsApp: '970599999999', loginWhatsAppEnabled: true, showDeliveryDays: true,
+      warehouseSupportWhatsApp: '966552223344', updatedAt: new Date().toISOString(),
+    };
 
-  if (isFirebaseConfigured) {
+    if (isFirebaseConfigured) {
+      try {
+        // public متاح للمستخدمين؛ لا نطلب settings/system الذي يخص المدير فقط.
+        const snap = await getDoc(doc(db, 'settings', 'public'));
+        if (snap.exists()) {
+          const merged: SystemSettings = { ...fallbackSettings, ...(snap.data() as Partial<SystemSettings>), id: 'system' };
+          try { localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(merged)); } catch (_) {}
+          return merged;
+        }
+      } catch (e) {
+        if (!systemSettingsWarned) {
+          systemSettingsWarned = true;
+          console.warn('Firestore public settings unavailable; using local fallback.', (e as any)?.code || 'unknown');
+        }
+      }
+    }
+
     try {
-      const snap = await getDoc(doc(db, 'settings', 'system'));
-      if (snap.exists()) {
-        const data = snap.data() as SystemSettings;
-        const merged: SystemSettings = {
-          ...fallbackSettings,
-          ...data,
-        };
-        try {
-          localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(merged));
-        } catch (_) {}
-        return merged;
+      const raw = localStorage.getItem(STORAGE_KEYS.settings);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.defaultTrialDays === 'number') return { ...fallbackSettings, ...parsed };
       }
-    } catch (e) {
-      console.warn('Firestore getSystemSettings failed, using fallback:', e);
-    }
-  }
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.settings);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed.defaultTrialDays === 'number') {
-        return {
-          ...fallbackSettings,
-          ...parsed,
-        };
-      }
-    }
-  } catch (_) {}
-
-  try {
-    localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(fallbackSettings));
-  } catch (_) {}
-  return fallbackSettings;
+    } catch (_) {}
+    try { localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(fallbackSettings)); } catch (_) {}
+    return fallbackSettings;
+  });
 }
 
 export async function updateSystemSettings(settings: Partial<SystemSettings>): Promise<SystemSettings> {
@@ -1007,13 +995,14 @@ export async function updateSystemSettings(settings: Partial<SystemSettings>): P
   if (isFirebaseConfigured) {
     try {
       await setDoc(doc(db, 'settings', 'system'), updated, { merge: true });
-      if (settings.loginWhatsApp !== undefined || settings.loginWhatsAppEnabled !== undefined) {
-        await setDoc(doc(db, 'settings', 'public'), { loginWhatsApp: updated.loginWhatsApp || updated.supportWhatsApp || '970599999999', loginWhatsAppEnabled: updated.loginWhatsAppEnabled !== false, showDeliveryDays: updated.showDeliveryDays !== false }, { merge: true });
+      {
+        await setDoc(doc(db, 'settings', 'public'), { loginWhatsApp: updated.loginWhatsApp || updated.supportWhatsApp || '970599999999', loginWhatsAppEnabled: updated.loginWhatsAppEnabled !== false, showDeliveryDays: updated.showDeliveryDays !== false, currency: '₪', platformName: updated.platformName || 'فارما لينك', supportWhatsApp: updated.supportWhatsApp || updated.loginWhatsApp || '970599999999' }, { merge: true });
       }
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'settings/system');
     }
   }
+  invalidateCache(['systemSettings']);
 
   try {
     localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(updated));

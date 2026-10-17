@@ -17,7 +17,6 @@ import {
   onAuthStateChanged,
   getRedirectResult,
   signInWithRedirect,
-  signInWithPopup,
   doc,
   getDoc,
   setDoc,
@@ -403,7 +402,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         useToastStore.getState().error('لم يكتمل تسجيل الدخول بعد العودة من Google. جرّب فتح الموقع من متصفح آخر، وتأكد أن النطاق مضاف في Firebase Authorized domains.');
       }
     }).catch((error: any) => {
-      if (error?.code && !['auth/no-auth-event', 'auth/popup-closed-by-user'].includes(error.code)) {
+      if (error?.code && !['auth/no-auth-event'].includes(error.code)) {
         console.warn('[auth] redirect result:', error.code);
         useToastStore.getState().error('تعذر استعادة جلسة Google. حاول تسجيل الدخول مرة أخرى.');
       }
@@ -548,32 +547,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           return await waitForLoadedUser();
         }
 
-        // نفس أسلوب v1 الناجح: النافذة المنبثقة أولاً مع معالجة خطأ Firebase الداخلي (race condition)
-        try {
-          console.info('[auth] opening Google popup');
-          await signInWithPopup(auth, googleProvider);
-          return await waitForLoadedUser();
-        } catch (popupError: any) {
-          const msg = popupError?.message || '';
-          const code = popupError?.code || '';
-          if (msg.includes('Pending promise was never set') || msg.includes('INTERNAL ASSERTION FAILED')) {
-            console.warn('Recovered from Firebase popup internal race condition:', msg);
-            for (let i = 0; i < 25; i++) {
-              if (auth.currentUser) return await waitForLoadedUser();
-              await new Promise((r) => setTimeout(r, 200));
-            }
-            return Boolean(auth.currentUser);
-          }
-          if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request' || code === 'auth/user-cancelled') {
-            useToastStore.getState().info('تم إلغاء تسجيل الدخول.');
-            return false;
-          }
-          const canFallback = code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment' || code === 'auth/web-storage-unsupported';
-          if (!canFallback) throw popupError;
-        }
-
-        // احتياط: النافذة المنبثقة محجوبة أو غير مدعومة -> redirect
-        console.info('[auth] popup unavailable, opening Google redirect');
+        // تسجيل الدخول عبر Redirect فقط: يعمل على الهاتف ولا يعتمد على نافذة منبثقة.
+        console.info('[auth] opening Google redirect');
         try { sessionStorage.setItem('pharma_google_redirect_pending', '1'); } catch {}
         await signInWithRedirect(auth, googleProvider);
         return true;

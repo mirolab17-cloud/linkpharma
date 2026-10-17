@@ -365,9 +365,9 @@ export const PharmacyPrices: React.FC = () => {
     productPricesMap,
   ]);
 
-  // فرز الأصناف
+  // فرز الأصناف مع إزالة أي تكرار محتمل من بيانات الاستيراد أو Firestore.
   const sortedProducts = useMemo(() => {
-    let list = [...filteredProducts];
+    let list = Array.from(new Map(filteredProducts.map((product) => [product.id, product])).values());
 
     if (sortByEffective) {
       list.sort((a, b) => {
@@ -768,7 +768,7 @@ export const PharmacyPrices: React.FC = () => {
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {paginatedProducts.map((product) => {
+            {paginatedProducts.map((product, index) => {
               const ing = ingredientsMap.get(product.activeIngredientId);
               const prodPrices = productPricesMap.get(product.id) || [];
               const isFav = userFavorites.includes(product.id);
@@ -793,6 +793,7 @@ export const PharmacyPrices: React.FC = () => {
               return (
                 <div
                   key={product.id}
+                  ref={index === paginatedProducts.length - 2 ? loadMoreRef : undefined}
                   className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden"
                 >
                   {/* رأس بطاقة الدواء */}
@@ -1048,8 +1049,8 @@ export const PharmacyPrices: React.FC = () => {
           </div>
 
           {/* التحميل التلقائي عند الوصول إلى آخر صنفين */}
-          {hasMoreProducts && <div ref={loadMoreRef} className="flex justify-center py-6 text-xs font-bold text-slate-400" aria-live="polite">
-            {loadingMore ? 'جاري تحميل 10 أصناف إضافية...' : 'اقتربت من النهاية — سيتم تحميل المزيد تلقائياً'}
+          {hasMoreProducts && <div className="flex justify-center py-4 text-xs font-bold text-slate-400" aria-live="polite">
+            {loadingMore ? 'جاري تحميل 10 أصناف إضافية...' : 'مرّر للأسفل لمتابعة عرض الأصناف'}
           </div>}
           {!hasMoreProducts && sortedProducts.length > PAGE_SIZE && <p className="text-center text-xs text-slate-400 py-5">تم عرض جميع الأصناف المطابقة</p>}
         </>
