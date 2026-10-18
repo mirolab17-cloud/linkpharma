@@ -14,6 +14,7 @@ import {
   UserRoundCheck,
   ClipboardCheck,
   ScrollText,
+  Megaphone,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -39,6 +40,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { to: '/admin/representatives', label: 'طلبات المندوبين', icon: UserRoundCheck, highlight: true },
     { to: '/admin/approvals', label: 'اعتماد التغييرات الحساسة', icon: ClipboardCheck, highlight: true },
     { to: '/admin/audit-log', label: 'سجل التدقيق', icon: ScrollText },
+    { to: '/admin/announcements', label: 'مركز الإعلانات', icon: Megaphone, highlight: true },
     { to: '/admin/import', label: 'رفع أسعار مورد', icon: UploadCloud, highlight: true },
     { to: '/admin/catalog-import', label: 'استيراد الكتالوج', icon: UploadCloud, highlight: true },
     { to: '/admin/pharmacies', label: 'إدارة الصيدليات', icon: Building2 },

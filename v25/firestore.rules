@@ -242,6 +242,27 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // Campaign records are an auditable admin-only ledger; notification documents are written per recipient.
+    match /announcement_campaigns/{campaignId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin() &&
+        request.resource.data.id == campaignId &&
+        request.resource.data.createdByUid == request.auth.uid &&
+        request.resource.data.targetCount is int && request.resource.data.targetCount > 0 &&
+        request.resource.data.deliveredCount == 0 &&
+        request.resource.data.status == 'sending';
+      allow update: if isAdmin() &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.targetCount == resource.data.targetCount &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deliveredCount', 'status', 'updatedAt', 'completedAt', 'failureMessage']) &&
+        request.resource.data.deliveredCount is int &&
+        request.resource.data.deliveredCount >= resource.data.deliveredCount &&
+        request.resource.data.deliveredCount <= resource.data.targetCount &&
+        request.resource.data.status in ['sending', 'sent', 'partial', 'failed'];
+      allow delete: if false;
+    }
+
     // Orders (Only users with active subscription can place orders)
     match /orders/{orderId} {
       allow get: if isAdmin() || (isSignedIn() && resource.data.pharmacyId == request.auth.uid);
@@ -272,20 +293,22 @@ service cloud.firestore {
       allow get: if isAdmin() || (
         isSignedIn() && (
           resource.data.userId == request.auth.uid ||
-          resource.data.userId == 'all' ||
-          !('audience' in resource.data) ||
-          resource.data.audience.type == 'all' ||
-          ('userIds' in resource.data.audience && request.auth.uid in resource.data.audience.userIds)
+          (resource.data.userId == 'all' && (
+            !('audience' in resource.data) ||
+            resource.data.audience.type == 'all' ||
+            ('userIds' in resource.data.audience && request.auth.uid in resource.data.audience.userIds)
+          ))
         )
       );
 
       allow list: if isAdmin() || (
         isSignedIn() && (
           resource.data.userId == request.auth.uid ||
-          resource.data.userId == 'all' ||
-          !('audience' in resource.data) ||
-          resource.data.audience.type == 'all' ||
-          ('userIds' in resource.data.audience && request.auth.uid in resource.data.audience.userIds)
+          (resource.data.userId == 'all' && (
+            !('audience' in resource.data) ||
+            resource.data.audience.type == 'all' ||
+            ('userIds' in resource.data.audience && request.auth.uid in resource.data.audience.userIds)
+          ))
         )
       );
 

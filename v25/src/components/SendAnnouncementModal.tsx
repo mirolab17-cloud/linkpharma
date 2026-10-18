@@ -1,7 +1,7 @@
 // src/components/SendAnnouncementModal.tsx
 import React, { useState } from 'react';
 import { Modal } from './Modal';
-import { createNotification, getUsers } from '../services/dataStorage';
+import { createNotification } from '../services/dataStorage';
 import { UserProfile } from '../types';
 import { useToastStore } from '../store/useToastStore';
 import { Megaphone, Send, Sparkles, Users, User, BellRing } from 'lucide-react';
@@ -11,6 +11,7 @@ interface SendAnnouncementModalProps {
   onClose: () => void;
   defaultRecipientId?: string; // UID of pharmacy if opened from specific row
   pharmacies?: UserProfile[];
+  fixedRecipient?: boolean;
 }
 
 export const SendAnnouncementModal: React.FC<SendAnnouncementModalProps> = ({
@@ -18,6 +19,7 @@ export const SendAnnouncementModal: React.FC<SendAnnouncementModalProps> = ({
   onClose,
   defaultRecipientId = 'all',
   pharmacies = [],
+  fixedRecipient = false,
 }) => {
   const { success, error } = useToastStore();
   const [recipient, setRecipient] = useState<string>(defaultRecipientId);
@@ -131,20 +133,26 @@ export const SendAnnouncementModal: React.FC<SendAnnouncementModalProps> = ({
               {recipient === 'all' ? 'يصل فورياً لكافة الصيدليات' : 'إشعار مخصص لصيدلية محددة'}
             </span>
           </label>
-          <select
-            value={recipient}
-            onChange={(e) => setRecipient(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:outline-hidden focus:border-[#0f9d7a]"
-          >
-            <option value="all">📢 جميع الصيدليات المشتركة (تعميم عام)</option>
-            {pharmacies
-              .filter((p) => p.role === 'pharmacy')
-              .map((p) => (
-                <option key={p.uid} value={p.uid}>
-                  🏥 {p.pharmacyName || p.name} ({p.phone ? `+${p.phone}` : p.email})
-                </option>
-              ))}
-          </select>
+          {fixedRecipient ? (
+            <div className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800">
+              {pharmacies.find((p) => p.uid === recipient)?.pharmacyName || pharmacies.find((p) => p.uid === recipient)?.name || 'الحساب المحدد'}
+            </div>
+          ) : (
+            <select
+              value={recipient}
+              onChange={(e) => setRecipient(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:outline-hidden focus:border-[#0f9d7a]"
+            >
+              <option value="all">📢 جميع الصيدليات المشتركة (تعميم عام)</option>
+              {pharmacies
+                .filter((p) => p.role === 'pharmacy')
+                .map((p) => (
+                  <option key={p.uid} value={p.uid}>
+                    🏥 {p.pharmacyName || p.name} ({p.phone ? `+${p.phone}` : p.email})
+                  </option>
+                ))}
+            </select>
+          )}
         </div>
 
         {/* قوالب جاهزة سريعة */}

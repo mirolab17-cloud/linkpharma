@@ -303,7 +303,7 @@ export interface PharmacySuggestion {
   reviewedAt?: string;
 }
 
-export type PlatformActivityType = 'login' | 'order_created' | 'order_edited' | 'pharmacy_imported' | 'user_access_changed' | 'suggestion_created' | 'profile_updated' | 'price_imported' | 'price_import_failed' | 'price_visibility_changed' | 'order_status_changed' | 'representative_link_approved' | 'representative_link_rejected' | 'representative_link_revoked' | 'delivery_schedule_updated' | 'supplier_template_updated' | 'change_approval_requested' | 'change_approval_approved' | 'change_approval_rejected' | 'change_approval_failed' | 'backup_created' | 'backup_restored';
+export type PlatformActivityType = 'login' | 'order_created' | 'order_edited' | 'pharmacy_imported' | 'user_access_changed' | 'suggestion_created' | 'profile_updated' | 'price_imported' | 'price_import_failed' | 'price_visibility_changed' | 'order_status_changed' | 'representative_link_approved' | 'representative_link_rejected' | 'representative_link_revoked' | 'delivery_schedule_updated' | 'supplier_template_updated' | 'change_approval_requested' | 'change_approval_approved' | 'change_approval_rejected' | 'change_approval_failed' | 'backup_created' | 'backup_restored' | 'announcement_sent';
 
 export interface PlatformActivity {
   id: string;

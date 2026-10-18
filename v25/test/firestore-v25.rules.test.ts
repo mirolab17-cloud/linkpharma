@@ -108,4 +108,41 @@ describe('v25 Firestore rules — warehouse representatives', () => {
     await assertSucceeds(getDoc(doc(db, 'prices/price1')));
     await assertFails(getDoc(doc(db, 'prices/price2')));
   });
+
+  it('restricts campaign creation and immutable campaign fields to admins', async () => {
+    const campaign = {
+      id: 'campaign1', title: 'تحديث مهم', message: 'نص تجريبي', priority: 'high',
+      audience: { kind: 'all_pharmacies', label: 'جميع الصيدليات النشطة' },
+      createdByUid: 'admin1', createdByName: 'مدير تجريبي',
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      targetCount: 1, deliveredCount: 0, status: 'sending',
+    };
+    const repDb = testEnv.authenticatedContext('rep1').firestore();
+    await assertFails(setDoc(doc(repDb, 'announcement_campaigns/campaign1'), campaign));
+
+    const adminDb = testEnv.authenticatedContext('admin1', { admin: true }).firestore();
+    await assertSucceeds(setDoc(doc(adminDb, 'announcement_campaigns/campaign1'), campaign));
+    await assertSucceeds(updateDoc(doc(adminDb, 'announcement_campaigns/campaign1'), {
+      deliveredCount: 1, status: 'sent', updatedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+    }));
+    await assertFails(updateDoc(doc(adminDb, 'announcement_campaigns/campaign1'), { title: 'عنوان معدل' }));
+  });
+
+  it('allows an admin-created targeted notification only to its addressed account', async () => {
+    const adminDb = testEnv.authenticatedContext('admin1', { admin: true }).firestore();
+    await assertSucceeds(setDoc(doc(adminDb, 'notifications/targeted1'), {
+      id: 'targeted1', userId: 'pharmacy1', title: 'خاص', message: 'إشعار موجه',
+      type: 'admin_announcement', read: false, createdAt: new Date().toISOString(),
+    }));
+    const recipientDb = testEnv.authenticatedContext('pharmacy1').firestore();
+    const otherDb = testEnv.authenticatedContext('pharmacy2').firestore();
+    await assertSucceeds(getDoc(doc(recipientDb, 'notifications/targeted1')));
+    await assertFails(getDoc(doc(otherDb, 'notifications/targeted1')));
+    await assertSucceeds(setDoc(doc(recipientDb, 'notification_reads/pharmacy1_targeted1'), {
+      uid: 'pharmacy1', notifId: 'targeted1', readAt: new Date().toISOString(), shownCount: 1,
+    }));
+    await assertFails(setDoc(doc(otherDb, 'notification_reads/pharmacy1_targeted1'), {
+      uid: 'pharmacy1', notifId: 'targeted1', readAt: new Date().toISOString(), shownCount: 1,
+    }));
+  });
 });

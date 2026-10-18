@@ -46,7 +46,6 @@ import {
 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Spinner } from '../../components/Loader';
-import { SendAnnouncementModal } from '../../components/SendAnnouncementModal';
 import { getWarehouseLinkRequests } from '../../services/representatives';
 import { getAdminChangeApprovals } from '../../services/changeApprovals';
 import { getPlatformActivity } from '../../services/v18Features';
@@ -81,7 +80,6 @@ export const AdminDashboard: React.FC = () => {
   const [savingSupplierId, setSavingSupplierId] = useState<string | null>(null);
 
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
-  const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
@@ -331,14 +329,14 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setAnnouncementModalOpen(true)}
+          <Link
+            to="/admin/announcements"
             className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-[#0f9d7a] border border-slate-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs active:scale-95"
-            title="إرسال تعميم فوري أو تحديث هام لجميع الصيدليات"
+            title="إنشاء حملة إعلانية مع معاينة وعدد مستلمين"
           >
             <Megaphone className="w-4 h-4" />
-            <span>إرسال تعميم للصيدليات</span>
-          </button>
+            <span>مركز الإعلانات</span>
+          </Link>
 
           <button
             onClick={handleSeed}
@@ -943,14 +941,6 @@ export const AdminDashboard: React.FC = () => {
           )}
         </div>
       </div>
-
-      {/* نافذة إرسال التعميم للصيدليات */}
-      <SendAnnouncementModal
-        isOpen={announcementModalOpen}
-        onClose={() => setAnnouncementModalOpen(false)}
-        defaultRecipientId="all"
-        pharmacies={users}
-      />
 
       {/* نافذة تأكيد مسح البيانات */}
       <ConfirmDialog

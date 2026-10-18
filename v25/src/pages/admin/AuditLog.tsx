@@ -14,7 +14,7 @@ const actionName: Record<string, string> = {
   order_created: 'إنشاء طلب', order_edited: 'تعديل طلب', order_status_changed: 'تغيير حالة طلب', price_visibility_changed: 'إظهار/إخفاء سعر',
   delivery_schedule_updated: 'تعديل جدول توصيل', supplier_template_updated: 'تعديل قالب استيراد', representative_link_approved: 'اعتماد ربط مندوب',
   representative_link_rejected: 'رفض ربط مندوب', representative_link_revoked: 'إلغاء ربط مندوب', change_approval_requested: 'طلب اعتماد ثانٍ',
-  change_approval_approved: 'اعتماد تغيير حساس', change_approval_rejected: 'رفض تغيير حساس', change_approval_failed: 'فشل تطبيق تغيير حساس', backup_created: 'إنشاء نسخة احتياطية', backup_restored: 'استعادة نسخة احتياطية',
+  change_approval_approved: 'اعتماد تغيير حساس', change_approval_rejected: 'رفض تغيير حساس', change_approval_failed: 'فشل تطبيق تغيير حساس', backup_created: 'إنشاء نسخة احتياطية', backup_restored: 'استعادة نسخة احتياطية', announcement_sent: 'إرسال حملة إعلانية',
 };
 const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 

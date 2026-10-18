@@ -43,6 +43,7 @@ const V18Operations = lazy(() => import('./pages/admin/V18Operations').then(m =>
 const RepresentativeRequests = lazy(() => import('./pages/admin/RepresentativeRequests').then(m => ({ default: m.RepresentativeRequests })));
 const ChangeApprovals = lazy(() => import('./pages/admin/ChangeApprovals').then(m => ({ default: m.ChangeApprovals })));
 const AuditLog = lazy(() => import('./pages/admin/AuditLog').then(m => ({ default: m.AuditLog })));
+const Announcements = lazy(() => import('./pages/admin/Announcements').then(m => ({ default: m.Announcements })));
 
 // Pharmacy Pages (Prices loaded directly or fast-suspensed)
 import { PharmacyPrices } from './pages/pharmacy/Prices';
@@ -341,6 +342,7 @@ export default function App() {
           <Route path="representatives" element={<RepresentativeRequests />} />
           <Route path="approvals" element={<ChangeApprovals />} />
           <Route path="audit-log" element={<AuditLog />} />
+          <Route path="announcements" element={<Announcements />} />
         </Route>
 
         {/* مسارات تطبيق الصيدلية */}

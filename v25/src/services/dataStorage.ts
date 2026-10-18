@@ -1642,23 +1642,17 @@ export async function createNotification(
 }
 
 export async function markNotificationAsRead(id: string, userId?: string): Promise<void> {
-  if (isFirebaseConfigured) {
+  if (isFirebaseConfigured && userId) {
     try {
-      const notifSnap = await getDoc(doc(db, 'notifications', id));
-      const owner = notifSnap.exists() ? (notifSnap.data() as any).userId : userId;
-      if (owner === 'all' && userId) {
-        const readRef = doc(db, 'notification_reads', `${userId}_${id}`);
-        await setDoc(readRef, { uid: userId, notifId: id, readAt: new Date().toISOString(), shownCount: 1 }, { merge: true });
-      } else {
-        await updateDoc(doc(db, 'notifications', id), { read: true });
-      }
+      const readRef = doc(db, 'notification_reads', `${userId}_${id}`);
+      await setDoc(readRef, { uid: userId, notifId: id, readAt: new Date().toISOString(), shownCount: 1 }, { merge: true });
     } catch (e) {
       console.error('Firestore markNotificationAsRead error:', e);
     }
   }
 
   const list = getLocal<AppNotification>(STORAGE_KEYS.notifications).map((n) => {
-    if (n.id === id || (userId && n.userId === 'all')) {
+    if (n.id === id && n.userId !== 'all') {
       return { ...n, read: true };
     }
     return n;
@@ -1677,7 +1671,7 @@ export async function markAllNotificationsAsRead(userId: string): Promise<void> 
   const updated = list.map((n) => {
     if ((n.userId === userId || n.userId === 'all') && !n.read) {
       idsToUpdate.push(n.id);
-      return { ...n, read: true };
+      return n.userId === 'all' ? n : { ...n, read: true };
     }
     return n;
   });
@@ -1685,15 +1679,12 @@ export async function markAllNotificationsAsRead(userId: string): Promise<void> 
 
   if (isFirebaseConfigured && idsToUpdate.length > 0) {
     try {
-      const all = getLocal<AppNotification>(STORAGE_KEYS.notifications);
-      await Promise.all(idsToUpdate.map(async (id) => {
-        const notif = all.find((n) => n.id === id);
-        if (notif?.userId === 'all') {
-          await setDoc(doc(db, 'notification_reads', `${userId}_${id}`), { uid: userId, notifId: id, readAt: new Date().toISOString(), shownCount: 1 }, { merge: true });
-        } else {
-          await updateDoc(doc(db, 'notifications', id), { read: true });
-        }
-      }));
+      const readAt = new Date().toISOString();
+      await Promise.all(idsToUpdate.map((id) => setDoc(
+        doc(db, 'notification_reads', `${userId}_${id}`),
+        { uid: userId, notifId: id, readAt, shownCount: 1 },
+        { merge: true },
+      )));
     } catch (e) {
       console.error('Firestore markAllNotificationsAsRead batch error:', e);
     }

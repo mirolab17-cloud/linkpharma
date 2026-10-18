@@ -1,5 +1,6 @@
 // src/pages/admin/Pharmacies.tsx
 import React, { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   getUsers,
   getSuppliers,
@@ -713,17 +714,13 @@ export const Pharmacies: React.FC = () => {
             <span>تعيين مدير بالبريد</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setAnnouncementRecipientId('all');
-              setIsAnnouncementModalOpen(true);
-            }}
+          <Link
+            to="/admin/announcements"
             className="px-4 py-2.5 bg-[#0f9d7a] hover:bg-[#0b7a5e] text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-2 shrink-0"
           >
             <Megaphone className="w-4 h-4" />
-            <span>إرسال تعميم للصيدليات</span>
-          </button>
+            <span>مركز الإعلانات</span>
+          </Link>
         </div>
       </div>
 
@@ -1358,6 +1355,8 @@ export const Pharmacies: React.FC = () => {
         isOpen={isAnnouncementModalOpen}
         onClose={() => setIsAnnouncementModalOpen(false)}
         defaultRecipientId={announcementRecipientId}
+        pharmacies={users}
+        fixedRecipient
       />
 
       {/* حوار تأكيد الحذف */}
