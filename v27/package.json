@@ -43,15 +43,5 @@
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
     "vite-plugin-pwa": "^2.0.0"
-  },
-  "optionalDependencies": {
-    "@rolldown/binding-linux-arm64-gnu": "1.2.12",
-    "@tailwindcss/oxide-linux-arm64-gnu": "4.3.3",
-    "@typescript/typescript-linux-arm64": "^7.0.2",
-    "@typescript/typescript-linux-x64": "^7.0.2",
-    "lightningcss-linux-arm64-gnu": "1.33.0"
-  },
-  "overrides": {
-    "lightningcss": "1.33.0"
   }
 }

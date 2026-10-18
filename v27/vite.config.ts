@@ -47,6 +47,8 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          // The landing page is index.html, so do not use it as an SPA navigation fallback.
+          navigateFallback: null,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           runtimeCaching: [
             {
@@ -91,7 +93,7 @@ export default defineConfig(() => {
       },
     },
     build: {
-      // v27: build the public website and the authenticated React platform as separate HTML entries.
+      // v27: public landing (index.html) and authenticated React platform (platform.html) as separate entries.
       rollupOptions: {
         input: {
           main: path.resolve(__dirname, 'index.html'),
