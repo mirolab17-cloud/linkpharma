@@ -1,8 +1,9 @@
 // src/pages/admin/AdminLogin.tsx
 import React, { useState } from 'react';
+import { BrandMark } from '../../components/BrandLogo';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
-import { ShieldCheck, ArrowRight, Lock, AlertCircle } from 'lucide-react';
+import { ArrowRight, Lock, AlertCircle } from 'lucide-react';
 import { useToastStore } from '../../store/useToastStore';
 
 export const AdminLogin: React.FC = () => {
@@ -41,8 +42,8 @@ export const AdminLogin: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 text-right" dir="rtl">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto shadow-lg mb-4">
-          <ShieldCheck className="w-9 h-9" />
+        <div className="flex justify-center mb-4">
+          <BrandMark size={64} />
         </div>
         <h2 className="text-center text-2xl font-black text-white tracking-tight">
           بوابة إدارة النظام

@@ -1,5 +1,6 @@
 // src/components/SubscriptionExpiredScreen.tsx
 import React, { useState, useEffect } from 'react';
+import { BrandMark } from './BrandLogo';
 import { useAuthStore } from '../store/useAuthStore';
 import { getOrders, getProducts, getSuppliers, getSystemSettings } from '../services/dataStorage';
 import {
@@ -161,8 +162,8 @@ export const SubscriptionExpiredScreen: React.FC = () => {
         <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200 shadow-xl text-center space-y-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-[#0f9d7a]" />
 
-          <div className="w-16 h-16 rounded-3xl bg-emerald-50 text-[#0f9d7a] border border-emerald-100 flex items-center justify-center mx-auto shadow-xs">
-            <Clock className="w-8 h-8 text-[#0f9d7a]" />
+          <div className="flex justify-center">
+            <BrandMark size={64} />
           </div>
 
           <div className="space-y-2 max-w-2xl mx-auto">

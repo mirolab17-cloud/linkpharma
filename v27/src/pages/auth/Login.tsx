@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { SplashHero } from '../../components/SplashHero';
 import { PharmacyBrandLoader } from '../../components/Loader';
+import { BrandMark } from '../../components/BrandLogo';
 import { getPublicLoginSettings } from '../../services/dataStorage';
 import { auth } from '../../firebase';
 
@@ -110,7 +111,7 @@ export const Login: React.FC = () => {
             {/* أيقونة المنصة الحصرية الجديدة وترويسة البطاقة */}
             <div className="text-center mb-6">
               <div className="mb-3.5 flex justify-center">
-                <PharmacyBrandLoader size="lg" glow={true} />
+                <BrandMark size={64} />
               </div>
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                 بوابة الصيدلية الموحدة

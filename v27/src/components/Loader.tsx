@@ -1,9 +1,10 @@
 // src/components/Loader.tsx
 import React from 'react';
+import { BrandMark } from './BrandLogo';
 
 /**
- * أيقونة التحميل الحصرية والخاصة بمنصة الصيدلية (Pharmacy Brand Loader)
- * تدمج كبسولة الدواء مع رمز النبض وحلقات الرادار الرقمية لتحديث الأسعار
+ * شاشة/مؤشر التحميل الرسمي للمنصة: شعار LinkPharma نفسه متحركاً
+ * (السلسلتان تنفصلان وتلتحمان بنبضة ناعمة) بدل الدائرة الدوّارة القديمة.
  */
 export const PharmacyBrandLoader: React.FC<{
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -18,89 +19,24 @@ export const PharmacyBrandLoader: React.FC<{
   className = '',
   glow = true,
 }) => {
-  const sizeMap = {
-    xs: { outer: 'w-6 h-6', icon: 14, stroke: 1.8 },
-    sm: { outer: 'w-8 h-8', icon: 18, stroke: 2 },
-    md: { outer: 'w-12 h-12', icon: 26, stroke: 2.2 },
-    lg: { outer: 'w-16 h-16', icon: 34, stroke: 2.2 },
-    xl: { outer: 'w-24 h-24', icon: 52, stroke: 2.4 },
-  };
-
-  const dim = sizeMap[size];
+  const sizeMap = { xs: 24, sm: 32, md: 48, lg: 64, xl: 96 } as const;
+  const px = sizeMap[size];
 
   return (
-    <div className={`inline-flex flex-col items-center justify-center text-center ${className}`}>
-      <div className={`relative ${dim.outer} flex items-center justify-center`}>
-        {/* حلقة التوهج الخارجية الدوارة بأسلوب رادار الأسعار */}
-        <div
-          className={`absolute inset-0 rounded-full border-2 border-dashed border-emerald-500/40 animate-brand-spin ${
-            glow ? 'drop-shadow-[0_0_12px_rgba(16,185,129,0.35)]' : ''
-          }`}
-        />
-
-        {/* الحلقة الخلفية المتوهجة بنبض ناعم */}
-        <div className="absolute inset-1 rounded-full bg-gradient-to-tr from-emerald-500/10 via-teal-500/20 to-emerald-400/10 animate-pulse" />
-
-        {/* أيقونة الكبسولة الطبية المخصصة للموقع مع علامة النبض والجمع الطبي */}
-        <div className="relative z-10 text-emerald-600 animate-brand-float flex items-center justify-center">
-          <svg
-            width={dim.icon}
-            height={dim.icon}
-            viewBox="0 0 48 48"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="transform -rotate-12 transition-transform"
-          >
-            {/* غلاف الكبسولة النصف الأول */}
-            <path
-              d="M14.5 14.5C18.6421 10.3579 25.3579 10.3579 29.5 14.5L33.5 18.5L20.5 31.5L14.5 25.5C10.3579 21.3579 10.3579 14.6421 14.5 10.5"
-              fill="url(#pill-grad-top)"
-              stroke="#0f9d7a"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* غلاف الكبسولة النصف الثاني */}
-            <path
-              d="M20.5 31.5L33.5 18.5L37.5 22.5C41.6421 26.6421 41.6421 33.3579 37.5 37.5C33.3579 41.6421 26.6421 41.6421 22.5 37.5L20.5 31.5Z"
-              fill="url(#pill-grad-bottom)"
-              stroke="#0b7a5e"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* خط الانفصال الأوسط للكبسولة الدوائية */}
-            <line
-              x1="18.5"
-              y1="33.5"
-              x2="35.5"
-              y2="16.5"
-              stroke="#ffffff"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            />
-            {/* صليب صيدلاني دقيق في النصف العلوي */}
-            <path
-              d="M20 18H24M22 16V20"
-              stroke="#ffffff"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-            <defs>
-              <linearGradient id="pill-grad-top" x1="12" y1="12" x2="30" y2="30" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#10b981" />
-                <stop offset="1" stopColor="#059669" />
-              </linearGradient>
-              <linearGradient id="pill-grad-bottom" x1="20" y1="20" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#0284c7" />
-                <stop offset="1" stopColor="#0f766e" />
-              </linearGradient>
-            </defs>
-          </svg>
-        </div>
-
-        {/* نقطة ضوئية دوارة ترمز لتحديثات المستودعات الفورية */}
-        <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-emerald-400 animate-ping opacity-75" />
+    <div
+      role="status"
+      aria-live="polite"
+      className={`inline-flex flex-col items-center justify-center text-center ${className}`}
+    >
+      <div className="relative flex items-center justify-center" style={{ width: px, height: px }}>
+        {glow && size !== 'xs' && size !== 'sm' && (
+          <span
+            aria-hidden="true"
+            className="lp-halo absolute inset-0"
+            style={{ borderRadius: Math.round(px * 0.36) }}
+          />
+        )}
+        <BrandMark size={px} animated />
       </div>
 
       {text && (

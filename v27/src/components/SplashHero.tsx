@@ -1,7 +1,7 @@
 // src/components/SplashHero.tsx — v22: واجهة محايدة بين الصيدلية والمستودع
 import React, { useState, useEffect } from 'react';
 import { Pill, Store, Play, Pause, RotateCcw, Check, ShieldCheck, MessageSquare, BadgeCheck } from 'lucide-react';
-import { PharmacyBrandLoader } from './Loader';
+import { BrandMark } from './BrandLogo';
 
 interface SplashHeroProps {
   onGoogleSignIn?: () => void;
@@ -61,7 +61,7 @@ export const SplashHero: React.FC<SplashHeroProps> = ({ audience = 'pharmacy', o
   return (
     <div className="w-full text-right" dir="rtl">
       <div className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold mb-4">
-        <PharmacyBrandLoader size="xs" glow={false} />
+        <BrandMark size={24} />
         <span>شبكة تواصل مهنية بين الصيدليات والمستودعات</span>
       </div>
 

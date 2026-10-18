@@ -13,14 +13,6 @@ import {
 } from '../../services/dataStorage';
 import { Supplier, Product, ActiveIngredient, ImportBatch, PriceRecord } from '../../types';
 import { parseSpreadsheetFile, processMappedRows, SheetParseResult, MappedPriceRow } from '../../services/import';
-import {
-  extractPricesFromImage,
-  extractPricesFromText,
-  ExtractedPriceItem,
-  getStoredGeminiKey,
-  saveGeminiKey,
-  deleteGeminiKey
-} from '../../services/gemini';
 import { ProductMatcher, MatchResult } from '../../utils/fuzzyMatch';
 import { normalizeArabic } from '../../utils/arabicNormalize';
 import { classifyProduct } from '../../services/importQuality';
@@ -34,8 +26,6 @@ import { saveSupplierImportTemplate } from '../../services/representatives';
 import {
   UploadCloud,
   FileSpreadsheet,
-  Image as ImageIcon,
-  FileText,
   CheckCircle2,
   AlertTriangle,
   XCircle,
@@ -45,7 +35,6 @@ import {
   ArrowRight,
   Plus,
   Trash2,
-  Sparkles,
   Eye,
   Search,
   Check,
@@ -59,8 +48,7 @@ import { Modal } from '../../components/Modal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Spinner } from '../../components/Loader';
 
-type InputMode = 'file' | 'image' | 'text';
-type Step = 1 | 2 | 3 | 4; // 1: Input, 2: Mapping / Gemini Result, 3: Matching Review, 4: Summary
+type Step = 1 | 2 | 3 | 4; // 1: Input, 2: Mapping, 3: Matching Review, 4: Summary
 
 interface RowMatchItem {
   rowId: string;
@@ -92,7 +80,6 @@ export const ImportPrices: React.FC = () => {
 
   // Selection
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
-  const [inputMode, setInputMode] = useState<InputMode>('file');
 
   // File Upload State
   const [sheetData, setSheetData] = useState<SheetParseResult | null>(null);
@@ -111,16 +98,6 @@ export const ImportPrices: React.FC = () => {
   const [publicPriceCol, setPublicPriceCol] = useState<number>(-1);
   const [availCol, setAvailCol] = useState<number>(-1);
   const [expiryCol, setExpiryCol] = useState<number>(-1);
-
-  // Gemini Input State
-  const [pastedText, setPastedText] = useState<string>('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [geminiItems, setGeminiItems] = useState<ExtractedPriceItem[]>([]);
-  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('');
-  const [hasSavedGeminiKey, setHasSavedGeminiKey] = useState(false);
-  const [isEditingGeminiKey, setIsEditingGeminiKey] = useState(false);
-  const [showGeminiKeyText, setShowGeminiKeyText] = useState(false);
-  const [isSavingGeminiKey, setIsSavingGeminiKey] = useState(false);
 
   // Matching State
   const [matchRows, setMatchRows] = useState<RowMatchItem[]>([]);
@@ -156,7 +133,6 @@ export const ImportPrices: React.FC = () => {
   const [targetRollbackBatchId, setTargetRollbackBatchId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadBaseData();
@@ -177,48 +153,8 @@ export const ImportPrices: React.FC = () => {
       setRecentBatches(batches);
       const preferredSupplierId = user?.role === 'representative' ? user.supplierId : selectedSupplierId || scopedSuppliers[0]?.id;
       if (preferredSupplierId && scopedSuppliers.some((supplier) => supplier.id === preferredSupplierId)) setSelectedSupplierId(preferredSupplierId);
-
-      // تحميل مفتاح Gemini المحفوظ للمشرف إن وجد
-      try {
-        if (user?.role !== 'admin') return;
-        const storedKey = await getStoredGeminiKey();
-        if (storedKey) {
-          setHasSavedGeminiKey(true);
-          setGeminiApiKeyInput(storedKey);
-        }
-      } catch (_) {}
     } catch (e) {
       console.error(e);
-    }
-  };
-
-  const handleSaveGeminiKey = async () => {
-    if (!geminiApiKeyInput.trim()) {
-      warning('يرجى إدخال مفتاح Gemini API صالح.');
-      return;
-    }
-    setIsSavingGeminiKey(true);
-    try {
-      await saveGeminiKey(geminiApiKeyInput.trim());
-      setHasSavedGeminiKey(true);
-      setIsEditingGeminiKey(false);
-      success('تم حفظ مفتاح Gemini بنجاح في قاعدة البيانات (خاص بالمشرف).');
-    } catch (e: any) {
-      error('فشل حفظ المفتاح: ' + (e.message || ''));
-    } finally {
-      setIsSavingGeminiKey(false);
-    }
-  };
-
-  const handleDeleteGeminiKey = async () => {
-    try {
-      await deleteGeminiKey();
-      setHasSavedGeminiKey(false);
-      setGeminiApiKeyInput('');
-      setIsEditingGeminiKey(true);
-      success('تمت إزالة مفتاح Gemini.');
-    } catch (e: any) {
-      error('فشل إزالة المفتاح: ' + (e.message || ''));
     }
   };
 
@@ -349,53 +285,6 @@ export const ImportPrices: React.FC = () => {
     }
   };
 
-  // معالجة الذكاء الاصطناعي للنص أو الصورة
-  const handleGeminiProcess = async () => {
-    if (!selectedSupplierId) {
-      warning('يرجى اختيار المورد أولاً.');
-      return;
-    }
-
-    if (!hasSavedGeminiKey && !geminiApiKeyInput.trim()) {
-      setIsEditingGeminiKey(true);
-      warning('يرجى إدخال مفتاح Gemini API وحفظه أولاً لتفعيل الاستخراج بالذكاء الاصطناعي.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      let items: ExtractedPriceItem[] = [];
-      if (inputMode === 'image') {
-        if (!imageFile) {
-          warning('يرجى رفع صورة قائمة الأسعار أولاً.');
-          setLoading(false);
-          return;
-        }
-        items = await extractPricesFromImage(imageFile, geminiApiKeyInput.trim() || undefined);
-      } else {
-        if (!pastedText.trim()) {
-          warning('يرجى لصق نص قائمة الأسعار أولاً.');
-          setLoading(false);
-          return;
-        }
-        items = await extractPricesFromText(pastedText, geminiApiKeyInput.trim() || undefined);
-      }
-
-      if (items.length === 0) {
-        throw new Error('لم يتم استخراج أي أسعار صالحة من المدخلات.');
-      }
-
-      setGeminiItems(items);
-      setCurrentFileName(inputMode === 'image' ? (imageFile?.name || 'صورة_أسعار') : 'نص_ملصوق');
-      setStep(2);
-      success(`نجح الذكاء الاصطناعي في استخراج ${items.length} صنفاً بنجاح!`);
-    } catch (err: any) {
-      error(err.message || 'فشلت معالجة الذكاء الاصطناعي.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // الانتقال لخطوة المطابقة (Matching Step)
   const handleProceedToMatching = () => {
     let rowsToMatch: {
@@ -409,53 +298,43 @@ export const ImportPrices: React.FC = () => {
       expiry?: string;
     }[] = [];
 
-    if (inputMode === 'file') {
-      if (!sheetData) return;
-      if (nameCol === -1 || priceCol === -1) {
-        warning('يجب اختيار عمود اسم الصنف وعمود السعر على الأقل.');
-        return;
-      }
-
-      const mapped = processMappedRows({
-        allRows: sheetData.allRows,
-        startRow,
-        nameColIdx: nameCol,
-        strengthColIdx: strengthCol,
-        formColIdx: formCol,
-        packColIdx: packCol,
-        manufacturerColIdx: manufacturerCol,
-        bonusColIdx: bonusCol,
-        priceColIdx: priceCol,
-        publicPriceColIdx: publicPriceCol,
-        availColIdx: availCol,
-        expiryColIdx: expiryCol,
-      });
-
-      const validRows = mapped.filter((r) => r.isValid && r.rawPrice !== null);
-      if (validRows.length === 0) {
-        error('لم يتم العثور على أي صفوف صالحة بأسماء وأسعار بعد معالجة الملف.');
-        return;
-      }
-
-      rowsToMatch = validRows.map((r) => ({
-        rawName: r.rawName,
-        manufacturer: r.rawManufacturer,
-        pack: r.rawPack,
-        bonus: r.rawBonus,
-        price: r.rawPrice!,
-        publicPrice: r.rawPublicPrice || undefined,
-        available: r.rawAvailability ? !r.rawAvailability.includes('غير') && !r.rawAvailability.includes('نفد') : true,
-        expiry: r.rawExpiry,
-      }));
-    } else {
-      // من Gemini
-      rowsToMatch = geminiItems.map((item) => ({
-        rawName: item.name,
-        price: item.price,
-        publicPrice: item.publicPrice,
-        available: true,
-      }));
+    if (!sheetData) return;
+    if (nameCol === -1 || priceCol === -1) {
+      warning('يجب اختيار عمود اسم الصنف وعمود السعر على الأقل.');
+      return;
     }
+
+    const mapped = processMappedRows({
+      allRows: sheetData.allRows,
+      startRow,
+      nameColIdx: nameCol,
+      strengthColIdx: strengthCol,
+      formColIdx: formCol,
+      packColIdx: packCol,
+      manufacturerColIdx: manufacturerCol,
+      bonusColIdx: bonusCol,
+      priceColIdx: priceCol,
+      publicPriceColIdx: publicPriceCol,
+      availColIdx: availCol,
+      expiryColIdx: expiryCol,
+    });
+
+    const validRows = mapped.filter((r) => r.isValid && r.rawPrice !== null);
+    if (validRows.length === 0) {
+      error('لم يتم العثور على أي صفوف صالحة بأسماء وأسعار بعد معالجة الملف.');
+      return;
+    }
+
+    rowsToMatch = validRows.map((r) => ({
+      rawName: r.rawName,
+      manufacturer: r.rawManufacturer,
+      pack: r.rawPack,
+      bonus: r.rawBonus,
+      price: r.rawPrice!,
+      publicPrice: r.rawPublicPrice || undefined,
+      available: r.rawAvailability ? !r.rawAvailability.includes('غير') && !r.rawAvailability.includes('نفد') : true,
+      expiry: r.rawExpiry,
+    }));
 
     // تشغيل محرك المطابقة (Fuse.js + Normalization)
     const matcher = new ProductMatcher(products);
@@ -751,173 +630,22 @@ export const ImportPrices: React.FC = () => {
               <label className="block text-xs font-bold text-slate-700 mb-2">
                 اختر طريقة إدخال وتوريد الأسعار:
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <button
-                  type="button"
-                  onClick={() => setInputMode('file')}
-                  className={`p-5 rounded-2xl border text-right transition flex flex-col justify-between ${
-                    inputMode === 'file'
-                      ? 'border-[#0f9d7a] bg-emerald-50/40 ring-1 ring-[#0f9d7a]'
-                      : 'border-slate-200 hover:border-slate-300 bg-white'
-                  }`}
-                >
-                  <FileSpreadsheet
-                    className={`w-8 h-8 mb-3 ${
-                      inputMode === 'file' ? 'text-[#0f9d7a]' : 'text-slate-400'
-                    }`}
-                  />
+              <div className="grid grid-cols-1 gap-4">
+                <div className="p-5 rounded-2xl border border-[#0f9d7a] bg-emerald-50/40 ring-1 ring-[#0f9d7a] text-right flex flex-col justify-between">
+                  <FileSpreadsheet className="w-8 h-8 mb-3 text-[#0f9d7a]" />
                   <div>
                     <h3 className="font-extrabold text-sm text-slate-900">ملف Excel / CSV</h3>
                     <p className="text-xs text-slate-500 mt-1">
                       يدعم ملفات .xlsx و .csv و .xls مع اختيار ورقة العمل وصف البداية
                     </p>
                   </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setInputMode('image')}
-                  className={`${isRepresentative ? 'hidden ' : ''}p-5 rounded-2xl border text-right transition flex flex-col justify-between ${
-                    inputMode === 'image'
-                      ? 'border-[#0f9d7a] bg-emerald-50/40 ring-1 ring-[#0f9d7a]'
-                      : 'border-slate-200 hover:border-slate-300 bg-white'
-                  }`}
-                >
-                  <ImageIcon
-                    className={`w-8 h-8 mb-3 ${
-                      inputMode === 'image' ? 'text-[#0f9d7a]' : 'text-slate-400'
-                    }`}
-                  />
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <h3 className="font-extrabold text-sm text-slate-900">صورة كشف أو فاتورة</h3>
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1">
-                      استخراج الأسعار تلقائياً من صورة القائمة عبر Gemini Vision
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setInputMode('text')}
-                  className={`${isRepresentative ? 'hidden ' : ''}p-5 rounded-2xl border text-right transition flex flex-col justify-between ${
-                    inputMode === 'text'
-                      ? 'border-[#0f9d7a] bg-emerald-50/40 ring-1 ring-[#0f9d7a]'
-                      : 'border-slate-200 hover:border-slate-300 bg-white'
-                  }`}
-                >
-                  <FileText
-                    className={`w-8 h-8 mb-3 ${
-                      inputMode === 'text' ? 'text-[#0f9d7a]' : 'text-slate-400'
-                    }`}
-                  />
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <h3 className="font-extrabold text-sm text-slate-900">نص ملصوق</h3>
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1">
-                      لصق قائمة أسعار من واتساب أو بريد، وسيتعرف Gemini على الأسماء والأسعار
-                    </p>
-                  </div>
-                </button>
+                </div>
               </div>
             </div>
 
             {/* محتوى الإدخال بناءً على الطريقة */}
             <div className="pt-4 border-t border-slate-100">
-              {/* بطاقة إعداد مفتاح Gemini API للمشرف */}
-              {!isRepresentative && (inputMode === 'image' || inputMode === 'text') && (
-                <div className="mb-6 p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
-                        <Key className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-slate-800">
-                          مفتاح Gemini API (مخصص للمشرف فقط)
-                        </h4>
-                        <p className="text-[11px] text-slate-500">
-                          {hasSavedGeminiKey && !isEditingGeminiKey
-                            ? 'تم حفظ المفتاح بأمان في Firestore، ولا يمكن لأي صيدلية الاطلاع عليه.'
-                            : 'أدخل مفتاحك المجاني من Google AI Studio لتشغيل استخراج الأسعار بالذكاء الاصطناعي.'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {hasSavedGeminiKey && !isEditingGeminiKey ? (
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 text-[11px] font-semibold">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          المفتاح مفعل ومحفوظ
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setIsEditingGeminiKey(true)}
-                          className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition cursor-pointer"
-                        >
-                          تعديل
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleDeleteGeminiKey}
-                          className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                          title="حذف المفتاح"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {(!hasSavedGeminiKey || isEditingGeminiKey) && (
-                    <div className="mt-3 pt-3 border-t border-amber-200/60 flex flex-col sm:flex-row gap-2">
-                      <div className="relative flex-1">
-                        <input
-                          type={showGeminiKeyText ? 'text' : 'password'}
-                          value={geminiApiKeyInput}
-                          onChange={(e) => setGeminiApiKeyInput(e.target.value)}
-                          placeholder="أدخل مفتاح Gemini API هنا..."
-                          className="w-full pl-9 pr-3 py-2 text-xs font-mono rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:border-amber-500"
-                          dir="ltr"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowGeminiKeyText(!showGeminiKeyText)}
-                          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                        >
-                          {showGeminiKeyText ? <Eye className="w-4 h-4" /> : <Eye className="w-4 h-4 opacity-50" />}
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={handleSaveGeminiKey}
-                          disabled={isSavingGeminiKey || !geminiApiKeyInput.trim()}
-                          className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Save className="w-3.5 h-3.5" />
-                          <span>{isSavingGeminiKey ? 'جاري الحفظ...' : 'حفظ المفتاح في النظام'}</span>
-                        </button>
-                        {hasSavedGeminiKey && (
-                          <button
-                            type="button"
-                            onClick={() => setIsEditingGeminiKey(false)}
-                            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-xl transition cursor-pointer"
-                          >
-                            إلغاء
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {inputMode === 'file' && (
+              {(
                 <div className="border-2 border-dashed border-slate-300 rounded-3xl p-8 text-center hover:border-[#0f9d7a] transition bg-slate-50/50">
                   <input
                     type="file"
@@ -943,76 +671,6 @@ export const ImportPrices: React.FC = () => {
                   >
                     {loading ? 'جاري قراءة الملف...' : 'اختيار ملف من الجهاز'}
                   </button>
-                </div>
-              )}
-
-              {inputMode === 'image' && (
-                <div className="space-y-4">
-                  <input
-                    type="file"
-                    ref={imageInputRef}
-                    onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                    accept="image/*"
-                    className="hidden"
-                  />
-                  <div
-                    onClick={() => imageInputRef.current?.click()}
-                    className="border-2 border-dashed border-slate-300 rounded-3xl p-8 text-center hover:border-[#0f9d7a] cursor-pointer transition bg-slate-50/50"
-                  >
-                    <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4">
-                      <ImageIcon className="w-8 h-8" />
-                    </div>
-                    <h3 className="font-extrabold text-base text-slate-800">
-                      {imageFile ? imageFile.name : 'اضغط لرفع صورة قائمة الأسعار'}
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-1">
-                      التقط صورة واضحة للفاتورة أو كشف المستودع وسيقوم Gemini بالتعرف عليها
-                    </p>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={handleGeminiProcess}
-                      disabled={loading || !imageFile}
-                      className="px-6 py-2.5 bg-[#0f9d7a] hover:bg-[#0b7a5e] text-white text-xs font-bold rounded-xl shadow-xs transition active:scale-95 disabled:opacity-50 flex items-center gap-2"
-                    >
-                      <Sparkles className="w-4 h-4" />
-                      <span>{loading ? 'جاري التحليل بالذكاء الاصطناعي...' : 'استخراج الأسعار عبر Gemini'}</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {inputMode === 'text' && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      الصق نص رسالة أو قائمة الأسعار هنا:
-                    </label>
-                    <textarea
-                      rows={6}
-                      value={pastedText}
-                      onChange={(e) => setPastedText(e.target.value)}
-                      placeholder="مثال:
-بنادول إكسترا - 12 ₪
-أوجمنتين 1 جم - 55 ₪
-بروفين 400 - 18 ₪..."
-                      className="w-full p-3.5 rounded-2xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a] font-mono leading-relaxed"
-                    />
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={handleGeminiProcess}
-                      disabled={loading || !pastedText.trim()}
-                      className="px-6 py-2.5 bg-[#0f9d7a] hover:bg-[#0b7a5e] text-white text-xs font-bold rounded-xl shadow-xs transition active:scale-95 disabled:opacity-50 flex items-center gap-2"
-                    >
-                      <Sparkles className="w-4 h-4" />
-                      <span>{loading ? 'جاري استخراج البيانات...' : 'استخراج الأصناف بالذكاء الاصطناعي'}</span>
-                    </button>
-                  </div>
                 </div>
               )}
             </div>
@@ -1070,10 +728,10 @@ export const ImportPrices: React.FC = () => {
         </div>
       )}
 
-      {/* ======================= الخطوة 2: ربط الأعمدة أو مراجعة Gemini ======================= */}
+      {/* ======================= الخطوة 2: ربط الأعمدة ======================= */}
       {step === 2 && (
         <div className="space-y-6">
-          {inputMode === 'file' && sheetData && (
+          {sheetData && (
             <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                 <div>
@@ -1319,119 +977,6 @@ export const ImportPrices: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
-              </div>
-
-              {/* أزرار التنقل */}
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition"
-                >
-                  العودة للخطوة السابقة
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleProceedToMatching}
-                  className="px-6 py-2.5 rounded-xl bg-[#0f9d7a] hover:bg-[#0b7a5e] text-white text-xs font-bold transition shadow-xs flex items-center gap-2 active:scale-95"
-                >
-                  <span>متابعة لمطابقة الأصناف</span>
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* مسار Gemini (جدول قابل للتعديل والإضافة والحذف قبل الاعتماد) */}
-          {(inputMode === 'image' || inputMode === 'text') && (
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-6">
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                <div>
-                  <h2 className="text-lg font-black text-slate-900">
-                    مراجعة الأصناف المستخرجة بواسطة الذكاء الاصطناعي
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    يمكنك تعديل الأسماء والأسعار أو حذف وإضافة صفوف قبل الانتقال للمطابقة
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newItem: ExtractedPriceItem = {
-                      id: 'ext_' + Date.now(),
-                      name: '',
-                      price: 0,
-                    };
-                    setGeminiItems((prev) => [newItem, ...prev]);
-                  }}
-                  className="px-3.5 py-1.5 rounded-xl bg-emerald-50 text-[#0f9d7a] hover:bg-emerald-100 text-xs font-bold transition flex items-center gap-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>إضافة صف جديد</span>
-                </button>
-              </div>
-
-              {/* جدول التعديل */}
-              <div className="overflow-x-auto rounded-2xl border border-slate-200 max-h-96 overflow-y-auto">
-                <table className="w-full text-right text-xs">
-                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 sticky top-0">
-                    <tr>
-                      <th className="py-2.5 px-3 w-12 text-center">#</th>
-                      <th className="py-2.5 px-4">اسم الصنف المستخرج</th>
-                      <th className="py-2.5 px-4 w-40">السعر المستخرج (₪)</th>
-                      <th className="py-2.5 px-4 w-20 text-center">حذف</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {geminiItems.map((item, idx) => (
-                      <tr key={item.id} className="hover:bg-slate-50">
-                        <td className="py-2 px-3 text-center text-slate-400 font-bold">
-                          {idx + 1}
-                        </td>
-                        <td className="py-2 px-4">
-                          <input
-                            type="text"
-                            value={item.name}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setGeminiItems((prev) =>
-                                prev.map((i) => (i.id === item.id ? { ...i, name: val } : i))
-                              );
-                            }}
-                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-hidden focus:border-[#0f9d7a]"
-                          />
-                        </td>
-                        <td className="py-2 px-4">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={item.price}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              setGeminiItems((prev) =>
-                                prev.map((i) => (i.id === item.id ? { ...i, price: val } : i))
-                              );
-                            }}
-                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-bold focus:outline-hidden focus:border-[#0f9d7a]"
-                          />
-                        </td>
-                        <td className="py-2 px-4 text-center">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setGeminiItems((prev) => prev.filter((i) => i.id !== item.id))
-                            }
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               </div>
 
               {/* أزرار التنقل */}
@@ -1853,7 +1398,6 @@ export const ImportPrices: React.FC = () => {
               onClick={() => {
                 setStep(1);
                 setSheetData(null);
-                setGeminiItems([]);
                 setMatchRows([]);
                 setCommitSummary(null);
               }}

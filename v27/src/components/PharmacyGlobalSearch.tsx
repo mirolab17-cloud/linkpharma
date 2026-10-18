@@ -1,5 +1,6 @@
 // src/components/PharmacyGlobalSearch.tsx
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { BrandMark } from './BrandLogo';
 import { Product, ActiveIngredient, Supplier, PriceRecord } from '../types';
 import { normalizeArabic } from '../utils/arabicNormalize';
 import { formatCurrency } from '../utils/formatPrice';
@@ -10,7 +11,6 @@ import {
   Building2,
   FlaskConical,
   Sparkles,
-  Loader2,
   ArrowRight,
   SlidersHorizontal,
   ChevronDown,
@@ -168,7 +168,7 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
         <div className="flex items-center px-4 py-2.5 gap-3">
           <div className="text-slate-400 dark:text-slate-500 shrink-0">
             {isDebouncing ? (
-              <Loader2 className="w-5 h-5 text-[#0f9d7a] animate-spin" />
+              <BrandMark size={22} animated />
             ) : (
               <Search className="w-5 h-5 text-slate-400 dark:text-slate-500" />
             )}

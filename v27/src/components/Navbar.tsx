@@ -1,10 +1,10 @@
 // src/components/Navbar.tsx
 import React from 'react';
+import { BrandMark } from './BrandLogo';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { useCartStore } from '../store/useCartStore';
 import {
-  Pill,
   ShoppingCart,
   LogOut,
   Menu,
@@ -46,9 +46,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }
           )}
 
           <Link to={homePath} className="flex items-center gap-2.5 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-[#0f9d7a] text-white flex items-center justify-center shadow-xs">
-              <Pill className="w-5 h-5 rotate-45" />
-            </div>
+            <BrandMark size={40} />
             <div>
               <span className="font-extrabold text-sm sm:text-lg text-slate-900 tracking-tight block leading-tight truncate max-w-[7.5rem] sm:max-w-none">
                 فارما لينك

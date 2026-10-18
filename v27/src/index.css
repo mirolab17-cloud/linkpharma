@@ -61,31 +61,53 @@
   animation: youtube-shimmer 1.6s infinite ease-in-out;
 }
 
-/* Pharmacy Brand Loader Pulse */
-@keyframes brand-float {
-  0%, 100% {
-    transform: translateY(0px) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-6px) rotate(3deg);
-  }
+/* LinkPharma brand mark + animated loader (same mark as the landing page) */
+.lp-mark {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: #fff;
+  background: linear-gradient(145deg, #10b98a, #00695c);
+  box-shadow: 0 7px 18px rgba(11, 155, 123, 0.28);
+}
+.lp-link { transform-box: fill-box; transform-origin: center; }
+
+@keyframes lp-link-a {
+  0%, 100% { transform: translate(0, 0); }
+  35%, 55% { transform: translate(-3px, 3px); }
+}
+@keyframes lp-link-b {
+  0%, 100% { transform: translate(0, 0); }
+  35%, 55% { transform: translate(3px, -3px); }
+}
+@keyframes lp-link-bar {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  35%, 55% { opacity: 0.25; transform: scale(0.55); }
+}
+@keyframes lp-mark-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 7px 18px rgba(11, 155, 123, 0.28); }
+  50% { transform: scale(1.06); box-shadow: 0 12px 28px rgba(11, 155, 123, 0.42); }
+}
+@keyframes lp-halo {
+  0% { transform: scale(1); opacity: 0.45; }
+  100% { transform: scale(1.7); opacity: 0; }
 }
 
-@keyframes brand-spin-slow {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.lp-mark-animated { animation: lp-mark-pulse 1.8s ease-in-out infinite; }
+.lp-mark-animated .lp-link-a { animation: lp-link-a 1.8s cubic-bezier(.65, 0, .35, 1) infinite; }
+.lp-mark-animated .lp-link-b { animation: lp-link-b 1.8s cubic-bezier(.65, 0, .35, 1) infinite; }
+.lp-mark-animated .lp-link-bar { animation: lp-link-bar 1.8s cubic-bezier(.65, 0, .35, 1) infinite; }
+.lp-halo {
+  background: rgba(16, 185, 138, 0.35);
+  animation: lp-halo 1.8s ease-out infinite;
+  pointer-events: none;
 }
 
-.animate-brand-float {
-  animation: brand-float 3s ease-in-out infinite;
-}
-
-.animate-brand-spin {
-  animation: brand-spin-slow 8s linear infinite;
+@media (prefers-reduced-motion: reduce) {
+  .lp-mark-animated,
+  .lp-mark-animated .lp-link,
+  .lp-halo { animation: none; }
+  .lp-halo { display: none; }
 }
 
 

@@ -1,5 +1,6 @@
 // src/pages/auth/PendingApproval.tsx
 import React, { useState, useEffect } from 'react';
+import { BrandMark } from '../../components/BrandLogo';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Clock, LogOut, CheckCircle2, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -34,8 +35,8 @@ export const PendingApproval: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 text-center">
       <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200 shadow-xl space-y-6">
-        <div className="w-20 h-20 rounded-3xl bg-amber-50 text-amber-500 border border-amber-200 flex items-center justify-center mx-auto animate-pulse">
-          <Clock className="w-10 h-10" />
+        <div className="flex justify-center">
+          <BrandMark size={72} animated />
         </div>
 
         <div className="space-y-2">

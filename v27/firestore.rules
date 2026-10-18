@@ -95,7 +95,7 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // System Settings: Public settings readable by anyone; notification settings for signed-in users; sensitive settings (system, gemini, etc.) strictly for admin
+    // System Settings: Public settings readable by anyone; notification settings for signed-in users; sensitive settings (system, etc.) strictly for admin
     match /settings/{settingId} {
       allow read: if settingId == 'public' || (settingId == 'notifications' && isSignedIn()) || isAdmin();
       allow write: if isAdmin();
