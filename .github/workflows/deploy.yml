@@ -222,6 +222,15 @@ jobs:
           cp -r dist/. ../dist/v25/
           cd ..
 
+          # Build v26 (public site + authenticated platform) under /v26/
+          cd v26
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run build
+          mkdir -p ../dist/v26
+          cp -r dist/. ../dist/v26/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
