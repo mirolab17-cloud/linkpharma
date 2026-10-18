@@ -240,6 +240,15 @@ jobs:
           cp -r dist/. ../dist/v27/
           cd ..
 
+          # Build v28 (v25 source + responsive public landing page) under /v28/
+          cd v28
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run build
+          mkdir -p ../dist/v28
+          cp -r dist/. ../dist/v28/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
