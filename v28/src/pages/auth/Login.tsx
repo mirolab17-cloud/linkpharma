@@ -37,7 +37,8 @@ export const Login: React.FC = () => {
 
   // الحساب موجود في Firebase لكن الملف الشخصي لم يصل بعد => شاشة تحميل بدل صفحة الدخول
   const waitingForProfile = Boolean(auth.currentUser) && !user && !gaveUpWaiting;
-  const showBootLoader = !initialized || waitingForProfile;
+  // لا نعرض نموذج الدخول أثناء أي مرحلة من استعادة الجلسة أو ملف المستخدم.
+  const showBootLoader = !initialized || loading || waitingForProfile;
 
   useEffect(() => {
     if (!waitingForProfile) return;

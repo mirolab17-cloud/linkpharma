@@ -149,14 +149,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     let unsubSettings: (() => void) | null = null;
     let safetyTimer: any = null;
 
-    // مهلة أمان قصوى: 5 ثوانٍ لضمان عدم تعليق الواجهة في حالة انقطاع الشبكة أو بطء فايربيس
+    // لا نفتح صفحة الدخول قبل اكتمال استعادة جلسة Firebase من التخزين المحلي.
+    // المهلة الأطول تمنع وميض صفحة الدخول لثوانٍ عند تحديث الصفحة.
     safetyTimer = setTimeout(() => {
       const state = get();
       if (!state.initialized || state.loading) {
-        console.warn('Auth initialization reached 5s timeout - unlocking UI state');
+        console.warn('Auth initialization reached 20s timeout - unlocking UI state');
         set({ loading: false, initialized: true });
       }
-    }, 5000);
+    }, 20000);
 
     try {
       unsubSettings = onSnapshot(doc(db, 'settings', 'public'), (settingsSnap) => {
@@ -181,6 +182,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     let unsubUserDoc: (() => void) | null = null;
 
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      // Firebase قد يرسل حالة null مؤقتة أثناء استعادة الجلسة من IndexedDB.
+      // انتظر نقطة الاستقرار الرسمية قبل السماح للـ Router بعرض صفحة الدخول.
+      try {
+        await (auth as any).authStateReady?.();
+      } catch (readyError) {
+        console.warn('[auth] authStateReady failed; continuing with listener state', readyError);
+      }
+      if (!fbUser && auth.currentUser) {
+        fbUser = auth.currentUser;
+      }
       console.info('[auth] onAuthStateChanged ' + (fbUser ? 'uid=' + fbUser.uid : 'signed-out'));
       if (unsubUserDoc) {
         unsubUserDoc();
