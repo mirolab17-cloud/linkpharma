@@ -249,6 +249,17 @@ jobs:
           cp -r dist/. ../dist/v28/
           cd ..
 
+          # Build v29 (latest v27 source + safe auth restoration and admin-managed offer ordering) under /v29/
+          cd v29
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:unit
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v29
+          cp -r dist/. ../dist/v29/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
