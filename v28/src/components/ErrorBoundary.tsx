@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home, Copy, Check } from 'lucide-react';
+import { recoverFromChunkLoadError } from '../utils/lazyImport';
 
 interface Props {
   children: ReactNode;
@@ -38,14 +39,16 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleReload = () => {
-    window.location.reload();
+    void recoverFromChunkLoadError();
   };
 
   private handleGoHome = () => {
     this.setState({ hasError: false, error: null, errorInfo: null });
     window.location.hash = '#/';
-    window.location.reload();
+    void recoverFromChunkLoadError();
   };
+
+  private isChunkError = () => /dynamically imported module|loading chunk|failed to fetch|importing a module script|module script/i.test(this.state.error?.message || '');
 
   private handleCopyError = () => {
     const errorText = `${this.state.error?.message || ''}\n\n${this.state.error?.stack || ''}\n\n${this.state.errorInfo?.componentStack || ''}`;
@@ -69,13 +72,13 @@ export class ErrorBoundary extends Component<Props, State> {
             <h1 className="text-xl sm:text-2xl font-bold text-slate-800 mb-2">
               {this.state.error?.message?.toLowerCase().includes('api-key') || this.state.error?.message?.toLowerCase().includes('invalid-api-key')
                 ? 'إعدادات Firebase API Key غير مكتملة'
-                : 'حدث خطأ غير متوقع'}
+                : this.isChunkError() ? 'تم تحديث المنصة — نحدّث النسخة بأمان' : 'حدث خطأ غير متوقع'}
             </h1>
 
             <p className="text-sm text-slate-600 mb-6 leading-relaxed">
               {this.state.error?.message?.toLowerCase().includes('api-key') || this.state.error?.message?.toLowerCase().includes('invalid-api-key')
                 ? 'مفتاح Firebase API Key مفقود أو غير صالح. يرجى التأكد من ضبط متغيرات البيئة أو إعدادات الربط للتشغيل بنجاح.'
-                : 'نعتذر، واجه التطبيق مشكلة أثناء تحميل هذه الصفحة. يمكنك إعادة تحميل الصفحة أو العودة للصفحة الرئيسية للمتابعة.'}
+                : this.isChunkError() ? 'تم نشر تحديث جديد للمنصة. اضغط إعادة تحميل لتنظيف الملفات القديمة تلقائياً دون فقدان حسابك أو بياناتك.' : 'نعتذر، واجه التطبيق مشكلة أثناء تحميل هذه الصفحة. يمكنك إعادة تحميل الصفحة أو العودة للصفحة الرئيسية للمتابعة.'}
             </p>
 
             {this.state.error && (
@@ -100,7 +103,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   </button>
                 </div>
                 <div className="bg-slate-900 text-slate-200 text-xs font-mono p-3 rounded-lg overflow-x-auto max-h-32 text-left dir-ltr">
-                  {this.state.error.message || 'Unknown error'}
+                  {this.isChunkError() ? 'تم اكتشاف ملف قديم من نسخة سابقة وسيتم تنظيفه تلقائياً.' : (this.state.error.message || 'Unknown error')}
                 </div>
               </div>
             )}
@@ -111,7 +114,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#0f9d7a] hover:bg-[#0b7a5e] text-white text-sm font-semibold transition-colors shadow-xs cursor-pointer"
               >
                 <RefreshCw className="w-4 h-4" />
-                <span>إعادة تحميل</span>
+                <span>{this.isChunkError() ? 'تحديث المنصة' : 'إعادة تحميل'}</span>
               </button>
 
               <button
