@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+:root {
+  color-scheme: light;
+  --color-primary: #0f9d7a;
+  --color-primary-dark: #0b7a5e;
+  --color-primary-light: #e6f6f2;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* YouTube-style Shimmer Animation */
+@keyframes youtube-shimmer {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.shimmer-wave {
+  position: relative;
+  overflow: hidden;
+  background-color: #e2e8f0;
+}
+
+.shimmer-wave::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.45) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: youtube-shimmer 1.6s infinite ease-in-out;
+}
+
+/* LinkPharma brand mark + animated loader (same mark as the landing page) */
+.lp-mark {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: #fff;
+  background: linear-gradient(145deg, #10b98a, #00695c);
+  box-shadow: 0 7px 18px rgba(11, 155, 123, 0.28);
+}
+.lp-link { transform-box: fill-box; transform-origin: center; }
+
+@keyframes lp-link-a {
+  0%, 100% { transform: translate(0, 0); }
+  35%, 55% { transform: translate(-3px, 3px); }
+}
+@keyframes lp-link-b {
+  0%, 100% { transform: translate(0, 0); }
+  35%, 55% { transform: translate(3px, -3px); }
+}
+@keyframes lp-link-bar {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  35%, 55% { opacity: 0.25; transform: scale(0.55); }
+}
+@keyframes lp-mark-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 7px 18px rgba(11, 155, 123, 0.28); }
+  50% { transform: scale(1.06); box-shadow: 0 12px 28px rgba(11, 155, 123, 0.42); }
+}
+@keyframes lp-halo {
+  0% { transform: scale(1); opacity: 0.45; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+
+.lp-mark-animated { animation: lp-mark-pulse 1.8s ease-in-out infinite; }
+.lp-mark-animated .lp-link-a { animation: lp-link-a 1.8s cubic-bezier(.65, 0, .35, 1) infinite; }
+.lp-mark-animated .lp-link-b { animation: lp-link-b 1.8s cubic-bezier(.65, 0, .35, 1) infinite; }
+.lp-mark-animated .lp-link-bar { animation: lp-link-bar 1.8s cubic-bezier(.65, 0, .35, 1) infinite; }
+.lp-halo {
+  background: rgba(16, 185, 138, 0.35);
+  animation: lp-halo 1.8s ease-out infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-mark-animated,
+  .lp-mark-animated .lp-link,
+  .lp-halo { animation: none; }
+  .lp-halo { display: none; }
+}
+
+
+/* يمنع تحديث المتصفح الأصلي عند السحب؛ نستخدم السحب للتحديث الخاص بالتطبيق */
+body {
+  background: #f8fafc;
+  color: #0f172a;
+  overscroll-behavior-y: auto;
+  touch-action: pan-y;
+}
+
+
+/* Mobile-first stability: no accidental horizontal scroll or content under fixed UI. */
+html, body, #root { min-height: 100%; max-width: 100%; overflow-x: hidden; }
+body { padding-top: env(safe-area-inset-top); }
+.app-header { padding-top: env(safe-area-inset-top); }
+.app-bottom-nav { padding-bottom: env(safe-area-inset-bottom); min-height: calc(4rem + env(safe-area-inset-bottom)); }
+.app-pharmacy-shell { padding-bottom: calc(4rem + env(safe-area-inset-bottom)); }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+@media (max-width: 640px) {
+  input, select, textarea, button { min-height: 44px; }
+  .app-header button { min-height: 44px; }
+  h1 { line-height: 1.25; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
