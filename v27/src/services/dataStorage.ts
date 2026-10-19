@@ -280,8 +280,20 @@ export async function getProductsPage(pageSize = 24, cursor?: any | null): Promi
       console.warn('Firestore paged products unavailable; using cached fallback:', (e as any)?.code || 'unknown');
     }
   }
-  const all = await getProducts();
-  const offset = typeof cursor === 'number' ? cursor : 0;
+  // احتياطي: ترتيب ثابت بنفس ترتيب Firestore (tradeName ثم id) كي لا تتكرر الأصناف أو تتبعثر عند الدفعات التالية.
+  const all = [...(await getProducts())].sort((a, b) => {
+    const an = a.tradeName || '';
+    const bn = b.tradeName || '';
+    if (an !== bn) return an < bn ? -1 : 1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  // المؤشر قد يكون رقماً (احتياطي) أو وثيقة Firestore (إذا فشل الاستعلام بعد الدفعة الأولى).
+  let offset = 0;
+  if (typeof cursor === 'number') offset = cursor;
+  else if (cursor && typeof cursor === 'object' && cursor.id) {
+    const idx = all.findIndex((item) => item.id === cursor.id);
+    offset = idx >= 0 ? idx + 1 : 0;
+  }
   const items = all.slice(offset, offset + safeSize);
   return { items, cursor: offset + items.length, hasMore: offset + items.length < all.length };
 }

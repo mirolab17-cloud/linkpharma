@@ -199,14 +199,32 @@ export const PharmacyPrices: React.FC = () => {
     return map;
   }, [suppliers]);
 
+  // دمج الأصناف المكررة (نفس الاسم/الشركة/التركيز/الشكل بمعرّفات مختلفة بسبب الاستيراد) في بطاقة واحدة.
+  const productAlias = useMemo(() => {
+    const canonicalByKey = new Map<string, string>();
+    const alias = new Map<string, string>();
+    products.forEach((prod) => {
+      const key = [prod.tradeName, prod.manufacturer, prod.strength, prod.form, prod.packSize]
+        .map((v) => normalizeArabic(String(v || '').trim().toLowerCase().replace(/\s+/g, ' ')))
+        .join('|');
+      const canonical = canonicalByKey.get(key);
+      if (canonical) alias.set(prod.id, canonical);
+      else canonicalByKey.set(key, prod.id);
+    });
+    return alias;
+  }, [products]);
+
   // ربط الأسعار بالأصناف فقط للموردين المسموحين مع احتساب البونص والسعر الفعلي
   const productPricesMap = useMemo(() => {
     const map = new Map<string, PriceRecord[]>();
-    prices.forEach((pr) => {
+    prices.forEach((rawPr) => {
+      const pr = productAlias.has(rawPr.productId) ? { ...rawPr, productId: productAlias.get(rawPr.productId)! } : rawPr;
       if (allowedSupplierIds.has(pr.supplierId)) {
         if (!map.has(pr.productId)) {
           map.set(pr.productId, []);
         }
+        // لا نكرر نفس المورد داخل البطاقة الواحدة
+        if (map.get(pr.productId)!.some((x) => x.supplierId === pr.supplierId && x.price === pr.price)) return;
         // احتساب السعر الفعلي بالبونص
         const { effectivePrice } = calculateEffectiveUnitPrice(pr.price, pr.bonus);
         const enrichedRecord: PriceRecord = {
@@ -227,7 +245,7 @@ export const PharmacyPrices: React.FC = () => {
     });
 
     return map;
-  }, [prices, allowedSupplierIds]);
+  }, [prices, allowedSupplierIds, productAlias]);
 
   // قاموس تاريخ الأسعار لحساب اتجاه السعر (Sparkline / Trend)
   const productPriceTrends = useMemo(() => {
@@ -365,7 +383,7 @@ export const PharmacyPrices: React.FC = () => {
 
   // فرز الأصناف مع إزالة أي تكرار محتمل من بيانات الاستيراد أو Firestore.
   const sortedProducts = useMemo(() => {
-    let list = Array.from(new Map(filteredProducts.map((product) => [product.id, product])).values());
+    let list = Array.from(new Map(filteredProducts.filter((product) => !productAlias.has(product.id)).map((product) => [product.id, product])).values());
 
     if (sortByEffective) {
       list.sort((a, b) => {
@@ -386,7 +404,7 @@ export const PharmacyPrices: React.FC = () => {
     }
 
     return list;
-  }, [filteredProducts, cheapestFirst, sortByEffective, productPricesMap]);
+  }, [filteredProducts, cheapestFirst, sortByEffective, productPricesMap, productAlias]);
 
   // ترقيم عرضي داخل الدفعة + تحميل دفعة Firestore جديدة عند الحاجة.
   const PAGE_SIZE = 24;
