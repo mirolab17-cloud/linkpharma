@@ -63,6 +63,27 @@
           if (!event) return;
           var reason = event.reason;
           var msg = typeof reason === 'string' ? reason : (reason && reason.message ? reason.message : '');
+          // GitHub Pages قد يحتفظ بصفحة HTML أو Service Worker من نشر سابق،
+          // بينما تُحذف ملفات assets القديمة بعد نشر الإصدار الجديد. نظّف
+          // الكاش مرة واحدة ثم أعد تحميل الصفحة بعنوان جديد بدل عرض صفحة خطأ.
+          if (/dynamically imported module|loading chunk|failed to fetch|importing a module script|module script/i.test(msg)) {
+            try {
+              var recoveryKey = 'linkpharma:chunk-recovery:v1';
+              if (sessionStorage.getItem(recoveryKey) !== '1') {
+                sessionStorage.setItem(recoveryKey, '1');
+                Promise.all([
+                  ('serviceWorker' in navigator) ? navigator.serviceWorker.getRegistrations().then(function(regs) { return Promise.all(regs.map(function(reg) { return reg.unregister(); })); }) : Promise.resolve(),
+                  ('caches' in window) ? caches.keys().then(function(keys) { return Promise.all(keys.filter(function(key) { return /workbox|vite|linkpharma|precache/i.test(key); }).map(function(key) { return caches.delete(key); })); }) : Promise.resolve()
+                ]).finally(function() {
+                  var next = new URL(window.location.href);
+                  next.searchParams.set('_lp_refresh', String(Date.now()));
+                  window.location.replace(next.toString());
+                });
+                event.preventDefault();
+                return true;
+              }
+            } catch (_) {}
+          }
           if (isIgnoredError(msg)) {
             event.stopImmediatePropagation();
             event.preventDefault();

@@ -24,39 +24,40 @@ import { PullToRefresh } from './components/PullToRefresh';
 import { PageSkeleton } from './components/Skeleton';
 import { OnboardingGuide } from './components/OnboardingGuide';
 import { updatePresence } from './services/v18Features';
+import { importWithRecovery } from './utils/lazyImport';
 
 // Auth Pages
 import { Login } from './pages/auth/Login';
-const PendingApproval = lazy(() => import('./pages/auth/PendingApproval').then(m => ({ default: m.PendingApproval })));
+const PendingApproval = lazy(() => importWithRecovery(() => import('./pages/auth/PendingApproval').then(m => ({ default: m.PendingApproval }))));
 
 // Admin Pages (Lazy loaded to reduce initial bundle size)
-const AdminDashboard = lazy(() => import('./pages/admin/Dashboard').then(m => ({ default: m.AdminDashboard })));
-const ActiveIngredients = lazy(() => import('./pages/admin/ActiveIngredients').then(m => ({ default: m.ActiveIngredients })));
-const Products = lazy(() => import('./pages/admin/Products').then(m => ({ default: m.Products })));
-const Suppliers = lazy(() => import('./pages/admin/Suppliers').then(m => ({ default: m.Suppliers })));
-const ImportPrices = lazy(() => import('./pages/admin/ImportPrices').then(m => ({ default: m.ImportPrices })));
-const Pharmacies = lazy(() => import('./pages/admin/Pharmacies').then(m => ({ default: m.Pharmacies })));
-const AdminOrders = lazy(() => import('./pages/admin/Orders').then(m => ({ default: m.AdminOrders })));
-const ControlCenter = lazy(() => import('./pages/admin/ControlCenter').then(m => ({ default: m.ControlCenter })));
-const CatalogImport = lazy(() => import('./pages/admin/CatalogImport').then(m => ({ default: m.CatalogImport })));
-const V18Operations = lazy(() => import('./pages/admin/V18Operations').then(m => ({ default: m.V18Operations })));
-const RepresentativeRequests = lazy(() => import('./pages/admin/RepresentativeRequests').then(m => ({ default: m.RepresentativeRequests })));
-const ChangeApprovals = lazy(() => import('./pages/admin/ChangeApprovals').then(m => ({ default: m.ChangeApprovals })));
-const AuditLog = lazy(() => import('./pages/admin/AuditLog').then(m => ({ default: m.AuditLog })));
-const Announcements = lazy(() => import('./pages/admin/Announcements').then(m => ({ default: m.Announcements })));
+const AdminDashboard = lazy(() => importWithRecovery(() => import('./pages/admin/Dashboard').then(m => ({ default: m.AdminDashboard }))));
+const ActiveIngredients = lazy(() => importWithRecovery(() => import('./pages/admin/ActiveIngredients').then(m => ({ default: m.ActiveIngredients }))));
+const Products = lazy(() => importWithRecovery(() => import('./pages/admin/Products').then(m => ({ default: m.Products }))));
+const Suppliers = lazy(() => importWithRecovery(() => import('./pages/admin/Suppliers').then(m => ({ default: m.Suppliers }))));
+const ImportPrices = lazy(() => importWithRecovery(() => import('./pages/admin/ImportPrices').then(m => ({ default: m.ImportPrices }))));
+const Pharmacies = lazy(() => importWithRecovery(() => import('./pages/admin/Pharmacies').then(m => ({ default: m.Pharmacies }))));
+const AdminOrders = lazy(() => importWithRecovery(() => import('./pages/admin/Orders').then(m => ({ default: m.AdminOrders }))));
+const ControlCenter = lazy(() => importWithRecovery(() => import('./pages/admin/ControlCenter').then(m => ({ default: m.ControlCenter }))));
+const CatalogImport = lazy(() => importWithRecovery(() => import('./pages/admin/CatalogImport').then(m => ({ default: m.CatalogImport }))));
+const V18Operations = lazy(() => importWithRecovery(() => import('./pages/admin/V18Operations').then(m => ({ default: m.V18Operations }))));
+const RepresentativeRequests = lazy(() => importWithRecovery(() => import('./pages/admin/RepresentativeRequests').then(m => ({ default: m.RepresentativeRequests }))));
+const ChangeApprovals = lazy(() => importWithRecovery(() => import('./pages/admin/ChangeApprovals').then(m => ({ default: m.ChangeApprovals }))));
+const AuditLog = lazy(() => importWithRecovery(() => import('./pages/admin/AuditLog').then(m => ({ default: m.AuditLog }))));
+const Announcements = lazy(() => importWithRecovery(() => import('./pages/admin/Announcements').then(m => ({ default: m.Announcements }))));
 
 // Pharmacy Pages (Prices loaded directly or fast-suspensed)
 import { PharmacyPrices } from './pages/pharmacy/Prices';
-const PharmacyHome = lazy(() => import('./pages/pharmacy/Home').then(m => ({ default: m.PharmacyHome })));
-const PharmacySuppliers = lazy(() => import('./pages/pharmacy/Suppliers').then(m => ({ default: m.PharmacySuppliers })));
-const PharmacyCart = lazy(() => import('./pages/pharmacy/Cart').then(m => ({ default: m.PharmacyCart })));
-const CartAndOrders = lazy(() => import('./pages/pharmacy/CartAndOrders').then(m => ({ default: m.CartAndOrders })));
-const MyOrders = lazy(() => import('./pages/pharmacy/MyOrders').then(m => ({ default: m.MyOrders })));
-const PharmacySuggestions = lazy(() => import('./pages/pharmacy/Suggestions').then(m => ({ default: m.Suggestions })));
-const PharmacyProfile = lazy(() => import('./pages/pharmacy/Profile').then(m => ({ default: m.PharmacyProfile })));
-const ProductDetails = lazy(() => import('./pages/pharmacy/ProductDetails').then(m => ({ default: m.ProductDetails })));
-const RepresentativeWorkspace = lazy(() => import('./pages/representative/RepresentativeWorkspace').then(m => ({ default: m.RepresentativeWorkspace })));
-const RepresentativeProfile = lazy(() => import('./pages/representative/RepresentativeProfile').then(m => ({ default: m.RepresentativeProfile })));
+const PharmacyHome = lazy(() => importWithRecovery(() => import('./pages/pharmacy/Home').then(m => ({ default: m.PharmacyHome }))));
+const PharmacySuppliers = lazy(() => importWithRecovery(() => import('./pages/pharmacy/Suppliers').then(m => ({ default: m.PharmacySuppliers }))));
+const PharmacyCart = lazy(() => importWithRecovery(() => import('./pages/pharmacy/Cart').then(m => ({ default: m.PharmacyCart }))));
+const CartAndOrders = lazy(() => importWithRecovery(() => import('./pages/pharmacy/CartAndOrders').then(m => ({ default: m.CartAndOrders }))));
+const MyOrders = lazy(() => importWithRecovery(() => import('./pages/pharmacy/MyOrders').then(m => ({ default: m.MyOrders }))));
+const PharmacySuggestions = lazy(() => importWithRecovery(() => import('./pages/pharmacy/Suggestions').then(m => ({ default: m.Suggestions }))));
+const PharmacyProfile = lazy(() => importWithRecovery(() => import('./pages/pharmacy/Profile').then(m => ({ default: m.PharmacyProfile }))));
+const ProductDetails = lazy(() => importWithRecovery(() => import('./pages/pharmacy/ProductDetails').then(m => ({ default: m.ProductDetails }))));
+const RepresentativeWorkspace = lazy(() => importWithRecovery(() => import('./pages/representative/RepresentativeWorkspace').then(m => ({ default: m.RepresentativeWorkspace }))));
+const RepresentativeProfile = lazy(() => importWithRecovery(() => import('./pages/representative/RepresentativeProfile').then(m => ({ default: m.RepresentativeProfile }))));
 
 const ProfilePage: React.FC = () => {
   const { user } = useAuthStore();
