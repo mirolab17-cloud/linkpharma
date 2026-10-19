@@ -49,7 +49,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { triggerHaptic } from '../../utils/profile';
 import { PharmacyGlobalSearch, SearchScope } from '../../components/PharmacyGlobalSearch';
 import { productDisplayName } from '../../utils/productCatalog';
-import { deliveryRuleForSupplier } from '../../services/v18Features';
+import { deliveryRuleForSupplier } from '../../utils/pricePresentation';
 import { PriceOfferSortMode, sortPriceOffers } from '../../utils/priceOfferSorting';
 
 export const PharmacyPrices: React.FC = () => {

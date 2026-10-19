@@ -31,7 +31,7 @@ import {
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState } from '../../components/EmptyState';
 import { isProfileComplete, triggerHaptic, playSuccessSound } from '../../utils/profile';
-import { deliveryRuleForSupplier } from '../../services/v18Features';
+import { deliveryRuleForSupplier } from '../../utils/pricePresentation';
 
 export const PharmacyCart: React.FC = () => {
   const { user } = useAuthStore();

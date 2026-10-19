@@ -50,6 +50,9 @@ export default defineConfig(() => {
           // The landing page is index.html, so do not use it as an SPA navigation fallback.
           navigateFallback: null,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          // Large feature/Firebase bundles are runtime-cached so a transient download failure cannot reject SW installation.
+          maximumFileSizeToCacheInBytes: 512 * 1024,
+          globIgnores: ['**/assets/v18Features-*.js', '**/assets/firebase-*.js'],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -77,6 +80,32 @@ export default defineConfig(() => {
                 cacheableResponse: {
                   statuses: [0, 200],
                 },
+              },
+            },
+            {
+              urlPattern: /\/assets\/firebase-[^/]+\.js$/,
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'linkpharma-v29-firebase-chunks',
+                networkTimeoutSeconds: 10,
+                expiration: {
+                  maxEntries: 4,
+                  maxAgeSeconds: 60 * 60 * 24 * 30,
+                },
+                cacheableResponse: { statuses: [200] },
+              },
+            },
+            {
+              urlPattern: /\/assets\/v18Features-[^/]+\.js$/,
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'linkpharma-v29-feature-chunks',
+                networkTimeoutSeconds: 10,
+                expiration: {
+                  maxEntries: 4,
+                  maxAgeSeconds: 60 * 60 * 24 * 30,
+                },
+                cacheableResponse: { statuses: [200] },
               },
             },
           ],

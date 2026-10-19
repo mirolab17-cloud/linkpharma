@@ -33,6 +33,7 @@ import {
   UserProfile,
   AppNotification,
   SystemSettings,
+  PlatformActivity,
   RecurringOrderTemplate
 } from '../types';
 import {
@@ -44,7 +45,10 @@ import {
 import { setSystemCurrency, formatCurrency } from '../utils/formatPrice';
 import { formatGregorianDate } from '../utils/formatDate';
 import { useAuthStore } from '../store/useAuthStore';
-import { filterVisiblePrices, recordActivity } from './v18Features';
+import { filterVisiblePrices } from '../utils/pricePresentation';
+
+const recordActivity = (input: Omit<PlatformActivity, 'id' | 'createdAt'>) =>
+  import('./v18Features').then(({ recordActivity: writeActivity }) => writeActivity(input));
 
 const STORAGE_KEYS = {
   activeIngredients: 'pharma_db_active_ingredients',

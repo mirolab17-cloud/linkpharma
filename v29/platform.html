@@ -48,10 +48,38 @@
           };
         } catch (_) {}
 
+        function recoverBootChunkOnce() {
+          var recoveryKey = 'linkpharma:boot-chunk-recovery:v1';
+          try {
+            if (sessionStorage.getItem(recoveryKey) === '1') return false;
+            sessionStorage.setItem(recoveryKey, '1');
+          } catch (_) { return false; }
+          var tasks = [];
+          if ('serviceWorker' in navigator) tasks.push(navigator.serviceWorker.getRegistrations().then(function(regs) { return Promise.all(regs.map(function(reg) { return reg.unregister(); })); }).catch(function() {}));
+          if ('caches' in window) tasks.push(caches.keys().then(function(keys) { return Promise.all(keys.filter(function(key) { return /workbox|vite|linkpharma|precache/i.test(key); }).map(function(key) { return caches.delete(key); })); }).catch(function() {}));
+          var reload = function() { var next = new URL(window.location.href); next.searchParams.set('_lp_refresh', String(Date.now())); window.location.replace(next.toString()); };
+          Promise.all(tasks).then(reload, reload);
+          return true;
+        }
+
+        // Vite reports failed module preloads here; only recover automatically while React has not mounted.
+        window.addEventListener('vite:preloadError', function(event) {
+          if (!event || !document.getElementById('lp-boot')) return;
+          event.preventDefault();
+          recoverBootChunkOnce();
+        }, true);
+
         window.addEventListener('error', function(event) {
           if (!event) return;
           var msg = event.message || (event.error && event.error.message) || '';
           var file = event.filename || '';
+          var target = event.target || event.srcElement;
+          var resourceUrl = target && (target.href || target.src) || file;
+          if (document.getElementById('lp-boot') && /\/assets\/[^/?#]+\.js(?:[?#].*)?$/.test(resourceUrl)) {
+            event.preventDefault();
+            recoverBootChunkOnce();
+            return true;
+          }
           if (isIgnoredError(msg, file)) {
             event.stopImmediatePropagation();
             event.preventDefault();
@@ -66,23 +94,10 @@
           // GitHub Pages قد يحتفظ بصفحة HTML أو Service Worker من نشر سابق،
           // بينما تُحذف ملفات assets القديمة بعد نشر الإصدار الجديد. نظّف
           // الكاش مرة واحدة ثم أعد تحميل الصفحة بعنوان جديد بدل عرض صفحة خطأ.
-          if (/dynamically imported module|loading chunk|failed to fetch|importing a module script|module script/i.test(msg)) {
-            try {
-              var recoveryKey = 'linkpharma:chunk-recovery:v1';
-              if (sessionStorage.getItem(recoveryKey) !== '1') {
-                sessionStorage.setItem(recoveryKey, '1');
-                Promise.all([
-                  ('serviceWorker' in navigator) ? navigator.serviceWorker.getRegistrations().then(function(regs) { return Promise.all(regs.map(function(reg) { return reg.unregister(); })); }) : Promise.resolve(),
-                  ('caches' in window) ? caches.keys().then(function(keys) { return Promise.all(keys.filter(function(key) { return /workbox|vite|linkpharma|precache/i.test(key); }).map(function(key) { return caches.delete(key); })); }) : Promise.resolve()
-                ]).finally(function() {
-                  var next = new URL(window.location.href);
-                  next.searchParams.set('_lp_refresh', String(Date.now()));
-                  window.location.replace(next.toString());
-                });
-                event.preventDefault();
-                return true;
-              }
-            } catch (_) {}
+          if (document.getElementById('lp-boot') && /dynamically imported module|loading chunk|failed to fetch|importing a module script|fetching the script|module script/i.test(msg)) {
+            event.preventDefault();
+            recoverBootChunkOnce();
+            return true;
           }
           if (isIgnoredError(msg)) {
             event.stopImmediatePropagation();
@@ -90,6 +105,33 @@
             return true;
           }
         }, true);
+
+        // Never leave the static logo screen spinning forever if the entry script cannot load.
+        window.setTimeout(function() {
+          var boot = document.getElementById('lp-boot');
+          if (!boot) return;
+          var message = boot.querySelector('small');
+          if (message) message.textContent = 'تعذر تحميل ملفات المنصة. تحقق من اتصال الإنترنت ثم أعد المحاولة.';
+          var button = boot.querySelector('[data-lp-retry]');
+          if (!button) {
+            button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'retry';
+            button.setAttribute('data-lp-retry', 'true');
+            button.textContent = 'إعادة المحاولة';
+            button.addEventListener('click', function() {
+              try { sessionStorage.removeItem('linkpharma:boot-chunk-recovery:v1'); } catch (_) {}
+              var tasks = [];
+              if ('serviceWorker' in navigator) tasks.push(navigator.serviceWorker.getRegistrations().then(function(regs) { return Promise.all(regs.map(function(reg) { return reg.unregister(); })); }).catch(function() {}));
+              if ('caches' in window) tasks.push(caches.keys().then(function(keys) { return Promise.all(keys.filter(function(key) { return /workbox|vite|linkpharma|precache/i.test(key); }).map(function(key) { return caches.delete(key); })); }).catch(function() {}));
+              Promise.all(tasks).then(function() { window.location.reload(); }, function() { window.location.reload(); });
+            });
+            boot.appendChild(button);
+          }
+          button.style.display = 'inline-flex';
+          button.style.alignItems = 'center';
+          button.style.justifyContent = 'center';
+        }, 20000);
       })();
     </script>
     <meta name="theme-color" content="#0f9d7a" />
@@ -125,6 +167,7 @@
       #lp-boot .a{animation-name:lpb-a}#lp-boot .b{animation-name:lpb-b}#lp-boot .c{animation-name:lpb-c}
       #lp-boot b{font-size:15px;font-weight:800;letter-spacing:-.2px}
       #lp-boot small{display:block;font-size:12px;color:#5b7a77;margin-top:2px;text-align:center}
+      #lp-boot .retry{display:none;min-height:44px;margin-top:8px;padding:0 18px;border:0;border-radius:12px;background:#087f68;color:#fff;font:700 14px Cairo,Tahoma,Arial,sans-serif;cursor:pointer}
       @keyframes lpb-a{0%,100%{transform:translate(0,0)}35%,55%{transform:translate(-3px,3px)}}
       @keyframes lpb-b{0%,100%{transform:translate(0,0)}35%,55%{transform:translate(3px,-3px)}}
       @keyframes lpb-c{0%,100%{opacity:1;transform:scale(1)}35%,55%{opacity:.25;transform:scale(.55)}}

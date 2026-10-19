@@ -11,6 +11,7 @@ import {
 import { useAuthStore } from './store/useAuthStore';
 import { useThemeStore } from './store/useThemeStore';
 import { isFirebaseConfigured } from './firebase';
+import type { UserProfile } from './types';
 import { ToastContainer } from './components/Toast';
 import { Navbar } from './components/Navbar';
 import { AdminSidebar } from './components/AdminSidebar';
@@ -19,11 +20,9 @@ import { Spinner, PharmacyBrandLoader } from './components/Loader';
 import { SubscriptionExpiredScreen } from './components/SubscriptionExpiredScreen';
 import { SubscriptionWarningBanner } from './components/SubscriptionWarningBanner';
 import { OfflineIndicator } from './components/OfflineIndicator';
-import { invalidateCache } from './services/dataStorage';
 import { PullToRefresh } from './components/PullToRefresh';
 import { PageSkeleton } from './components/Skeleton';
 import { OnboardingGuide } from './components/OnboardingGuide';
-import { updatePresence } from './services/v18Features';
 import { importWithRecovery } from './utils/lazyImport';
 
 // Auth Pages
@@ -46,8 +45,8 @@ const ChangeApprovals = lazy(() => importWithRecovery(() => import('./pages/admi
 const AuditLog = lazy(() => importWithRecovery(() => import('./pages/admin/AuditLog').then(m => ({ default: m.AuditLog }))));
 const Announcements = lazy(() => importWithRecovery(() => import('./pages/admin/Announcements').then(m => ({ default: m.Announcements }))));
 
-// Pharmacy Pages (Prices loaded directly or fast-suspensed)
-import { PharmacyPrices } from './pages/pharmacy/Prices';
+// Pharmacy Pages (lazy loaded to keep the authentication entry lightweight)
+const PharmacyPrices = lazy(() => importWithRecovery(() => import('./pages/pharmacy/Prices').then(m => ({ default: m.PharmacyPrices }))));
 const PharmacyHome = lazy(() => importWithRecovery(() => import('./pages/pharmacy/Home').then(m => ({ default: m.PharmacyHome }))));
 const PharmacySuppliers = lazy(() => importWithRecovery(() => import('./pages/pharmacy/Suppliers').then(m => ({ default: m.PharmacySuppliers }))));
 const PharmacyCart = lazy(() => importWithRecovery(() => import('./pages/pharmacy/Cart').then(m => ({ default: m.PharmacyCart }))));
@@ -71,6 +70,12 @@ const PageFallback: React.FC = () => (
   </div>
 );
 
+const updatePresenceInBackground = (user: UserProfile, route: string) => {
+  void import('./services/v18Features')
+    .then(({ updatePresence }) => updatePresence(user, route))
+    .catch(() => console.warn('تعذر تحميل خدمة الحضور؛ يستمر التطبيق دونها.'));
+};
+
 const AuthBootstrapMessage: React.FC = () => {
   const { initializationError } = useAuthStore();
   if (!initializationError) return null;
@@ -81,7 +86,7 @@ const AuthBootstrapMessage: React.FC = () => {
 const AdminLayout: React.FC = () => {
   const { user } = useAuthStore();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  useEffect(() => { if (!user) return; updatePresence(user, '/admin'); const timer = window.setInterval(() => updatePresence(user, window.location.pathname), 120000); return () => window.clearInterval(timer); }, [user]);
+  useEffect(() => { if (!user) return; updatePresenceInBackground(user, '/admin'); const timer = window.setInterval(() => updatePresenceInBackground(user, window.location.pathname), 120000); return () => window.clearInterval(timer); }, [user]);
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -110,10 +115,11 @@ const AdminLayout: React.FC = () => {
 // ======================= Pharmacy Layout =======================
 const PharmacyLayout: React.FC = () => {
   const { user } = useAuthStore();
-  useEffect(() => { if (!user) return; updatePresence(user, window.location.pathname); const timer = window.setInterval(() => updatePresence(user, window.location.pathname), 120000); return () => window.clearInterval(timer); }, [user]);
+  useEffect(() => { if (!user) return; updatePresenceInBackground(user, window.location.pathname); const timer = window.setInterval(() => updatePresenceInBackground(user, window.location.pathname), 120000); return () => window.clearInterval(timer); }, [user]);
   // السحب للتحديث: نفرغ الكاش ثم نعيد تركيب الصفحة الحالية ليعاد جلب بياناتها
   const [refreshKey, setRefreshKey] = useState(0);
   const handleRefresh = React.useCallback(async () => {
+    const { invalidateCache } = await import('./services/dataStorage');
     invalidateCache();
     setRefreshKey((k) => k + 1);
     await new Promise((resolve) => setTimeout(resolve, 700));
