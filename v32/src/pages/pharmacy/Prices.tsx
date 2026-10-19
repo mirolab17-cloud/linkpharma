@@ -555,7 +555,8 @@ export const PharmacyPrices: React.FC = () => {
     };
   }, [searchTerm, searchScope, allowedSupplierIdsString]);
 
-  // Prevent repeated auto-loading while the end marker remains in view.
+  // ابدأ التحميل عند بطاقة بداية آخر 6 أصناف من العناصر المعروضة.
+  // يُعاد تسليح المراقب عند تغيّر عدد البطاقات، مع منع الطلبات المتكررة أثناء التحميل.
   useEffect(() => {
     const target = loadMoreRef.current;
     if (!target || !hasMoreProducts || loadingMore || searchModeRef.current) return;
@@ -568,7 +569,7 @@ export const PharmacyPrices: React.FC = () => {
         autoLoadArmedRef.current = false;
         void loadMoreProducts();
       }
-    }, { root: null, rootMargin: '0px 0px 160px 0px', threshold: 0 });
+    }, { root: null, rootMargin: '0px', threshold: 0 });
     observer.observe(target);
     return () => observer.disconnect();
   }, [visibleCount, sortedProducts.length, hasMoreProducts, loadingMore, loadMoreProducts]);
@@ -934,6 +935,7 @@ export const PharmacyPrices: React.FC = () => {
               return (
                 <div
                   key={product.id}
+                  ref={index === Math.max(0, paginatedProducts.length - 6) && hasMoreProducts ? loadMoreRef : undefined}
                   className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden"
                 >
                   {/* رأس بطاقة الدواء */}
@@ -1191,12 +1193,11 @@ export const PharmacyPrices: React.FC = () => {
             })}
           </div>
 
-          {/* التحميل التلقائي عند الوصول إلى آخر صنفين */}
-          {hasMoreProducts && <div ref={loadMoreRef} className="flex flex-col items-center justify-center gap-2 py-4 text-xs font-bold text-slate-400" aria-live="polite">
+          {hasMoreProducts && <div className="flex flex-col items-center justify-center gap-2 py-4 text-xs font-bold text-slate-400" aria-live="polite">
             <button type="button" onClick={() => void loadMoreProducts()} disabled={loadingMore} className="min-h-11 rounded-xl border border-emerald-200 bg-white px-5 py-2.5 font-bold text-[#0f9d7a] disabled:opacity-60">
               {loadingMore ? 'جاري تحميل صفحة جديدة...' : 'تحميل المزيد من الأصناف'}
             </button>
-            <span>يتم تحميل دفعة جديدة من قاعدة البيانات عند نهاية القائمة</span>
+            <span>يبدأ التحميل التلقائي عند الوصول إلى آخر 6 أصناف</span>
           </div>}
           {!hasMoreProducts && sortedProducts.length > PAGE_SIZE && <p className="text-center text-xs text-slate-400 py-5">تم عرض جميع الأصناف المطابقة</p>}
         </>
