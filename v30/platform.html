@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>فارما لينك v30 | منصة الصيدليات والموردين</title>
+    <meta name="description" content="منصة فارما لينك — أسعار وعروض المستودعات بين المستودعات وإرسال طلبيات الصيدليات عبر واتساب" />
+    <meta property="og:title" content="فارما لينك — أسعار وعروض المستودعات" />
+    <meta property="og:description" content="منصة فارما لينك — أسعار وعروض المستودعات بين المستودعات وإرسال طلبيات الصيدليات عبر واتساب" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function() {
+        try {
+          var origFetch = window.fetch;
+          if (origFetch) {
+            var _fetch = typeof origFetch === 'function' ? origFetch.bind(window) : origFetch;
+            Object.defineProperty(window, 'fetch', {
+              get: function() { return _fetch; },
+              set: function(val) { _fetch = val; },
+              configurable: true,
+              enumerable: true
+            });
+          }
+        } catch (_) {}
+
+        // Filter known browser extension and Firebase Auth internal popup race condition errors
+        function isIgnoredError(msg, file) {
+          if (!msg && !file) return false;
+          var s = (msg || '') + ' ' + (file || '');
+          return s.indexOf('chrome-extension') !== -1 ||
+                 s.indexOf('Cannot set property fetch') !== -1 ||
+                 s.indexOf('Pending promise was never set') !== -1 ||
+                 s.indexOf('INTERNAL ASSERTION FAILED') !== -1 ||
+                 s.indexOf('Could not reach Cloud Firestore backend') !== -1;
+        }
+
+        try {
+          var origError = console.error;
+          console.error = function() {
+            var first = arguments[0];
+            var msg = typeof first === 'string' ? first : (first && first.message ? first.message : '');
+            if (isIgnoredError(msg)) {
+              console.warn.apply(console, arguments);
+              return;
+            }
+            origError.apply(console, arguments);
+          };
+        } catch (_) {}
+
+        window.addEventListener('error', function(event) {
+          if (!event) return;
+          var msg = event.message || (event.error && event.error.message) || '';
+          var file = event.filename || '';
+          if (isIgnoredError(msg, file)) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(event) {
+          if (!event) return;
+          var reason = event.reason;
+          var msg = typeof reason === 'string' ? reason : (reason && reason.message ? reason.message : '');
+          // GitHub Pages قد يحتفظ بصفحة HTML أو Service Worker من نشر سابق،
+          // بينما تُحذف ملفات assets القديمة بعد نشر الإصدار الجديد. نظّف
+          // الكاش مرة واحدة ثم أعد تحميل الصفحة بعنوان جديد بدل عرض صفحة خطأ.
+          if (/dynamically imported module|loading chunk|failed to fetch|importing a module script|module script/i.test(msg)) {
+            try {
+              var recoveryKey = 'linkpharma:chunk-recovery:v1';
+              if (sessionStorage.getItem(recoveryKey) !== '1') {
+                sessionStorage.setItem(recoveryKey, '1');
+                Promise.all([
+                  ('serviceWorker' in navigator) ? navigator.serviceWorker.getRegistrations().then(function(regs) { return Promise.all(regs.map(function(reg) { return reg.unregister(); })); }) : Promise.resolve(),
+                  ('caches' in window) ? caches.keys().then(function(keys) { return Promise.all(keys.filter(function(key) { return /workbox|vite|linkpharma|precache/i.test(key); }).map(function(key) { return caches.delete(key); })); }) : Promise.resolve()
+                ]).finally(function() {
+                  var next = new URL(window.location.href);
+                  next.searchParams.set('_lp_refresh', String(Date.now()));
+                  window.location.replace(next.toString());
+                });
+                event.preventDefault();
+                return true;
+              }
+            } catch (_) {}
+          }
+          if (isIgnoredError(msg)) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return true;
+          }
+        }, true);
+      })();
+    </script>
+    <meta name="theme-color" content="#0f9d7a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="أسعار الأدوية" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg" />
+    <script>
+      (function() {
+        try {
+          localStorage.removeItem('pharma_theme');
+          document.documentElement.classList.remove('dark');
+          document.documentElement.style.colorScheme = 'light';
+        } catch (_) {}
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    </noscript>
+    <style>
+      /* شاشة تحميل أولية بشعار LinkPharma المتحرك قبل تشغيل المنصة */
+      #lp-boot{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#f8fafc;font-family:Cairo,Tahoma,Arial,sans-serif;color:#0f3d3a}
+      #lp-boot .m{position:relative;width:76px;height:76px;border-radius:27px;background:linear-gradient(145deg,#10b98a,#00695c);display:grid;place-items:center;color:#fff;box-shadow:0 10px 26px rgba(11,155,123,.32);animation:lpb-pulse 1.8s ease-in-out infinite}
+      #lp-boot .m:before{content:"";position:absolute;inset:0;border-radius:27px;background:rgba(16,185,138,.35);animation:lpb-halo 1.8s ease-out infinite;z-index:-1}
+      #lp-boot svg{width:49px;height:49px}
+      #lp-boot path{transform-box:fill-box;transform-origin:center;animation-duration:1.8s;animation-iteration-count:infinite;animation-timing-function:cubic-bezier(.65,0,.35,1)}
+      #lp-boot .a{animation-name:lpb-a}#lp-boot .b{animation-name:lpb-b}#lp-boot .c{animation-name:lpb-c}
+      #lp-boot b{font-size:15px;font-weight:800;letter-spacing:-.2px}
+      #lp-boot small{display:block;font-size:12px;color:#5b7a77;margin-top:2px;text-align:center}
+      @keyframes lpb-a{0%,100%{transform:translate(0,0)}35%,55%{transform:translate(-3px,3px)}}
+      @keyframes lpb-b{0%,100%{transform:translate(0,0)}35%,55%{transform:translate(3px,-3px)}}
+      @keyframes lpb-c{0%,100%{opacity:1;transform:scale(1)}35%,55%{opacity:.25;transform:scale(.55)}}
+      @keyframes lpb-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+      @keyframes lpb-halo{0%{transform:scale(1);opacity:.45}100%{transform:scale(1.7);opacity:0}}
+      @media (prefers-reduced-motion:reduce){#lp-boot .m,#lp-boot .m:before,#lp-boot path{animation:none}}
+    </style>
+  </head>
+  <body class="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-emerald-500 selection:text-white">
+        <div id="root"><div id="lp-boot" role="status" aria-live="polite" dir="rtl"><span class="m"><svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path class="a" d="M14 25.5 10.5 29a7 7 0 0 1-9.9-9.9l8-8a7 7 0 0 1 9.9 0" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path class="b" d="m26 14.5 3.5-3.5a7 7 0 0 1 9.9 9.9l-8 8a7 7 0 0 1-9.9 0" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path class="c" d="m12 28 16-16" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span><div><b dir="ltr">LinkPharma</b><small>جاري تحميل المنصة...</small></div></div></div>
+    <script type="module" src="src/main.tsx"></script>
+  </body>
+</html>

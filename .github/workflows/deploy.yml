@@ -260,6 +260,15 @@ jobs:
           cp -r dist/. ../dist/v29/
           cd ..
 
+          # Build v30 (v27 source + persistent session boot gate + admin-managed offer ordering) under /v30/
+          cd v30
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run build
+          mkdir -p ../dist/v30
+          cp -r dist/. ../dist/v30/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
