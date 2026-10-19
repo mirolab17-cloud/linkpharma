@@ -152,6 +152,8 @@ export const PharmacyPrices: React.FC = () => {
         setProductCursor(productsPage.cursor);
         setHasMoreServer(productsPage.hasMore);
         setVisibleCount(PAGE_SIZE);
+        loadedProductIdsRef.current = new Set(productsPage.items.map((product) => product.id));
+        loadedPriceKeysRef.current = new Set(pagePrices.map(priceRecordKey));
         setLoadError(null);
       }
     } catch (e: any) {
@@ -412,7 +414,18 @@ export const PharmacyPrices: React.FC = () => {
   const hasMoreProducts = visibleCount < sortedProducts.length || hasMoreServer;
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const loadingMoreRef = useRef(false);
+  // مرجع مستقل عن React state لمنع إعادة إدخال نفس الصفحة أثناء تغيّر المؤشر.
+  const loadedProductIdsRef = useRef<Set<string>>(new Set());
+  const loadedPriceKeysRef = useRef<Set<string>>(new Set());
   const [loadingMore, setLoadingMore] = useState(false);
+
+  const priceRecordKey = (price: PriceRecord) => [
+    price.productId,
+    price.supplierId,
+    price.price,
+    price.bonus || '',
+    price.updatedAt || '',
+  ].join('|');
 
   const loadMoreProducts = useCallback(async () => {
     if (loadingMoreRef.current || !hasMoreProducts) return;
@@ -426,19 +439,47 @@ export const PharmacyPrices: React.FC = () => {
       }
       if (!hasMoreServer) return;
       const allowedIds = user?.allowedSuppliers && user.allowedSuppliers.length > 0 ? user.allowedSuppliers : undefined;
-      const nextPage = await getProductsPage(SERVER_PAGE_SIZE, productCursor);
-      const nextPrices = await getPricesForProductIds(nextPage.items.map((p) => p.id), allowedIds);
-      setProducts((current) => {
-        const known = new Set(current.map((p) => p.id));
-        return [...current, ...nextPage.items.filter((p) => !known.has(p.id))];
-      });
-      setPrices((current) => {
-        const known = new Set(current.map((p) => p.id));
-        return [...current, ...nextPrices.filter((p) => !known.has(p.id))];
-      });
-      setProductCursor(nextPage.cursor);
-      setHasMoreServer(nextPage.hasMore);
-      setVisibleCount((count) => count + 10);
+      // قد يعيد مصدر البيانات دفعة متداخلة عند الانتقال من Firestore إلى
+      // fallback المحلي أو عند وجود قيم tradeName متساوية. نتقدم بالمؤشر
+      // ونحاول دفعة أخرى بدلاً من عرض العناصر القديمة أو إعادة الحلقة نفسها.
+      let cursor = productCursor;
+      let pageHasMore: boolean = hasMoreServer;
+      let newProducts: Product[] = [];
+      let newPrices: PriceRecord[] = [];
+      let attempts = 0;
+
+      while (pageHasMore && attempts < 5 && newProducts.length === 0) {
+        const nextPage = await getProductsPage(SERVER_PAGE_SIZE, cursor);
+        const unseenProducts = nextPage.items.filter((product) => !loadedProductIdsRef.current.has(product.id));
+        const unseenIds = unseenProducts.map((product) => product.id);
+        const nextPrices = unseenIds.length ? await getPricesForProductIds(unseenIds, allowedIds) : [];
+
+        unseenProducts.forEach((product) => loadedProductIdsRef.current.add(product.id));
+        const uniquePrices = nextPrices.filter((price) => {
+          const key = priceRecordKey(price);
+          if (loadedPriceKeysRef.current.has(key)) return false;
+          loadedPriceKeysRef.current.add(key);
+          return true;
+        });
+
+        newProducts = unseenProducts;
+        newPrices = uniquePrices;
+        cursor = nextPage.cursor;
+        pageHasMore = nextPage.hasMore;
+        attempts += 1;
+
+        // إذا أعاد المؤشر نفس المكان، نوقف الحلقة بدلاً من تكرار الطلبات.
+        if (JSON.stringify(cursor) === JSON.stringify(productCursor) && unseenProducts.length === 0) {
+          pageHasMore = false;
+          break;
+        }
+      }
+
+      setProducts((current) => [...current, ...newProducts]);
+      setPrices((current) => [...current, ...newPrices]);
+      setProductCursor(cursor);
+      setHasMoreServer(pageHasMore && newProducts.length > 0);
+      if (newProducts.length > 0) setVisibleCount((count) => count + 10);
     } catch (e) {
       console.warn('تعذر تحميل الدفعة التالية من الأسعار:', e);
       toastError('تعذر تحميل المزيد حالياً. حاول مرة أخرى.');
