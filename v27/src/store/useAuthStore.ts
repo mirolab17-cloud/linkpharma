@@ -22,7 +22,8 @@ import {
   getDoc,
   setDoc,
   updateDoc,
-  onSnapshot
+  onSnapshot,
+  getDocFromServer,
 } from '../firebase';
 import { GoogleAuthProvider } from 'firebase/auth';
 import { useToastStore } from './useToastStore';
@@ -189,7 +190,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if (!fbUser) {
         if (safetyTimer) clearTimeout(safetyTimer);
-        clearCachedProfile();
         set({ user: null, loading: false, initialized: true, isPasswordUser: false, isGoogleUser: false });
         return;
       }
@@ -258,8 +258,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         const handleUserSnap = async (userSnap: any) => {
           try {
-            if (userSnap.exists()) {
-              const profile = userSnap.data() as UserProfile;
+            // لا نعتبر المستخدم جديداً بناءً على لقطة محلية فارغة فقط.
+            // بعد تسجيل الخروج وإعادة الدخول قد يعيد Firestore cache snapshot
+            // بـ exists=false قبل وصول الملف الحقيقي من الخادم، وكان ذلك
+            // يؤدي إلى إنشاء ملف جديد profileComplete=false ومسح بيانات الحساب.
+            let confirmedSnap = userSnap;
+            if (!userSnap.exists() && userSnap.metadata?.fromCache) {
+              try {
+                confirmedSnap = await getDocFromServer(userDocRef);
+              } catch (serverReadError) {
+                console.warn('[auth] could not confirm missing profile from server; refusing to create a new profile', serverReadError);
+                const cached = readCachedProfile(fbUser.uid);
+                if (cached) {
+                  set({ user: cached, loading: false, initialized: true, isPasswordUser: isPassword, isGoogleUser: isGoogle });
+                }
+                return;
+              }
+            }
+
+            if (confirmedSnap.exists()) {
+              const profile = confirmedSnap.data() as UserProfile;
               profile.profileComplete = profile.role === 'admin' ? true : (profile.profileComplete === true || isProfileComplete(profile));
               const shouldBeAdmin = isRuntimeAdmin || profile.role === 'admin';
 
@@ -679,7 +697,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (isFirebaseConfigured) {
         await fbSignOut(auth);
       }
-      clearCachedProfile();
       localStorage.removeItem('pharma_local_user');
       set({ user: null });
       useToastStore.getState().info('تم تسجيل الخروج بنجاح.');

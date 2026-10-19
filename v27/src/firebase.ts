@@ -225,6 +225,7 @@ export {
   collection,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   safeSetDoc as setDoc,
   safeUpdateDoc as updateDoc,
