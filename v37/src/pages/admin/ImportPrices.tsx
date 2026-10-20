@@ -5,7 +5,7 @@ import {
   getProducts,
   getActiveIngredients,
   saveSupplier,
-  saveProduct,
+  saveProductsBatch,
   commitImportBatch,
   getImportBatches,
   rollbackImportBatch,
@@ -45,14 +45,19 @@ import {
   Key
 } from 'lucide-react';
 import { Modal } from '../../components/Modal';
+import { SearchSelect } from '../../components/SearchSelect';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Spinner } from '../../components/Loader';
 
 type Step = 1 | 2 | 3 | 4; // 1: Input, 2: Mapping, 3: Matching Review, 4: Summary
+type NewProductKind = 'medicine' | 'medical_supply' | 'other';
 
 interface RowMatchItem {
   rowId: string;
   originalName: string;
+  tradeName?: string;
+  strength?: string;
+  form?: string;
   manufacturer?: string;
   pack?: string;
   bonus?: string;
@@ -113,11 +118,15 @@ export const ImportPrices: React.FC = () => {
   const [targetRowIdForNewProd, setTargetRowIdForNewProd] = useState<string | null>(null);
   const [newProdTradeName, setNewProdTradeName] = useState('');
   const [newProdActiveIngId, setNewProdActiveIngId] = useState('');
-  const [newProdForm, setNewProdForm] = useState('أقراص');
+  const [newProdForm, setNewProdForm] = useState('');
   const [newProdStrength, setNewProdStrength] = useState('');
   const [newProdPack, setNewProdPack] = useState('');
   const [newProdManufacturer, setNewProdManufacturer] = useState('');
   const [newProdCategory, setNewProdCategory] = useState('عام');
+  const [newProdBarcode, setNewProdBarcode] = useState('');
+  const [newProdType, setNewProdType] = useState<NewProductKind>('other');
+  const [isSavingNewProd, setIsSavingNewProd] = useState(false);
+  const [bulkCreateProgress, setBulkCreateProgress] = useState<{ completed: number; total: number; status: 'running' | 'done' | 'error' } | null>(null);
 
   // Summary State
   const [commitSummary, setCommitSummary] = useState<{
@@ -244,6 +253,7 @@ export const ImportPrices: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setBulkCreateProgress(null);
     setLoading(true);
     setCurrentFileName(file.name);
     try {
@@ -289,6 +299,9 @@ export const ImportPrices: React.FC = () => {
   const handleProceedToMatching = () => {
     let rowsToMatch: {
       rawName: string;
+      tradeName: string;
+      strength?: string;
+      form?: string;
       manufacturer?: string;
       pack?: string;
       bonus?: string;
@@ -327,6 +340,9 @@ export const ImportPrices: React.FC = () => {
 
     rowsToMatch = validRows.map((r) => ({
       rawName: r.rawName,
+      tradeName: r.rawTradeName || r.rawName,
+      strength: r.rawStrength,
+      form: r.rawForm,
       manufacturer: r.rawManufacturer,
       pack: r.rawPack,
       bonus: r.rawBonus,
@@ -339,11 +355,14 @@ export const ImportPrices: React.FC = () => {
     // تشغيل محرك المطابقة (Fuse.js + Normalization)
     const matcher = new ProductMatcher(products);
     const results: RowMatchItem[] = rowsToMatch.map((row, idx) => {
-      const matchResult = matcher.match([row.rawName, row.pack].filter(Boolean).join(' '), row.manufacturer);
+      const matchResult = matcher.match(row.rawName, row.manufacturer);
 
       return {
         rowId: 'row_' + idx + '_' + Date.now(),
         originalName: row.rawName,
+        tradeName: row.tradeName,
+        strength: row.strength,
+        form: row.form,
         manufacturer: row.manufacturer,
         pack: row.pack,
         bonus: row.bonus,
@@ -365,87 +384,170 @@ export const ImportPrices: React.FC = () => {
   // فتح نافذة إنشاء صنف جديد من جدول المطابقة
   const handleOpenCreateProduct = (row: RowMatchItem) => {
     setTargetRowIdForNewProd(row.rowId);
-    setNewProdTradeName(row.originalName);
-    setNewProdActiveIngId(ingredients[0]?.id || '');
-    setNewProdForm('أقراص');
-    setNewProdStrength('');
+    setNewProdTradeName(row.tradeName || row.originalName);
+    setNewProdActiveIngId('');
+    setNewProdForm(row.form || '');
+    setNewProdStrength(row.strength || '');
     setNewProdPack(row.pack || '');
     setNewProdManufacturer(row.manufacturer || '');
-    setNewProdCategory('عام');
+    setNewProdBarcode('');
+    const detectedCategory = classifyProduct(row.tradeName || row.originalName);
+    setNewProdType(detectedCategory === 'مستلزم طبي' ? 'medical_supply' : (row.strength || row.form || detectedCategory === 'دواء') ? 'medicine' : 'other');
+    setNewProdCategory(detectedCategory === 'غير مصنف' ? 'عام' : detectedCategory);
     setIsNewProdModalOpen(true);
   };
 
   // حفظ الصنف الجديد وربطه فوراً بالصف
   const handleSaveNewProductAndLink = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProdTradeName.trim()) return;
+    if (!newProdTradeName.trim()) {
+      error('يرجى إدخال الاسم التجاري.');
+      return;
+    }
+    if (!targetRowIdForNewProd) {
+      error('تعذر تحديد صف السعر المطلوب ربطه. أغلق النافذة وافتحها من الصف مرة أخرى.');
+      return;
+    }
 
+    setIsSavingNewProd(true);
+    const resolvedType: NewProductKind = newProdType === 'medicine' && !newProdActiveIngId ? 'other' : newProdType;
+    const isMedicine = resolvedType === 'medicine';
+    const savedCategory = resolvedType === 'other' && newProdType === 'medicine' && !newProdActiveIngId && newProdCategory === 'دواء'
+      ? 'عام'
+      : newProdCategory.trim() || 'عام';
     try {
-      const savedProd = await saveProduct({
+      const [savedProd] = await saveProductsBatch([{
         tradeName: newProdTradeName.trim(),
         normalizedName: normalizeArabic(newProdTradeName.trim()),
-        activeIngredientId: newProdActiveIngId || '',
-        form: newProdForm,
-        strength: newProdStrength.trim(),
+        activeIngredientId: isMedicine ? newProdActiveIngId : '',
+        form: isMedicine ? newProdForm.trim() : '',
+        strength: isMedicine ? newProdStrength.trim() : '',
         packSize: newProdPack.trim(),
         manufacturer: newProdManufacturer.trim(),
-        category: newProdCategory.trim() || 'عام',
-      });
+        category: savedCategory,
+        barcode: newProdBarcode.trim(),
+        productType: resolvedType,
+      }]);
 
-      // إضافة الصنف للقائمة
-      setProducts((prev) => [savedProd, ...prev]);
-
-      // ربط الصنف بالصف وتغيير حالته إلى exact
-      if (targetRowIdForNewProd) {
-        setMatchRows((prev) =>
-          prev.map((r) =>
-            r.rowId === targetRowIdForNewProd
-              ? { ...r, selectedProductId: savedProd.id, status: 'exact' }
-              : r
-          )
-        );
-      }
-
+      setProducts((prev) => [savedProd, ...prev.filter((product) => product.id !== savedProd.id)]);
+      setMatchRows((prev) => prev.map((row) => row.rowId === targetRowIdForNewProd
+        ? { ...row, selectedProductId: savedProd.id, status: 'exact' }
+        : row));
       setIsNewProdModalOpen(false);
-      success(`تم إنشاء صنف (${savedProd.tradeName}) وربطه بالصف بنجاح.`);
+      setTargetRowIdForNewProd(null);
+      success(`تم إنشاء الصنف (${savedProd.tradeName}) وربطه بصف السعر.`);
+      if (newProdType === 'medicine' && !newProdActiveIngId) {
+        info('لم تُختر مادة فعالة؛ حُفظ الصنف كغير دوائي.');
+      }
     } catch (err: any) {
-      error('تعذر إنشاء الصنف: ' + err.message);
+      error('تعذر حفظ الصنف أو ربطه: ' + (err?.message || 'تحقق من الاتصال والصلاحيات ثم أعد المحاولة.'));
+    } finally {
+      setIsSavingNewProd(false);
     }
   };
 
   // إنشاء كل الأصناف غير المربوطة دفعة واحدة، مع تجنب الأسماء المكررة داخل الملف وقاعدة البيانات.
   const handleCreateAllUnlinked = async () => {
-    const unlinked = matchRows.filter((r) => r.status === 'none' && !r.selectedProductId && r.originalName.trim());
+    const unlinked = matchRows.filter((row) => row.status === 'none' && !row.selectedProductId && row.originalName.trim());
     if (!unlinked.length) { info('لا توجد أصناف غير مربوطة لإضافتها.'); return; }
+
     setLoading(true);
+    setBulkCreateProgress({ completed: 0, total: unlinked.length, status: 'running' });
+    let completed = 0;
     try {
-      const known = new Map(products.map((p) => [normalizeArabic(p.tradeName), p]));
-      const byName = new Map<string, Product>();
-      let created = 0;
-      for (const row of unlinked) {
-        const key = normalizeArabic(row.originalName);
-        if (!key) continue;
-        let product = known.get(key) || byName.get(key);
-        if (!product) {
-          product = await saveProduct({
-            tradeName: row.originalName.trim(),
-            normalizedName: key,
-            activeIngredientId: '',
-            form: '', strength: '', manufacturer: '', category: classifyProduct(row.originalName),
-          });
-          byName.set(key, product);
-          created++;
+      const groupKey = (row: RowMatchItem) => [
+        row.tradeName || row.originalName,
+        row.strength || '',
+        row.form || '',
+        row.pack || '',
+        row.manufacturer || '',
+      ].map((value) => normalizeArabic(value)).join('|');
+      const groupsByKey = new Map<string, { key: string; rows: RowMatchItem[] }>();
+      unlinked.forEach((row) => {
+        const key = groupKey(row);
+        const group = groupsByKey.get(key) || { key, rows: [] };
+        group.rows.push(row);
+        groupsByKey.set(key, group);
+      });
+      const groups = [...groupsByKey.values()];
+      const compatibleField = (incoming?: string, existing?: string) =>
+        !incoming || !existing || normalizeArabic(incoming) === normalizeArabic(existing);
+      const existingForGroup = (group: { rows: RowMatchItem[] }) => {
+        const row = group.rows[0];
+        const name = normalizeArabic(row.tradeName || row.originalName);
+        return products.find((product) =>
+          normalizeArabic(product.tradeName) === name &&
+          compatibleField(row.strength, product.strength) &&
+          compatibleField(row.form, product.form) &&
+          compatibleField(row.pack, product.packSize) &&
+          compatibleField(row.manufacturer, product.manufacturer)
+        );
+      };
+
+      const linksByRowId = new Map<string, Product>();
+      const pendingGroups: typeof groups = [];
+      groups.forEach((group) => {
+        const existing = existingForGroup(group);
+        if (existing) {
+          group.rows.forEach((row) => linksByRowId.set(row.rowId, existing));
+          completed += group.rows.length;
+        } else {
+          pendingGroups.push(group);
         }
-        setMatchRows((prev) => prev.map((item) => normalizeArabic(item.originalName) === key && item.status === 'none'
-          ? { ...item, selectedProductId: product!.id, status: 'exact' }
-          : item));
+      });
+      if (linksByRowId.size) {
+        setMatchRows((prev) => prev.map((row) => {
+          const product = linksByRowId.get(row.rowId);
+          return product ? { ...row, selectedProductId: product.id, status: 'exact' } : row;
+        }));
+        setBulkCreateProgress({ completed, total: unlinked.length, status: 'running' });
       }
-      if (byName.size) setProducts((prev) => [...byName.values(), ...prev]);
-      success(`تم إنشاء ${created} صنف جديد وربط الأصناف المتكررة بالاسم نفسه. راجع النتائج قبل اعتماد الأسعار.`);
+
+      const itemsToCreate = pendingGroups.map((group) => {
+        const row = group.rows[0];
+        const tradeName = (row.tradeName || row.originalName).trim();
+        const category = classifyProduct(tradeName);
+        const productType: NewProductKind = category === 'مستلزم طبي' ? 'medical_supply' : category === 'دواء' ? 'medicine' : 'other';
+        return {
+          tradeName,
+          normalizedName: normalizeArabic(tradeName),
+          activeIngredientId: '',
+          form: row.form || '',
+          strength: row.strength || '',
+          packSize: row.pack || '',
+          manufacturer: row.manufacturer || '',
+          category,
+          productType,
+        };
+      });
+
+      await saveProductsBatch(itemsToCreate, (savedChunk, startIndex) => {
+        const chunkGroups = pendingGroups.slice(startIndex, startIndex + savedChunk.length);
+        const links = new Map<string, Product>();
+        chunkGroups.forEach((group, index) => {
+          const product = savedChunk[index];
+          group.rows.forEach((row) => links.set(row.rowId, product));
+          completed += group.rows.length;
+        });
+        setProducts((prev) => {
+          const ids = new Set(savedChunk.map((product) => product.id));
+          return [...savedChunk, ...prev.filter((product) => !ids.has(product.id))];
+        });
+        setMatchRows((prev) => prev.map((row) => {
+          const product = links.get(row.rowId);
+          return product ? { ...row, selectedProductId: product.id, status: 'exact' } : row;
+        }));
+        setBulkCreateProgress({ completed, total: unlinked.length, status: 'running' });
+      }, 20);
+
+      setBulkCreateProgress({ completed: unlinked.length, total: unlinked.length, status: 'done' });
+      success(`اكتمل ربط ${unlinked.length} صفاً. تمت إضافة ${pendingGroups.length} صنف جديد وتحديث عداد المطابقة مباشرة.`);
     } catch (err: any) {
-      error('تعذر إكمال الإضافة الجماعية: ' + (err?.message || 'خطأ غير معروف') + '. راجع الأصناف التي تم إنشاؤها قبل إعادة المحاولة.');
-      await loadBaseData();
-    } finally { setLoading(false); }
+      setBulkCreateProgress({ completed, total: unlinked.length, status: 'error' });
+      error(`توقفت الإضافة بعد ربط ${completed} من ${unlinked.length} صفاً. بقيت الصفوف غير المنجزة ظاهرة ويمكن إعادة المحاولة: ${err?.message || 'خطأ في الاتصال أو الصلاحيات'}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // قبول كل المطابقات التلقائية
@@ -1026,7 +1128,7 @@ export const ImportPrices: React.FC = () => {
                   className="px-3.5 py-2 rounded-xl bg-indigo-50 text-indigo-800 hover:bg-indigo-100 border border-indigo-200 text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>إضافة كل الأصناف غير المربوطة ({matchStats.none})</span>
+                  <span>{bulkCreateProgress?.status === 'running' ? `جاري الإضافة (${bulkCreateProgress.completed}/${bulkCreateProgress.total})` : `إضافة كل الأصناف غير المربوطة (${matchStats.none})`}</span>
                 </button>}
                 <button
                   type="button"
@@ -1044,10 +1146,23 @@ export const ImportPrices: React.FC = () => {
                   className="px-5 py-2 rounded-xl bg-[#0f9d7a] hover:bg-[#0b7a5e] text-white text-xs font-bold transition shadow-xs flex items-center gap-2 active:scale-95 disabled:opacity-50"
                 >
                   <Save className="w-4 h-4" />
-                  <span>{loading ? 'جاري الاعتماد...' : 'اعتماد الاستيراد وتحديث الأسعار'}</span>
+                  <span>{loading ? (bulkCreateProgress?.status === 'running' ? `ربط الأصناف (${bulkCreateProgress.completed}/${bulkCreateProgress.total})` : 'جاري الاعتماد...') : 'اعتماد الاستيراد وتحديث الأسعار'}</span>
                 </button>
               </div>
             </div>
+
+            {bulkCreateProgress && (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3" role="status" aria-live="polite">
+                <div className="mb-2 flex items-center justify-between gap-3 text-xs font-bold text-indigo-900">
+                  <span>{bulkCreateProgress.status === 'running' ? 'حفظ الأصناف وربطها جارٍ' : bulkCreateProgress.status === 'done' ? 'اكتمل ربط الصفوف' : 'توقفت العملية؛ يمكنك إعادة محاولة الصفوف المتبقية'}</span>
+                  <span>{bulkCreateProgress.completed} / {bulkCreateProgress.total}</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-white" role="progressbar" aria-valuemin={0} aria-valuemax={bulkCreateProgress.total} aria-valuenow={bulkCreateProgress.completed}>
+                  <div className="h-full rounded-full bg-[#0f9d7a] transition-all" style={{ width: `${Math.round((bulkCreateProgress.completed / bulkCreateProgress.total) * 100)}%` }} />
+                </div>
+                <p className="mt-2 text-[11px] text-indigo-800">يتحدّث عدّاد «غير موجود» و«مطابق تماماً» بعد اعتماد كل دفعة.</p>
+              </div>
+            )}
 
             {/* شارات إحصائيات المطابقة */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
@@ -1431,17 +1546,19 @@ export const ImportPrices: React.FC = () => {
           <>
             <button
               type="button"
+              disabled={isSavingNewProd}
               onClick={() => setIsNewProdModalOpen(false)}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl disabled:opacity-50"
             >
               إلغاء
             </button>
             <button
-              type="submit"
-              form="create-prod-form"
-              className="px-5 py-2 text-xs font-bold text-white bg-[#0f9d7a] hover:bg-[#0b7a5e] rounded-xl shadow-xs"
+              type="button"
+              disabled={isSavingNewProd}
+              onClick={() => (document.getElementById('create-prod-form') as HTMLFormElement | null)?.requestSubmit()}
+              className="px-5 py-2 text-xs font-bold text-white bg-[#0f9d7a] hover:bg-[#0b7a5e] rounded-xl shadow-xs disabled:opacity-50"
             >
-              إنشاء الصنف وربطه فوراً
+              {isSavingNewProd ? 'جاري حفظ الصنف وربطه...' : 'إنشاء الصنف وربطه فوراً'}
             </button>
           </>
         }
@@ -1459,69 +1576,71 @@ export const ImportPrices: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">المادة الفعالة (اختياري)</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">نوع الصنف</label>
             <select
-              value={newProdActiveIngId}
-              onChange={(e) => setNewProdActiveIngId(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a] bg-white"
+              value={newProdType}
+              onChange={(e) => {
+                const type = e.target.value as NewProductKind;
+                setNewProdType(type);
+                if (type !== 'medicine') {
+                  setNewProdActiveIngId('');
+                  setNewProdForm('');
+                  setNewProdStrength('');
+                }
+              }}
+              className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-[#0f9d7a]"
             >
-              <option value="">بدون مادة فعالة / صنف غير دوائي</option>
-              {ingredients.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
-                </option>
-              ))}
+              <option value="medicine">دواء</option>
+              <option value="medical_supply">مستلزم طبي</option>
+              <option value="other">غير دوائي</option>
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">الشكل</label>
-              <input
-                type="text"
-                value={newProdForm}
-                onChange={(e) => setNewProdForm(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]"
+          {newProdType === 'medicine' && (
+            <>
+              <SearchSelect
+                label="المادة الفعالة (ابحث واختر من القائمة)"
+                placeholder="اكتب للبحث في المواد الفعالة المخزنة..."
+                options={ingredients.map((ingredient) => ({ id: ingredient.id, label: ingredient.name, subLabel: ingredient.category }))}
+                value={newProdActiveIngId}
+                onChange={setNewProdActiveIngId}
               />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">التركيز</label>
-              <input
-                type="text"
-                value={newProdStrength}
-                onChange={(e) => setNewProdStrength(e.target.value)}
-                placeholder="500mg..."
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]"
-              />
-            </div>
-          </div>
+              <p className="-mt-2 text-[11px] text-slate-500">إذا لم تختر مادة فعالة، فسيُحفظ الصنف كغير دوائي. أضف المادة من الإدارة أولاً إذا لم تكن موجودة.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">الشكل الدوائي</label>
+                  <input type="text" value={newProdForm} onChange={(e) => setNewProdForm(e.target.value)} placeholder="أقراص، شراب، حقن..." className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">التركيز</label>
+                  <input type="text" value={newProdStrength} onChange={(e) => setNewProdStrength(e.target.value)} placeholder="مثال: 160/50 mg" className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]" />
+                </div>
+              </div>
+            </>
+          )}
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">حجم العبوة / عدد الوحدات</label>
-            <input type="text" value={newProdPack} onChange={(e) => setNewProdPack(e.target.value)} placeholder="30 قرصًا، 100 مل..." className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]" />
+            <input type="text" value={newProdPack} onChange={(e) => setNewProdPack(e.target.value)} placeholder="30 قرصاً، 5 أمبولات، 100 مل..." className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">الشركة المصنعة</label>
-              <input
-                type="text"
-                value={newProdManufacturer}
-                onChange={(e) => setNewProdManufacturer(e.target.value)}
-                placeholder="GSK..."
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]"
-              />
+              <input type="text" value={newProdManufacturer} onChange={(e) => setNewProdManufacturer(e.target.value)} placeholder="GSK..." className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]" />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">التصنيف</label>
-              <input
-                type="text"
-                value={newProdCategory}
-                onChange={(e) => setNewProdCategory(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]"
-              />
+              <input type="text" value={newProdCategory} onChange={(e) => setNewProdCategory(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]" />
             </div>
           </div>
+
+          {newProdType !== 'medicine' && (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">الباركود (اختياري)</label>
+              <input type="text" value={newProdBarcode} onChange={(e) => setNewProdBarcode(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-hidden focus:border-[#0f9d7a]" />
+            </div>
+          )}
         </form>
       </Modal>
 

@@ -13,6 +13,9 @@ export interface SheetParseResult {
 
 export interface MappedPriceRow {
   rowNumber: number;
+  rawTradeName: string;
+  rawStrength?: string;
+  rawForm?: string;
   rawName: string;
   rawPrice: number | null;
   rawPublicPrice?: number | null;
@@ -119,7 +122,7 @@ export function processMappedRows(params: {
     let isValid = true;
     let validationError = '';
 
-    if (!rawName.trim()) {
+    if (!baseName.trim()) {
       isValid = false;
       validationError = 'اسم الصنف مفقود';
     } else if (price === null || isNaN(price) || price <= 0) {
@@ -129,6 +132,9 @@ export function processMappedRows(params: {
 
     validMappedRows.push({
       rowNumber: row.rowNumber,
+      rawTradeName: baseName.trim(),
+      rawStrength: strength.trim() || undefined,
+      rawForm: form.trim() || undefined,
       rawName: rawName.trim(),
       rawPrice: price,
       rawPublicPrice: publicPrice,

@@ -390,6 +390,39 @@ export async function saveProduct(item: Omit<Product, 'id'> & { id?: string }): 
   return newItem;
 }
 
+export async function saveProductsBatch(
+  items: Array<Omit<Product, 'id'> & { id?: string }>,
+  onChunkSaved?: (saved: Product[], startIndex: number, total: number) => void,
+  chunkSize = 20,
+): Promise<Product[]> {
+  if (items.length === 0) return [];
+
+  const products = items.map((item, index): Product => ({
+    ...item,
+    id: item.id || `prod_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: item.createdAt || new Date().toISOString(),
+  }));
+  const safeChunkSize = Math.max(1, Math.min(100, Math.floor(chunkSize) || 20));
+
+  for (let startIndex = 0; startIndex < products.length; startIndex += safeChunkSize) {
+    const chunk = products.slice(startIndex, startIndex + safeChunkSize);
+    if (isFirebaseConfigured) {
+      const batch = writeBatch(db);
+      chunk.forEach((product) => batch.set(doc(db, 'products', product.id), product));
+      // Unlike saveProduct, this import path rejects on a server error instead of reporting a false success.
+      await batch.commit();
+    }
+
+    const ids = new Set(chunk.map((product) => product.id));
+    const existing = getLocal<Product>(STORAGE_KEYS.products).filter((product) => !ids.has(product.id));
+    setLocal(STORAGE_KEYS.products, [...chunk, ...existing]);
+    invalidateCache(['products', 'prices']);
+    onChunkSaved?.(chunk, startIndex, products.length);
+  }
+
+  return products;
+}
+
 export async function deleteProducts(ids: string[]): Promise<void> {
   invalidateCache(['products', 'prices']);
   if (isFirebaseConfigured) {
