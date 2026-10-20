@@ -54,18 +54,25 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
     setInputValue(initialQuery);
   }, [initialQuery]);
 
-  // Debounced filter effect: 250ms
+  // نحتفظ بآخر نسخة من الدالة في ref كي لا يُعاد تشغيل الـ debounce كلما تغيّرت هوية الدالة
+  // (أي إعادة رسم للصفحة الأم كانت تعيد استدعاء onFilterChange وتصفّر نتائج البحث/التمرير).
+  const onFilterChangeRef = useRef(onFilterChange);
+  useEffect(() => {
+    onFilterChangeRef.current = onFilterChange;
+  });
+
+  // Debounced filter effect: 250ms — يعتمد فقط على نص البحث والنطاق
   useEffect(() => {
     setIsDebouncing(true);
     const handler = setTimeout(() => {
-      onFilterChange(inputValue.trim(), scope);
+      onFilterChangeRef.current(inputValue.trim(), scope);
       setIsDebouncing(false);
     }, 250);
 
     return () => {
       clearTimeout(handler);
     };
-  }, [inputValue, scope, onFilterChange]);
+  }, [inputValue, scope]);
 
   // اختصار لوحة المفاتيح '/' أو 'Ctrl+K' للتركيز على البحث
   useEffect(() => {

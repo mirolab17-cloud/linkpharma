@@ -168,6 +168,17 @@ export const PharmacyPrices: React.FC = () => {
     }
   }, [allowedSupplierIdsString]);
 
+  // اقتراحات البحث تعتمد على كامل الكتالوج (مخزّن مؤقتاً)، لا على الأصناف المعروضة فقط.
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
+  useEffect(() => {
+    if (loading) return;
+    let cancelled = false;
+    getProducts()
+      .then((all) => { if (!cancelled) setCatalogProducts(all); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [loading]);
+
   useEffect(() => {
     loadData();
     getSystemSettings().then((settings) => setShowDeliveryDays(settings.showDeliveryDays !== false)).catch(() => {});
@@ -424,6 +435,19 @@ export const PharmacyPrices: React.FC = () => {
   const searchModeRef = useRef(false);
   const autoLoadArmedRef = useRef(true);
 
+  // دالة ثابتة الهوية لمكوّن البحث: كانت دالة inline جديدة في كل رسم، فكان مكوّن البحث
+  // يعيد استدعاءها بعد كل تحميل دفعة جديدة ويصفّر visibleCount إلى 24 (فتختفي البطاقات المحمّلة
+  // ويعود التحميل من جديد). الآن لا نصفّر العدد إلا إذا تغيّر نص البحث أو نطاقه فعلاً.
+  const lastFilterRef = useRef<{ query: string; scope: SearchScope }>({ query: '', scope: 'all' });
+  const handleSearchFilterChange = useCallback((query: string, newScope: SearchScope) => {
+    const prev = lastFilterRef.current;
+    if (prev.query === query && prev.scope === newScope) return;
+    lastFilterRef.current = { query, scope: newScope };
+    setSearchTerm(query);
+    setSearchScope(newScope);
+    setVisibleCount(PAGE_SIZE);
+  }, []);
+
   const priceRecordKey = (price: PriceRecord) => [
     price.productId,
     price.supplierId,
@@ -578,6 +602,7 @@ export const PharmacyPrices: React.FC = () => {
 
   // إعادة ضبط الفلاتر
   const handleResetFilters = () => {
+    lastFilterRef.current = { query: '', scope: 'all' };
     setSearchTerm('');
     setSearchScope('all');
     setSelectedCategory('all');
@@ -720,17 +745,13 @@ export const PharmacyPrices: React.FC = () => {
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-xs mb-6 space-y-4">
         {/* مكون البحث الشامل مع الفلترة المهدأة بالاسم والمادة والشركة */}
         <PharmacyGlobalSearch
-          products={products}
+          products={catalogProducts.length > 0 ? catalogProducts : products}
           ingredientsMap={ingredientsMap}
           productPricesMap={productPricesMap}
           initialQuery={searchTerm}
           initialScope={searchScope}
           totalFilteredCount={sortedProducts.length}
-          onFilterChange={(query, newScope) => {
-            setSearchTerm(query);
-            setSearchScope(newScope);
-            setVisibleCount(PAGE_SIZE);
-          }}
+          onFilterChange={handleSearchFilterChange}
           onClearAll={handleResetFilters}
         />
 
