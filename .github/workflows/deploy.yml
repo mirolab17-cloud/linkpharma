@@ -269,6 +269,14 @@ jobs:
           cp -r dist/. ../dist/v30/
           cd ..
 
+          # Build v32 (current LinkPharma release) and publish it under /v32/
+          cd v32
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v32
+          cp -r dist/. ../dist/v32/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
