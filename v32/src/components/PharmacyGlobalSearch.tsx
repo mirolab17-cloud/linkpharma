@@ -50,8 +50,10 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // تحديث القيمة عند تغير initialQuery خارجياً
+  // لا نستبدل ما يكتبه المستخدم إلا إذا تغيّر النص فعلياً: الأب يمرّر النص بعد تقليمه،
+  // فكانت المسافة الأخيرة تُحذف أثناء الكتابة ويلتصق الاسم بما بعده.
   useEffect(() => {
-    setInputValue(initialQuery);
+    setInputValue((current) => (current.trim() === initialQuery.trim() ? current : initialQuery));
   }, [initialQuery]);
 
   // نحتفظ بآخر نسخة من الدالة في ref كي لا يُعاد تشغيل الـ debounce كلما تغيّرت هوية الدالة
@@ -261,7 +263,9 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
               </div>
               <div className="space-y-1 mt-1">
                 {categorizedSuggestions.medicines.map((prod) => {
-                  const pPrices = (productPricesMap.get(prod.id) || []).filter((p) => p.available);
+                  // الأسعار تُجلب للأصناف الظاهرة فقط؛ لا نكتب "غير متوفر" لصنف لم تُحمّل أسعاره بعد.
+                  const knownPrices = productPricesMap.get(prod.id) || [];
+                  const pPrices = knownPrices.filter((p) => p.available);
                   const minPrice = pPrices.length > 0 ? Math.min(...pPrices.map((p) => p.price)) : null;
 
                   return (
@@ -286,9 +290,9 @@ export const PharmacyGlobalSearch: React.FC<PharmacyGlobalSearchProps> = ({
                           <span className="text-xs font-black text-[#0f9d7a]">
                             يبدأ من {formatCurrency(minPrice)}
                           </span>
-                        ) : (
+                        ) : knownPrices.length > 0 ? (
                           <span className="text-[10px] text-slate-400">غير متوفر</span>
-                        )}
+                        ) : null}
                         <div className="text-[10px] text-slate-400">
                           {prod.manufacturer}
                         </div>

@@ -5,9 +5,10 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useCartStore } from '../../store/useCartStore';
 import { useToastStore } from '../../store/useToastStore';
 import {
-  getProductsPage,
   getProducts,
+  getPrices,
   getPricesForProductIds,
+  invalidateCache,
   getActiveIngredients,
   getSuppliers,
   getSystemSettings,
@@ -52,21 +53,50 @@ import { PharmacyGlobalSearch, SearchScope } from '../../components/PharmacyGlob
 import { productDisplayName } from '../../utils/productCatalog';
 import { deliveryRuleForSupplier } from '../../services/v18Features';
 
+// عدد البطاقات التي تُضاف في كل دفعة عرض أثناء التمرير.
+const PAGE_SIZE = 24;
+// عدد الأصناف في كل طلب أسعار (الأسعار تُجلب فقط للأصناف الظاهرة).
+const PRICE_FETCH_CHUNK = 12;
+const EMPTY_PRICE_MAP = new Map<string, PriceRecord[]>();
+const nameCollator = new Intl.Collator('ar', { numeric: true, sensitivity: 'base' });
+
+const priceKey = (price: PriceRecord) =>
+  price.id || [price.productId, price.supplierId, price.price, price.bonus || '', price.updatedAt || ''].join('|');
+
+// دمج الأسعار الجديدة بالقديمة دون تكرار (آمن لو وصلت نفس الدفعة مرتين).
+const mergePrices = (current: PriceRecord[], incoming: PriceRecord[]): PriceRecord[] => {
+  if (!incoming.length) return current;
+  const merged = new Map<string, PriceRecord>();
+  current.forEach((price) => merged.set(priceKey(price), price));
+  incoming.forEach((price) => merged.set(priceKey(price), price));
+  return Array.from(merged.values());
+};
+
 export const PharmacyPrices: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { user } = useAuthStore();
   const { addItem } = useCartStore();
   const { success, error: toastError, info } = useToastStore();
+  const toastErrorRef = useRef(toastError);
+  toastErrorRef.current = toastError;
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // الكتالوج الكامل: البحث والفلترة والفرز كلها تعمل عليه وليس على الأصناف المعروضة فقط.
   const [products, setProducts] = useState<Product[]>([]);
   const [ingredients, setIngredients] = useState<ActiveIngredient[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [prices, setPrices] = useState<PriceRecord[]>([]);
-  const [priceHistory, setPriceHistory] = useState<PriceHistory[]>([]);
-  const [productCursor, setProductCursor] = useState<any | null>(null);
-  const [hasMoreServer, setHasMoreServer] = useState(false);
+  const [priceHistory] = useState<PriceHistory[]>([]);
+
+  // حالة جلب الأسعار
+  const [readyPriceIds, setReadyPriceIds] = useState<Set<string>>(new Set());
+  const [allPricesState, setAllPricesState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [priceLoadFailed, setPriceLoadFailed] = useState(false);
+  const [priceRetryTick, setPriceRetryTick] = useState(0);
+  const requestedPriceIdsRef = useRef<Set<string>>(new Set());
+  const priceEpochRef = useRef(0);
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
@@ -96,9 +126,6 @@ export const PharmacyPrices: React.FC = () => {
   const [userFavorites, setUserFavorites] = useState<string[]>([]);
   const [userPriceAlerts, setUserPriceAlerts] = useState<Record<string, number>>({});
 
-  // Pagination
-  const [visibleCount, setVisibleCount] = useState(24);
-
   // Selected quantities per (productId_supplierId)
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   // Feedback state for recently added buttons
@@ -121,66 +148,76 @@ export const PharmacyPrices: React.FC = () => {
     }
   }, [searchParams]);
 
-  // تحميل أول دفعة فقط؛ الأسعار وسجلها لا يُجلبان لكل الكتالوج.
   const allowedSupplierIdsString = (user?.allowedSuppliers || []).join(',');
-  const SERVER_PAGE_SIZE = 24;
+  const scopedSupplierIds = useMemo(
+    () => (allowedSupplierIdsString ? allowedSupplierIdsString.split(',') : undefined),
+    [allowedSupplierIdsString]
+  );
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  // تصفير حالة الأسعار (عند تغيّر الموردين المسموحين أو عند التحديث اليدوي).
+  const resetPriceState = useCallback(() => {
+    priceEpochRef.current += 1;
+    requestedPriceIdsRef.current = new Set();
+    setPrices([]);
+    setReadyPriceIds(new Set());
+    setAllPricesState('idle');
+    setPriceLoadFailed(false);
+  }, []);
+
+  useEffect(() => {
+    resetPriceState();
+  }, [allowedSupplierIdsString, resetPriceState]);
+
+  // ===== تحميل الكتالوج الكامل مرة واحدة (مخزّن مؤقتاً 5 دقائق في dataStorage) =====
+  // لا نُظهر هيكل التحميل (skeleton) إلا في التحميل الأول؛ التحديث اليدوي يُبقي البطاقات ظاهرة.
+  const hasLoadedRef = useRef(false);
+  const loadRequestRef = useRef(0);
+
+  const loadData = useCallback(async (force = false) => {
+    const requestId = ++loadRequestRef.current;
+    if (hasLoadedRef.current) setRefreshing(true);
+    else setLoading(true);
     setLoadError(null);
-    let isTimedOut = false;
-    const timer = setTimeout(() => {
-      isTimedOut = true;
+
+    const timer = window.setTimeout(() => {
+      if (requestId !== loadRequestRef.current || hasLoadedRef.current) return;
       setLoadError('استغرقت استجابة قاعدة البيانات وقتاً أطول من المتوقع. تحقق من الإنترنت وحاول مرة أخرى.');
       setLoading(false);
     }, 20000);
 
     try {
-      const allowedIds = user?.allowedSuppliers && user.allowedSuppliers.length > 0 ? user.allowedSuppliers : undefined;
-      const [productsPage, ingsData, supsData] = await Promise.all([
-        getProductsPage(SERVER_PAGE_SIZE),
+      if (force) invalidateCache(['products', 'suppliers', 'activeIngredients', 'prices']);
+      const [catalog, ingsData, supsData] = await Promise.all([
+        getProducts(),
         getActiveIngredients(),
         getSuppliers(),
       ]);
-      const pagePrices = await getPricesForProductIds(productsPage.items.map((p) => p.id), allowedIds);
-      if (!isTimedOut) {
-        clearTimeout(timer);
-        setProducts(productsPage.items);
-        setIngredients(ingsData);
-        setSuppliers(supsData);
-        setPrices(pagePrices);
-        setPriceHistory([]);
-        setProductCursor(productsPage.cursor);
-        setHasMoreServer(productsPage.hasMore);
-        setVisibleCount(PAGE_SIZE);
-        loadedProductIdsRef.current = new Set(productsPage.items.map((product) => product.id));
-        loadedPriceKeysRef.current = new Set(pagePrices.map(priceRecordKey));
-        setLoadError(null);
-      }
-    } catch (e: any) {
-      if (!isTimedOut) {
-        clearTimeout(timer);
-        console.error('Failed to load prices data', e);
+      if (requestId !== loadRequestRef.current) return;
+      setProducts(catalog);
+      setIngredients(ingsData);
+      setSuppliers(supsData);
+      if (force) resetPriceState();
+      hasLoadedRef.current = true;
+      setLoadError(null);
+    } catch (e) {
+      if (requestId !== loadRequestRef.current) return;
+      console.error('Failed to load prices data', e);
+      if (!hasLoadedRef.current) {
         setLoadError('تعذر تحميل بيانات الأسعار. تأكد من اتصال الشبكة وحاول مرة أخرى.');
+      } else {
+        toastErrorRef.current('تعذر تحديث البيانات. تم الإبقاء على آخر نسخة محمّلة.');
       }
     } finally {
-      if (!isTimedOut) setLoading(false);
+      window.clearTimeout(timer);
+      if (requestId === loadRequestRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [allowedSupplierIdsString]);
-
-  // اقتراحات البحث تعتمد على كامل الكتالوج (مخزّن مؤقتاً)، لا على الأصناف المعروضة فقط.
-  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
-  useEffect(() => {
-    if (loading) return;
-    let cancelled = false;
-    getProducts()
-      .then((all) => { if (!cancelled) setCatalogProducts(all); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [loading]);
+  }, [resetPriceState]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
     getSystemSettings().then((settings) => setShowDeliveryDays(settings.showDeliveryDays !== false)).catch(() => {});
   }, [loadData]);
 
@@ -213,20 +250,38 @@ export const PharmacyPrices: React.FC = () => {
     return map;
   }, [suppliers]);
 
+  // ترتيب ثابت للكتالوج (الاسم التجاري ثم المعرّف) كي لا يتغيّر ترتيب البطاقات بين الرسمات.
+  const catalogSorted = useMemo(
+    () =>
+      [...products].sort((a, b) => {
+        const byName = nameCollator.compare(a.tradeName || '', b.tradeName || '');
+        if (byName !== 0) return byName;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      }),
+    [products]
+  );
+
   // دمج الأصناف المكررة (نفس الاسم/الشركة/التركيز/الشكل بمعرّفات مختلفة بسبب الاستيراد) في بطاقة واحدة.
-  const productAlias = useMemo(() => {
+  // يُحسب على الكتالوج كاملاً فيبقى الصنف الأساسي ثابتاً مهما تقدّم التمرير.
+  const { productAlias, aliasGroups } = useMemo(() => {
     const canonicalByKey = new Map<string, string>();
     const alias = new Map<string, string>();
-    products.forEach((prod) => {
+    const groups = new Map<string, string[]>();
+    catalogSorted.forEach((prod) => {
       const key = [prod.tradeName, prod.manufacturer, prod.strength, prod.form, prod.packSize]
         .map((v) => normalizeArabic(String(v || '').trim().toLowerCase().replace(/\s+/g, ' ')))
         .join('|');
       const canonical = canonicalByKey.get(key);
-      if (canonical) alias.set(prod.id, canonical);
-      else canonicalByKey.set(key, prod.id);
+      if (canonical) {
+        alias.set(prod.id, canonical);
+        groups.get(canonical)!.push(prod.id);
+      } else {
+        canonicalByKey.set(key, prod.id);
+        groups.set(prod.id, [prod.id]);
+      }
     });
-    return alias;
-  }, [products]);
+    return { productAlias: alias, aliasGroups: groups };
+  }, [catalogSorted]);
 
   // ربط الأسعار بالأصناف فقط للموردين المسموحين مع احتساب البونص والسعر الفعلي
   const productPricesMap = useMemo(() => {
@@ -300,7 +355,7 @@ export const PharmacyPrices: React.FC = () => {
     return trends;
   }, [priceHistory]);
 
-  // استخراج قائمة التصنيفات الفريدة
+  // استخراج قائمة التصنيفات الفريدة (من الكتالوج كاملاً)
   const categories = useMemo(() => {
     const cats = new Set<string>();
     products.forEach((p) => {
@@ -317,71 +372,119 @@ export const PharmacyPrices: React.FC = () => {
     return date < sevenDaysAgo;
   };
 
-  // فلترة الأصناف والأسعار
-  const filteredProducts = useMemo(() => {
+  // ===== فهرس بحث محسوب مرة واحدة لكامل الكتالوج (بدل تطبيع النصوص عند كل ضغطة مفتاح) =====
+  const baseProducts = useMemo(
+    () => catalogSorted.filter((p) => !productAlias.has(p.id)),
+    [catalogSorted, productAlias]
+  );
+  const searchIndex = useMemo(
+    () =>
+      baseProducts.map((product) => ({
+        product,
+        name: normalizeArabic(productDisplayName(product)),
+        trade: normalizeArabic(product.tradeName || ''),
+        mfg: normalizeArabic(product.manufacturer || ''),
+      })),
+    [baseProducts]
+  );
+
+  // الفلاتر المعتمدة على الأسعار تحتاج أسعار كل الأصناف، فنجلبها (مرة واحدة ومخزّنة) عند تفعيلها فقط.
+  const needsAllPrices =
+    selectedSupplier !== 'all' || availableOnly || bonusOnly || recentlyUpdatedOnly || cheapestFirst || sortByEffective;
+  const pricesPending = needsAllPrices && allPricesState !== 'ready' && allPricesState !== 'error';
+  const allPricesReady = allPricesState === 'ready';
+  const isPriceReady = (productId: string) => allPricesReady || readyPriceIds.has(productId);
+
+  useEffect(() => {
+    if (!needsAllPrices || loading || allPricesState !== 'idle') return;
+    const epoch = priceEpochRef.current;
+    setAllPricesState('loading');
+    getPrices(scopedSupplierIds)
+      .then((rows) => {
+        if (epoch !== priceEpochRef.current) return;
+        setPrices((current) => mergePrices(current, rows));
+        setAllPricesState('ready');
+      })
+      .catch((e) => {
+        if (epoch !== priceEpochRef.current) return;
+        console.error('Failed to load all prices', e);
+        setAllPricesState('error');
+        toastErrorRef.current('تعذر تحميل أسعار كل الأصناف لتطبيق الفلاتر. حاول مرة أخرى.');
+      });
+  }, [needsAllPrices, loading, allPricesState, scopedSupplierIds]);
+
+  // مفتاح الفلاتر: عند تغيّره يعود العرض لأول دفعة تلقائياً (بدون effect ولا وميض).
+  const filterKey = JSON.stringify([
+    searchTerm,
+    searchScope,
+    selectedCategory,
+    selectedSupplier,
+    availableOnly,
+    cheapestFirst,
+    bonusOnly,
+    recentlyUpdatedOnly,
+    favoritesOnly,
+    sortByEffective,
+  ]);
+  const filterPriceMap = needsAllPrices ? productPricesMap : EMPTY_PRICE_MAP;
+
+  // البحث والفلترة والفرز على كامل الكتالوج.
+  const sortedProducts = useMemo(() => {
     const normSearch = normalizeArabic(searchTerm.trim());
+    const tokens = normSearch ? normSearch.split(' ').filter(Boolean) : [];
+    const entries: { product: Product; rank: number; sortValue: number }[] = [];
 
-    return products.filter((prod) => {
-      // 1) البحث العام بنطاقاته المحددة
-      if (normSearch) {
-        const prodNorm = normalizeArabic(productDisplayName(prod));
-        const mfgNorm = normalizeArabic(prod.manufacturer);
+    for (const entry of searchIndex) {
+      const prod = entry.product;
+      let rank = 1;
 
-        let matches = false;
-        if (searchScope === 'all') {
-          matches =
-            prodNorm.includes(normSearch) ||
-            mfgNorm.includes(normSearch);
-        } else if (searchScope === 'tradeName') {
-          matches = prodNorm.includes(normSearch);
+      // 1) البحث: كل كلمات الاستعلام يجب أن تتطابق (بالاسم أو الشركة حسب النطاق)
+      if (tokens.length) {
+        let matches: boolean;
+        if (searchScope === 'tradeName') {
+          matches = tokens.every((t) => entry.name.includes(t));
         } else if (searchScope === 'manufacturer') {
-          matches = mfgNorm.includes(normSearch);
+          matches = tokens.every((t) => entry.mfg.includes(t));
+        } else {
+          matches = tokens.every((t) => entry.name.includes(t) || entry.mfg.includes(t));
         }
-
-        if (!matches) return false;
+        if (!matches) continue;
+        // الأصناف التي يبدأ اسمها بالكلمة المكتوبة تظهر أولاً
+        if (entry.trade.startsWith(tokens[0])) rank = 0;
       }
 
       // 2) فلتر التصنيف
-      if (selectedCategory !== 'all' && prod.category !== selectedCategory) {
-        return false;
+      if (selectedCategory !== 'all' && prod.category !== selectedCategory) continue;
+
+      // 3) فلاتر الأسعار (تعمل على أسعار كل الأصناف بعد اكتمال تحميلها)
+      const prodPrices = filterPriceMap.get(prod.id) || [];
+      if (selectedSupplier !== 'all' && !prodPrices.some((pr) => pr.supplierId === selectedSupplier)) continue;
+      if (availableOnly && !prodPrices.some((pr) => pr.available)) continue;
+      if (bonusOnly && !prodPrices.some((pr) => pr.bonus && pr.bonus.trim().length > 0)) continue;
+      if (recentlyUpdatedOnly && !prodPrices.some((pr) => !isOlderThan7Days(pr.updatedAt))) continue;
+
+      // 4) فلتر المفضلة فقط
+      if (favoritesOnly && !userFavorites.includes(prod.id)) continue;
+
+      let sortValue = 0;
+      if (sortByEffective || cheapestFirst) {
+        const availablePrices = prodPrices.filter((p) => p.available);
+        sortValue = availablePrices.length
+          ? Math.min(...availablePrices.map((p) => (sortByEffective ? p.effectivePrice || p.price : p.price)))
+          : Infinity;
       }
+      entries.push({ product: prod, rank, sortValue });
+    }
 
-      // أسعار الصنف للموردين المسموحين
-      const prodPrices = productPricesMap.get(prod.id) || [];
+    if (sortByEffective || cheapestFirst) {
+      entries.sort((a, b) => (a.sortValue === b.sortValue ? 0 : a.sortValue < b.sortValue ? -1 : 1));
+    } else if (tokens.length) {
+      entries.sort((a, b) => a.rank - b.rank);
+    }
 
-      // 3) فلتر المورد المحدد
-      if (selectedSupplier !== 'all') {
-        const hasSupplier = prodPrices.some((pr) => pr.supplierId === selectedSupplier);
-        if (!hasSupplier) return false;
-      }
-
-      // 4) فلتر المتوفر فقط
-      if (availableOnly) {
-        const hasAvailable = prodPrices.some((pr) => pr.available);
-        if (!hasAvailable) return false;
-      }
-
-      // 5) فلتر عروض البونص فقط
-      if (bonusOnly) {
-        const hasBonus = prodPrices.some((pr) => pr.bonus && pr.bonus.trim().length > 0);
-        if (!hasBonus) return false;
-      }
-
-      // 6) فلتر محدث حديثاً (< 7 أيام)
-      if (recentlyUpdatedOnly) {
-        const hasRecent = prodPrices.some((pr) => !isOlderThan7Days(pr.updatedAt));
-        if (!hasRecent) return false;
-      }
-
-      // 7) فلتر المفضلة فقط
-      if (favoritesOnly) {
-        if (!userFavorites.includes(prod.id)) return false;
-      }
-
-      return true;
-    });
+    return entries.map((e) => e.product);
   }, [
-    products,
+    searchIndex,
     searchTerm,
     searchScope,
     selectedCategory,
@@ -391,53 +494,76 @@ export const PharmacyPrices: React.FC = () => {
     recentlyUpdatedOnly,
     favoritesOnly,
     userFavorites,
-    ingredientsMap,
-    productPricesMap,
+    filterPriceMap,
+    cheapestFirst,
+    sortByEffective,
   ]);
 
-  // فرز الأصناف مع إزالة أي تكرار محتمل من بيانات الاستيراد أو Firestore.
-  const sortedProducts = useMemo(() => {
-    let list = Array.from(new Map(filteredProducts.filter((product) => !productAlias.has(product.id)).map((product) => [product.id, product])).values());
+  // ===== العرض التدريجي أثناء التمرير =====
+  // لا توجد أي طلبات شبكة هنا: القائمة كاملة في الذاكرة، ونكشف 24 بطاقة إضافية كلما اقترب المستخدم من النهاية.
+  // العدد مرتبط بمفتاح الفلاتر فيعود تلقائياً لـ 24 عند تغيير البحث/الفلاتر فقط، ولا يُصفَّر عند أي إعادة رسم.
+  const [visible, setVisible] = useState<{ key: string; count: number }>({ key: '', count: PAGE_SIZE });
+  const visibleCount = visible.key === filterKey ? visible.count : PAGE_SIZE;
+  const loadMoreVisible = useCallback(() => {
+    setVisible((v) => ({ key: filterKey, count: (v.key === filterKey ? v.count : PAGE_SIZE) + PAGE_SIZE }));
+  }, [filterKey]);
 
-    if (sortByEffective) {
-      list.sort((a, b) => {
-        const pricesA = (productPricesMap.get(a.id) || []).filter((p) => p.available);
-        const pricesB = (productPricesMap.get(b.id) || []).filter((p) => p.available);
-        const effA = pricesA.length > 0 ? Math.min(...pricesA.map((p) => p.effectivePrice || p.price)) : Infinity;
-        const effB = pricesB.length > 0 ? Math.min(...pricesB.map((p) => p.effectivePrice || p.price)) : Infinity;
-        return effA - effB;
-      });
-    } else if (cheapestFirst) {
-      list.sort((a, b) => {
-        const pricesA = (productPricesMap.get(a.id) || []).filter((p) => p.available);
-        const pricesB = (productPricesMap.get(b.id) || []).filter((p) => p.available);
-        const minA = pricesA.length > 0 ? Math.min(...pricesA.map((p) => p.price)) : Infinity;
-        const minB = pricesB.length > 0 ? Math.min(...pricesB.map((p) => p.price)) : Infinity;
-        return minA - minB;
-      });
-    }
-
-    return list;
-  }, [filteredProducts, cheapestFirst, sortByEffective, productPricesMap, productAlias]);
-
-  // ترقيم عرضي داخل الدفعة + تحميل دفعة Firestore جديدة عند الحاجة.
-  const PAGE_SIZE = 24;
   const paginatedProducts = useMemo(() => sortedProducts.slice(0, visibleCount), [sortedProducts, visibleCount]);
-  const hasMoreProducts = visibleCount < sortedProducts.length || hasMoreServer;
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const loadingMoreRef = useRef(false);
-  // مرجع مستقل عن React state لمنع إعادة إدخال نفس الصفحة أثناء تغيّر المؤشر.
-  const loadedProductIdsRef = useRef<Set<string>>(new Set());
-  const loadedPriceKeysRef = useRef<Set<string>>(new Set());
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [searchingCatalog, setSearchingCatalog] = useState(false);
-  const searchRequestIdRef = useRef(0);
-  const searchModeRef = useRef(false);
-  const autoLoadArmedRef = useRef(true);
+  const hasMoreProducts = visibleCount < sortedProducts.length;
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // دالة ثابتة الهوية لمكوّن البحث: كانت دالة inline جديدة في كل رسم، فكان مكوّن البحث
-  // يعيد استدعاءها بعد كل تحميل دفعة جديدة ويصفّر visibleCount إلى 24 (فتختفي البطاقات المحمّلة
-  // ويعود التحميل من جديد). الآن لا نصفّر العدد إلا إذا تغيّر نص البحث أو نطاقه فعلاً.
+  // مراقب واحد لعنصر في أسفل القائمة؛ يُعاد إنشاؤه بعد كل دفعة فيُطلق فحصاً فورياً
+  // (فإن بقي العنصر ظاهراً في الشاشات الطويلة تُضاف دفعة أخرى حتى يخرج من نطاق الرؤية).
+  useEffect(() => {
+    const target = sentinelRef.current;
+    if (!target || !hasMoreProducts || loading || pricesPending) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMoreVisible();
+      },
+      { root: null, rootMargin: '600px 0px', threshold: 0 }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMoreProducts, visibleCount, loadMoreVisible, loading, pricesPending]);
+
+  // ===== جلب الأسعار للأصناف الظاهرة فقط =====
+  useEffect(() => {
+    if (loading || allPricesState === 'ready' || allPricesState === 'loading') return;
+    const pending = paginatedProducts.filter((p) => !requestedPriceIdsRef.current.has(p.id));
+    if (!pending.length) return;
+
+    const epoch = priceEpochRef.current;
+    pending.forEach((p) => requestedPriceIdsRef.current.add(p.id));
+    for (let i = 0; i < pending.length; i += PRICE_FETCH_CHUNK) {
+      const chunk = pending.slice(i, i + PRICE_FETCH_CHUNK);
+      const ids = Array.from(new Set(chunk.flatMap((p) => aliasGroups.get(p.id) ?? [p.id])));
+      getPricesForProductIds(ids, scopedSupplierIds)
+        .then((rows) => {
+          if (epoch !== priceEpochRef.current) return;
+          setPrices((current) => mergePrices(current, rows));
+          setReadyPriceIds((current) => {
+            const next = new Set(current);
+            chunk.forEach((p) => next.add(p.id));
+            return next;
+          });
+        })
+        .catch((e) => {
+          if (epoch !== priceEpochRef.current) return;
+          console.warn('تعذر تحميل أسعار دفعة من الأصناف:', e);
+          chunk.forEach((p) => requestedPriceIdsRef.current.delete(p.id));
+          setPriceLoadFailed(true);
+        });
+    }
+  }, [paginatedProducts, loading, allPricesState, aliasGroups, scopedSupplierIds, priceRetryTick]);
+
+  const retryPriceLoading = () => {
+    setPriceLoadFailed(false);
+    if (allPricesState === 'error') setAllPricesState('idle');
+    setPriceRetryTick((tick) => tick + 1);
+  };
+
+  // دالة ثابتة الهوية لمكوّن البحث، ولا تحدّث الحالة إلا إذا تغيّر النص أو النطاق فعلاً.
   const lastFilterRef = useRef<{ query: string; scope: SearchScope }>({ query: '', scope: 'all' });
   const handleSearchFilterChange = useCallback((query: string, newScope: SearchScope) => {
     const prev = lastFilterRef.current;
@@ -445,160 +571,7 @@ export const PharmacyPrices: React.FC = () => {
     lastFilterRef.current = { query, scope: newScope };
     setSearchTerm(query);
     setSearchScope(newScope);
-    setVisibleCount(PAGE_SIZE);
   }, []);
-
-  const priceRecordKey = (price: PriceRecord) => [
-    price.productId,
-    price.supplierId,
-    price.price,
-    price.bonus || '',
-    price.updatedAt || '',
-  ].join('|');
-
-  const loadMoreProducts = useCallback(async () => {
-    if (loadingMoreRef.current || !hasMoreProducts) return;
-    loadingMoreRef.current = true;
-    setLoadingMore(true);
-    try {
-      // نعرض المزيد من الدفعة الحالية أولاً دون أي طلب شبكة.
-      if (visibleCount < sortedProducts.length) {
-        setVisibleCount((count) => Math.min(count + 10, sortedProducts.length));
-        return;
-      }
-      if (!hasMoreServer) return;
-      const allowedIds = user?.allowedSuppliers && user.allowedSuppliers.length > 0 ? user.allowedSuppliers : undefined;
-      // قد يعيد مصدر البيانات دفعة متداخلة عند الانتقال من Firestore إلى
-      // fallback المحلي أو عند وجود قيم tradeName متساوية. نتقدم بالمؤشر
-      // ونحاول دفعة أخرى بدلاً من عرض العناصر القديمة أو إعادة الحلقة نفسها.
-      let cursor = productCursor;
-      let pageHasMore: boolean = hasMoreServer;
-      let newProducts: Product[] = [];
-      let newPrices: PriceRecord[] = [];
-      let attempts = 0;
-
-      while (pageHasMore && attempts < 5 && newProducts.length === 0) {
-        const nextPage = await getProductsPage(SERVER_PAGE_SIZE, cursor);
-        const unseenProducts = nextPage.items.filter((product) => !loadedProductIdsRef.current.has(product.id));
-        const unseenIds = unseenProducts.map((product) => product.id);
-        const nextPrices = unseenIds.length ? await getPricesForProductIds(unseenIds, allowedIds) : [];
-
-        unseenProducts.forEach((product) => loadedProductIdsRef.current.add(product.id));
-        const uniquePrices = nextPrices.filter((price) => {
-          const key = priceRecordKey(price);
-          if (loadedPriceKeysRef.current.has(key)) return false;
-          loadedPriceKeysRef.current.add(key);
-          return true;
-        });
-
-        newProducts = unseenProducts;
-        newPrices = uniquePrices;
-        cursor = nextPage.cursor;
-        pageHasMore = nextPage.hasMore;
-        attempts += 1;
-
-        // إذا أعاد المؤشر نفس المكان، نوقف الحلقة بدلاً من تكرار الطلبات.
-        if (JSON.stringify(cursor) === JSON.stringify(productCursor) && unseenProducts.length === 0) {
-          pageHasMore = false;
-          break;
-        }
-      }
-
-      setProducts((current) => [...current, ...newProducts]);
-      setPrices((current) => [...current, ...newPrices]);
-      setProductCursor(cursor);
-      setHasMoreServer(pageHasMore && newProducts.length > 0);
-      if (newProducts.length > 0) setVisibleCount((count) => count + 10);
-    } catch (e) {
-      console.warn('تعذر تحميل الدفعة التالية من الأسعار:', e);
-      toastError('تعذر تحميل المزيد حالياً. حاول مرة أخرى.');
-    } finally {
-      loadingMoreRef.current = false;
-      setLoadingMore(false);
-    }
-  }, [hasMoreProducts, visibleCount, sortedProducts.length, hasMoreServer, productCursor, allowedSupplierIdsString, toastError]);
-
-  // Search the complete product catalog, not only products already rendered.
-  useEffect(() => {
-    const term = searchTerm.trim();
-    const requestId = ++searchRequestIdRef.current;
-    let cancelled = false;
-
-    if (!term) {
-      setSearchingCatalog(false);
-      if (searchModeRef.current) {
-        searchModeRef.current = false;
-        void loadData();
-      }
-      return () => { cancelled = true; };
-    }
-
-    searchModeRef.current = true;
-    const timer = window.setTimeout(async () => {
-      setSearchingCatalog(true);
-      try {
-        const allProducts = await getProducts();
-        if (cancelled || requestId !== searchRequestIdRef.current) return;
-        const normSearch = normalizeArabic(term);
-        const matchingProducts = allProducts.filter((prod) => {
-          const prodNorm = normalizeArabic(productDisplayName(prod));
-          const mfgNorm = normalizeArabic(prod.manufacturer || '');
-          if (searchScope === 'tradeName') return prodNorm.includes(normSearch);
-          if (searchScope === 'manufacturer') return mfgNorm.includes(normSearch);
-          return prodNorm.includes(normSearch) || mfgNorm.includes(normSearch);
-        });
-        const allowedIds = user?.allowedSuppliers?.length ? user.allowedSuppliers : undefined;
-        const matchingPrices: PriceRecord[] = [];
-        for (let i = 0; i < matchingProducts.length; i += 24) {
-          if (cancelled || requestId !== searchRequestIdRef.current) return;
-          const chunk = matchingProducts.slice(i, i + 24);
-          const chunkPrices = await getPricesForProductIds(chunk.map((p) => p.id), allowedIds);
-          matchingPrices.push(...chunkPrices);
-        }
-        if (cancelled || requestId !== searchRequestIdRef.current) return;
-        setProducts(matchingProducts);
-        setPrices(matchingPrices);
-        setProductCursor(null);
-        setHasMoreServer(false);
-        setVisibleCount(PAGE_SIZE);
-        loadedProductIdsRef.current = new Set(matchingProducts.map((p) => p.id));
-        loadedPriceKeysRef.current = new Set(matchingPrices.map(priceRecordKey));
-      } catch (e) {
-        console.error('Catalog search failed', e);
-        if (!cancelled && requestId === searchRequestIdRef.current) {
-          toastError('تعذر البحث في كامل الأصناف. تحقق من الاتصال وحاول مجددًا.');
-        }
-      } finally {
-        if (!cancelled && requestId === searchRequestIdRef.current) setSearchingCatalog(false);
-      }
-    }, 250);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [searchTerm, searchScope, allowedSupplierIdsString]);
-
-  // ابدأ التحميل عند بطاقة بداية آخر 6 أصناف من العناصر المعروضة.
-  // يُعاد تسليح المراقب عند تغيّر عدد البطاقات، مع منع الطلبات المتكررة أثناء التحميل.
-  useEffect(() => {
-    const target = loadMoreRef.current;
-    if (!target || !hasMoreProducts || loadingMore || searchModeRef.current) return;
-    const observer = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting) {
-        autoLoadArmedRef.current = true;
-        return;
-      }
-      if (autoLoadArmedRef.current) {
-        autoLoadArmedRef.current = false;
-        void loadMoreProducts();
-      }
-    }, { root: null, rootMargin: '0px', threshold: 0 });
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [visibleCount, sortedProducts.length, hasMoreProducts, loadingMore, loadMoreProducts]);
-
-
 
   // إعادة ضبط الفلاتر
   const handleResetFilters = () => {
@@ -613,9 +586,6 @@ export const PharmacyPrices: React.FC = () => {
     setRecentlyUpdatedOnly(false);
     setFavoritesOnly(false);
     setSortByEffective(false);
-    setVisibleCount(PAGE_SIZE);
-    loadingMoreRef.current = false;
-    setLoadingMore(false);
   };
 
   // معالجة الكمية
@@ -732,11 +702,11 @@ export const PharmacyPrices: React.FC = () => {
           </div>
 
           <button
-            onClick={() => loadData()}
+            onClick={() => loadData(true)}
             className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-[#0f9d7a] hover:bg-slate-50 dark:hover:bg-slate-700 transition"
             title="تحديث الأسعار الآن"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#0f9d7a]' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading || refreshing ? 'animate-spin text-[#0f9d7a]' : ''}`} />
           </button>
         </div>
       </div>
@@ -745,7 +715,7 @@ export const PharmacyPrices: React.FC = () => {
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-xs mb-6 space-y-4">
         {/* مكون البحث الشامل مع الفلترة المهدأة بالاسم والمادة والشركة */}
         <PharmacyGlobalSearch
-          products={catalogProducts.length > 0 ? catalogProducts : products}
+          products={products}
           ingredientsMap={ingredientsMap}
           productPricesMap={productPricesMap}
           initialQuery={searchTerm}
@@ -764,7 +734,6 @@ export const PharmacyPrices: React.FC = () => {
               value={selectedCategory}
               onChange={(e) => {
                 setSelectedCategory(e.target.value);
-                setVisibleCount(PAGE_SIZE);
               }}
               className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 focus:outline-hidden focus:border-[#0f9d7a]"
             >
@@ -784,7 +753,6 @@ export const PharmacyPrices: React.FC = () => {
               value={selectedSupplier}
               onChange={(e) => {
                 setSelectedSupplier(e.target.value);
-                setVisibleCount(PAGE_SIZE);
               }}
               className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 focus:outline-hidden focus:border-[#0f9d7a]"
             >
@@ -824,7 +792,7 @@ export const PharmacyPrices: React.FC = () => {
           <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 ml-1">فلاتر سريعة:</span>
 
           <button
-            onClick={() => { setAvailableOnly(!availableOnly); setVisibleCount(PAGE_SIZE); }}
+            onClick={() => { setAvailableOnly(!availableOnly); }}
             className={`px-3 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
               availableOnly
                 ? 'bg-[#0f9d7a] text-white shadow-xs'
@@ -836,7 +804,7 @@ export const PharmacyPrices: React.FC = () => {
           </button>
 
           <button
-            onClick={() => { setCheapestFirst(!cheapestFirst); setSortByEffective(false); setVisibleCount(PAGE_SIZE); }}
+            onClick={() => { setCheapestFirst(!cheapestFirst); setSortByEffective(false); }}
             className={`px-3 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
               cheapestFirst
                 ? 'bg-[#0f9d7a] text-white shadow-xs'
@@ -848,7 +816,7 @@ export const PharmacyPrices: React.FC = () => {
           </button>
 
           <button
-            onClick={() => { setSortByEffective(!sortByEffective); setCheapestFirst(false); setVisibleCount(PAGE_SIZE); }}
+            onClick={() => { setSortByEffective(!sortByEffective); setCheapestFirst(false); }}
             className={`px-3 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
               sortByEffective
                 ? 'bg-[#0f9d7a] text-white shadow-xs'
@@ -861,7 +829,7 @@ export const PharmacyPrices: React.FC = () => {
           </button>
 
           <button
-            onClick={() => { setBonusOnly(!bonusOnly); setVisibleCount(PAGE_SIZE); }}
+            onClick={() => { setBonusOnly(!bonusOnly); }}
             className={`px-3 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
               bonusOnly
                 ? 'bg-[#0f9d7a] text-white shadow-xs'
@@ -873,7 +841,7 @@ export const PharmacyPrices: React.FC = () => {
           </button>
 
           <button
-            onClick={() => { setRecentlyUpdatedOnly(!recentlyUpdatedOnly); setVisibleCount(PAGE_SIZE); }}
+            onClick={() => { setRecentlyUpdatedOnly(!recentlyUpdatedOnly); }}
             className={`px-3 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
               recentlyUpdatedOnly
                 ? 'bg-[#0f9d7a] text-white shadow-xs'
@@ -885,7 +853,7 @@ export const PharmacyPrices: React.FC = () => {
           </button>
 
           <button
-            onClick={() => { setFavoritesOnly(!favoritesOnly); setVisibleCount(PAGE_SIZE); }}
+            onClick={() => { setFavoritesOnly(!favoritesOnly); }}
             className={`px-3 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
               favoritesOnly
                 ? 'bg-amber-500 text-white shadow-xs'
@@ -907,7 +875,7 @@ export const PharmacyPrices: React.FC = () => {
               <h3 className="text-sm font-bold text-rose-900 dark:text-rose-200">{loadError}</h3>
             </div>
             <button
-              onClick={() => loadData()}
+              onClick={() => loadData(true)}
               className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition"
             >
               إعادة المحاولة
@@ -916,10 +884,17 @@ export const PharmacyPrices: React.FC = () => {
         </div>
       )}
 
-      {searchingCatalog && <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800" role="status">جاري البحث في كامل كتالوج الأصناف وجلب أسعار النتائج...</div>}
+      {pricesPending && <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800" role="status">جاري تحميل أسعار كل الأصناف لتطبيق الفلاتر على الكتالوج كاملاً...</div>}
+
+      {(priceLoadFailed || allPricesState === 'error') && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-800" role="alert">
+          <span>تعذر تحميل بعض الأسعار.</span>
+          <button type="button" onClick={retryPriceLoading} className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700">إعادة المحاولة</button>
+        </div>
+      )}
 
       {/* النتائج وعرض بطاقات المقارنة المدمجة */}
-      {loading ? (
+      {loading || pricesPending ? (
         <CardSkeleton count={6} />
       ) : paginatedProducts.length === 0 ? (
         <EmptyState
@@ -931,7 +906,7 @@ export const PharmacyPrices: React.FC = () => {
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {paginatedProducts.map((product, index) => {
+            {paginatedProducts.map((product) => {
               const ing = ingredientsMap.get(product.activeIngredientId);
               const prodPrices = productPricesMap.get(product.id) || [];
               const isFav = userFavorites.includes(product.id);
@@ -956,7 +931,6 @@ export const PharmacyPrices: React.FC = () => {
               return (
                 <div
                   key={product.id}
-                  ref={index === Math.max(0, paginatedProducts.length - 6) && hasMoreProducts ? loadMoreRef : undefined}
                   className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden"
                 >
                   {/* رأس بطاقة الدواء */}
@@ -1049,7 +1023,11 @@ export const PharmacyPrices: React.FC = () => {
                         {sortByEffective && <span className="text-[#0f9d7a]">مرتب بالسعر بعد البونص</span>}
                       </div>
 
-                      {prodPrices.length === 0 ? (
+                      {prodPrices.length === 0 && !isPriceReady(product.id) ? (
+                        <div className="p-3 text-center text-xs text-emerald-700 dark:text-emerald-400 bg-white dark:bg-slate-800 rounded-xl border border-dashed border-emerald-200 dark:border-emerald-900" role="status">
+                          جاري تحميل أسعار هذا الصنف...
+                        </div>
+                      ) : prodPrices.length === 0 ? (
                         <div className="p-3 text-center text-xs text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-800 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
                           لا توجد أسعار مدخلة من مورديك الحاليين
                         </div>
@@ -1074,7 +1052,7 @@ export const PharmacyPrices: React.FC = () => {
 
                           return (
                             <div
-                              key={priceRec.supplierId}
+                              key={`${priceRec.id || ''}_${priceRec.supplierId}_${priceRec.price}`}
                               className={`p-3 rounded-xl border transition-all ${
                                 isCheapest
                                   ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 shadow-2xs'
@@ -1214,13 +1192,15 @@ export const PharmacyPrices: React.FC = () => {
             })}
           </div>
 
-          {hasMoreProducts && <div className="flex flex-col items-center justify-center gap-2 py-4 text-xs font-bold text-slate-400" aria-live="polite">
-            <button type="button" onClick={() => void loadMoreProducts()} disabled={loadingMore} className="min-h-11 rounded-xl border border-emerald-200 bg-white px-5 py-2.5 font-bold text-[#0f9d7a] disabled:opacity-60">
-              {loadingMore ? 'جاري تحميل صفحة جديدة...' : 'تحميل المزيد من الأصناف'}
-            </button>
-            <span>يبدأ التحميل التلقائي عند الوصول إلى آخر 6 أصناف</span>
-          </div>}
-          {!hasMoreProducts && sortedProducts.length > PAGE_SIZE && <p className="text-center text-xs text-slate-400 py-5">تم عرض جميع الأصناف المطابقة</p>}
+          {hasMoreProducts && (
+            <div ref={sentinelRef} className="flex flex-col items-center justify-center gap-2 py-6 text-xs font-bold text-slate-400" aria-live="polite">
+              <button type="button" onClick={loadMoreVisible} className="min-h-11 rounded-xl border border-emerald-200 bg-white px-5 py-2.5 font-bold text-[#0f9d7a]">
+                عرض المزيد من الأصناف
+              </button>
+              <span>المعروض {paginatedProducts.length} من {sortedProducts.length} صنف · يكتمل العرض تلقائياً عند التمرير</span>
+            </div>
+          )}
+          {!hasMoreProducts && sortedProducts.length > PAGE_SIZE && <p className="text-center text-xs text-slate-400 py-5">تم عرض جميع الأصناف المطابقة ({sortedProducts.length})</p>}
         </>
       )}
 
