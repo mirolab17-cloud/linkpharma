@@ -75,6 +75,7 @@ export const Products: React.FC = () => {
   const [activeIngredientId, setActiveIngredientId] = useState('');
   const [form, setForm] = useState(DOSAGE_FORMS[0]);
   const [strength, setStrength] = useState('');
+  const [packSize, setPackSize] = useState('');
   const [manufacturer, setManufacturer] = useState('');
   const [category, setCategory] = useState('');
   const [barcode, setBarcode] = useState('');
@@ -178,6 +179,7 @@ export const Products: React.FC = () => {
     setActiveIngredientId(ingredients[0]?.id || '');
     setForm(DOSAGE_FORMS[0]);
     setStrength('');
+    setPackSize('');
     setManufacturer('');
     setCategory(categories[0] || 'عام');
     setBarcode('');
@@ -190,6 +192,7 @@ export const Products: React.FC = () => {
     setActiveIngredientId(p.activeIngredientId);
     setForm(p.form);
     setStrength(p.strength);
+    setPackSize(p.packSize || '');
     setManufacturer(p.manufacturer);
     setCategory(p.category);
     setBarcode(p.barcode || '');
@@ -212,6 +215,7 @@ export const Products: React.FC = () => {
         activeIngredientId: activeIngredientId || '',
         form: form.trim(),
         strength: strength.trim(),
+        packSize: packSize.trim(),
         manufacturer: manufacturer.trim(),
         category: category.trim() || 'عام',
         barcode: barcode.trim(),
@@ -318,6 +322,7 @@ export const Products: React.FC = () => {
         <div className="text-xs text-slate-600">
           <span className="font-semibold">{item.form}</span>
           {item.strength && <span className="text-slate-400 mr-1.5 font-normal">({item.strength})</span>}
+          {item.packSize && <span className="mt-1 block text-emerald-700">العبوة: {item.packSize}</span>}
         </div>
       ),
     },
@@ -658,6 +663,18 @@ export const Products: React.FC = () => {
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-hidden focus:border-[#0f9d7a]"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">حجم العبوة (اختياري)</label>
+            <input
+              type="text"
+              value={packSize}
+              onChange={(e) => setPackSize(e.target.value)}
+              placeholder="مثال: 20 قرصاً، 5 أمبولات، 10 تحاميل"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-hidden focus:border-[#0f9d7a]"
+            />
+            <p className="mt-1 text-[11px] text-slate-500">اكتب عدد الوحدات داخل العبوة؛ يُدخل سعر الصنف لاحقاً على أساس العبوة.</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
