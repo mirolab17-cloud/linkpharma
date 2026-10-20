@@ -17,13 +17,18 @@ export function isValidSaudiLocalPhone(value: string): boolean { return /^05\d{8
 
 export function isProfileComplete(profile: Partial<UserProfile> | null | undefined): boolean {
   if (!profile) return false;
-  if (profile.profileComplete === true) return true;
+  if (profile.role === 'admin') return true;
   const pharmacyName = String(profile.pharmacyName || '').trim();
   const accountName = String(profile.name || '').trim();
   const ownerName = String(profile.ownerName || accountName).trim();
-  const address = String(profile.addressDetail || profile.address || '').trim();
   const validName = ((pharmacyName.length >= 2 && pharmacyName !== 'صيدليتي') || accountName.length >= 2) && ownerName.length >= 2;
-  const validAddress = address.length >= 3 && (Boolean(profile.address) || (Boolean(profile.governorate) && Boolean(profile.city)));
+  const defaultBranch = profile.branches?.find((branch) => branch.id === profile.defaultBranchId) || profile.branches?.[0];
+  const branchAddress = String(defaultBranch?.addressDetail || '').trim();
+  const legacyAddress = String(profile.addressDetail || profile.address || '').trim();
+  const validAddress = profile.role === 'pharmacy'
+    ? Boolean((defaultBranch?.governorateId && defaultBranch.cityId && defaultBranch.streetId && branchAddress.length >= 3) ||
+      (!profile.branches?.length && profile.profileComplete === true && legacyAddress.length >= 3 && (profile.governorate || profile.city)))
+    : Boolean(legacyAddress.length >= 3 && (profile.address || (profile.governorate && profile.city)));
   return Boolean(validName && validAddress && isValidSaudiLocalPhone(profile.phone || ''));
 }
 

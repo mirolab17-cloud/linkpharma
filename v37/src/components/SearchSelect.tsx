@@ -1,6 +1,7 @@
 // src/components/SearchSelect.tsx
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, ChevronDown, Plus, Check, X } from 'lucide-react';
+import { normalizeArabic } from '../utils/arabicNormalize';
 
 export interface OptionItem {
   id: string;
@@ -49,10 +50,10 @@ export const SearchSelect: React.FC<SearchSelectProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filteredOptions = options.filter(
-    (opt) =>
-      opt.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (opt.subLabel && opt.subLabel.toLowerCase().includes(searchTerm.toLowerCase()))
+  const normalizedSearchTerm = normalizeArabic(searchTerm);
+  const filteredOptions = options.filter((opt) =>
+    normalizeArabic(opt.label).includes(normalizedSearchTerm) ||
+    normalizeArabic(opt.subLabel || '').includes(normalizedSearchTerm)
   );
 
   return (

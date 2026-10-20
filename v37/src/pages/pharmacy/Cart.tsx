@@ -30,8 +30,9 @@ import {
 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState } from '../../components/EmptyState';
-import { isProfileComplete, triggerHaptic, playSuccessSound } from '../../utils/profile';
+import { isProfileComplete, isValidSaudiLocalPhone, triggerHaptic, playSuccessSound } from '../../utils/profile';
 import { deliveryRuleForSupplier } from '../../services/v18Features';
+import { formatBranchAddress, getDeliveryAreaKeys } from '../../utils/gaza';
 
 export const PharmacyCart: React.FC = () => {
   const { user } = useAuthStore();
@@ -52,6 +53,7 @@ export const PharmacyCart: React.FC = () => {
 
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [sendingSupplierId, setSendingSupplierId] = useState<string | null>(null);
+  const [selectedBranchId, setSelectedBranchId] = useState(user?.defaultBranchId || '');
 
   // Data for "Best Cart" and Supplier minimum order amounts
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -91,6 +93,28 @@ export const PharmacyCart: React.FC = () => {
 
   const supplierGroups = getSupplierGroups();
   const supplierKeys = Object.keys(supplierGroups);
+  const availableBranches = user?.branches || [];
+  const legacyAddress = String(user?.addressDetail || user?.address || '').trim();
+  const legacyBranch = !availableBranches.length && user?.profileComplete && legacyAddress.length >= 3
+    ? { id: 'legacy', name: 'العنوان المسجل', governorateId: '', governorate: user.governorate || '', cityId: '', city: user.city || '', streetId: user.streetId || '', street: user.street || '', addressDetail: legacyAddress, phone: user.phone }
+    : undefined;
+  const selectedBranch = availableBranches.find((branch) => branch.id === selectedBranchId) || availableBranches.find((branch) => branch.id === user?.defaultBranchId) || availableBranches[0] || legacyBranch;
+  const selectedBranchValid = selectedBranch?.id === 'legacy'
+    ? Boolean(user?.profileComplete && selectedBranch.addressDetail.trim().length >= 3)
+    : Boolean(selectedBranch?.id && selectedBranch.governorateId && selectedBranch.cityId && selectedBranch.streetId && selectedBranch.governorate && selectedBranch.city && selectedBranch.street && selectedBranch.addressDetail?.trim().length >= 3);
+  const orderPharmacy = user && selectedBranch ? {
+    ...user, governorate: selectedBranch.governorate, city: selectedBranch.city, streetId: selectedBranch.streetId,
+    street: selectedBranch.street, addressDetail: selectedBranch.addressDetail,
+    address: selectedBranch.id === 'legacy' ? legacyAddress : formatBranchAddress(selectedBranch),
+    phone: selectedBranch.phone || user.phone || '',
+  } : null;
+  // التحقق يجب أن يخص الفرع الذي اختاره المستخدم، لا الفرع الافتراضي القديم فقط.
+  const orderProfile = user && selectedBranch && orderPharmacy ? {
+    ...orderPharmacy,
+    branches: selectedBranch.id === 'legacy' ? [] : [selectedBranch],
+    defaultBranchId: selectedBranch.id === 'legacy' ? undefined : selectedBranch.id,
+  } : user;
+  const branchLocationKeys = getDeliveryAreaKeys(selectedBranch);
 
   // حساب أفضل سلة (Best Cart Optimization)
   const bestCartOptimization = useMemo(() => {
@@ -153,8 +177,8 @@ export const PharmacyCart: React.FC = () => {
       const originSubtotal = plannedSubtotal.get(currentSupplier.id) || 0;
       const remainingOriginSubtotal = Math.max(0, originSubtotal - lineSubtotal);
       const nextDestinationSubtotal = destinationSubtotal + lineSubtotal;
-      const originMinimum = deliveryRuleForSupplier(currentSupplier, [user?.city, user?.governorate]).minimumOrderAmount;
-      const destinationMinimum = deliveryRuleForSupplier(bestSupplier, [user?.city, user?.governorate]).minimumOrderAmount;
+      const originMinimum = deliveryRuleForSupplier(currentSupplier, branchLocationKeys).minimumOrderAmount;
+      const destinationMinimum = deliveryRuleForSupplier(bestSupplier, branchLocationKeys).minimumOrderAmount;
       if (remainingOriginSubtotal > 0 && remainingOriginSubtotal < originMinimum) return;
       if (nextDestinationSubtotal < destinationMinimum) return;
 
@@ -186,7 +210,7 @@ export const PharmacyCart: React.FC = () => {
       recommendations,
       hasSavings: totalSavings > 0.05
     };
-  }, [items, allPrices, suppliers, suppliersMap, user?.allowedSuppliers]);
+  }, [items, allPrices, suppliers, suppliersMap, user?.allowedSuppliers, branchLocationKeys.join('|')]);
 
   // تطبيق التوزيع الذكي لأفضل سلة بضغطة واحدة
   const handleApplyBestCart = () => {
@@ -232,7 +256,17 @@ export const PharmacyCart: React.FC = () => {
   const handleSendSupplierOrder = async (supplierId: string) => {
     if (!user) return;
 
-    if (!isProfileComplete(user)) {
+    if (!selectedBranchValid || !selectedBranch || !orderPharmacy) {
+      warning('اختر فرعاً صحيحاً يحتوي محافظة ومدينة وشارعاً وعنواناً تفصيلياً قبل إرسال الطلبية.');
+      navigate('/app/profile/edit');
+      return;
+    }
+    if (!isValidSaudiLocalPhone(orderPharmacy.phone)) {
+      warning('لا يمكن إرسال الطلبية قبل إدخال رقم جوال صحيح للفرع الافتراضي.');
+      navigate('/app/profile/edit');
+      return;
+    }
+    if (!orderProfile || !isProfileComplete(orderProfile)) {
       warning('لا يمكن إرسال الطلبية قبل إكمال الاسم والعنوان ورقم جوال يبدأ بـ 05 ويتكون من 10 أرقام.');
       navigate('/app/profile');
       return;
@@ -261,9 +295,10 @@ export const PharmacyCart: React.FC = () => {
       } else {
         await createOrder({
           pharmacyId: user.uid,
-          pharmacyName: user.pharmacyName || user.name || 'Pharmacy',
-          pharmacyAddress: user.address || user.addressDetail || '',
-          pharmacyPhone: user.phone || '',
+          pharmacyName: orderPharmacy.pharmacyName || orderPharmacy.name || 'Pharmacy',
+          pharmacyAddress: orderPharmacy.address,
+          ...(selectedBranch.id !== 'legacy' ? { pharmacyBranchId: selectedBranch.id } : {}),
+          pharmacyPhone: orderPharmacy.phone,
           supplierId: group.supplierId,
           supplierName: group.supplierName,
           items: group.items.map((item) => ({
@@ -280,7 +315,7 @@ export const PharmacyCart: React.FC = () => {
 
       // 2) إنشاء نص رسالة واتساب وفتح المحادثة
       const message = buildOrderWhatsAppMessage({
-        pharmacy: user,
+        pharmacy: orderPharmacy,
         items: group.items,
         subtotal: group.subtotal,
       });
@@ -302,7 +337,12 @@ export const PharmacyCart: React.FC = () => {
 
   // إرسال لجميع الموردين واحداً تلو الآخر
   const handleSendAllOrders = async () => {
-    if (!isProfileComplete(user)) {
+    if (!selectedBranchValid) {
+      warning('اختر فرعاً صحيحاً قبل إرسال الطلبات.');
+      navigate('/app/profile/edit');
+      return;
+    }
+    if (!orderProfile || !isProfileComplete(orderProfile)) {
       warning('يرجى إكمال الاسم والعنوان ورقم الجوال قبل إرسال الطلبات.');
       navigate('/app/profile');
       return;
@@ -367,6 +407,23 @@ export const PharmacyCart: React.FC = () => {
         </div>
       </div>
 
+      {/* اختيار فرع التسليم قبل إرسال الطلب */}
+      <section className="mb-6 flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-900 dark:bg-emerald-950/20 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <label className="block text-xs font-black text-slate-800 dark:text-white" htmlFor="order-branch">فرع التسليم لهذه الطلبية</label>
+          {availableBranches.length ? (
+            <select id="order-branch" value={selectedBranch?.id || ''} onChange={(event) => setSelectedBranchId(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900">
+              {availableBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name} — {branch.city}، {branch.governorate}</option>)}
+            </select>
+          ) : (
+            <p className="mt-1.5 text-sm font-bold text-slate-700 dark:text-slate-200">{legacyBranch ? 'سيُستخدم العنوان المسجل في حسابك مؤقتاً.' : 'لا يوجد عنوان صالح للتسليم في الملف الشخصي.'}</p>
+          )}
+          {selectedBranch && <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">{orderPharmacy?.address || 'العنوان التفصيلي غير مكتمل'}</p>}
+          {!selectedBranchValid && <p className="mt-1 text-[11px] font-bold text-rose-700">أكمل المحافظة والمدينة والشارع والعنوان التفصيلي قبل إرسال الطلب.</p>}
+        </div>
+        <Link to="/app/profile/edit" className="shrink-0 rounded-xl border border-emerald-300 bg-white px-3 py-2.5 text-xs font-bold text-emerald-800 dark:bg-slate-900 dark:text-emerald-200">إدارة الفروع والعناوين</Link>
+      </section>
+
       {/* بطاقة أفضل سلة (Best Cart Optimizer) */}
       {bestCartOptimization.hasSavings && (
         <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-l from-emerald-500/10 via-teal-500/10 to-transparent border-2 border-emerald-500/30 dark:border-emerald-500/40 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -401,7 +458,7 @@ export const PharmacyCart: React.FC = () => {
       )}
 
       {/* تنبيه الملف الشخصي إن كان ناقصاً */}
-      {(!user?.profileComplete || !user.pharmacyName || !user.phone || !user.address) && (
+      {(!isProfileComplete(user) || !selectedBranchValid) && (
         <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-2xl flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
@@ -423,7 +480,7 @@ export const PharmacyCart: React.FC = () => {
         {supplierKeys.map((supplierId) => {
           const group = supplierGroups[supplierId];
           const supDetails = suppliersMap.get(supplierId);
-          const deliveryRule = deliveryRuleForSupplier(supDetails || {}, [user?.city, user?.governorate]);
+          const deliveryRule = deliveryRuleForSupplier(supDetails || {}, branchLocationKeys);
           const minOrder = deliveryRule.minimumOrderAmount;
           const isBelowMin = minOrder > 0 && group.subtotal < minOrder;
           const remainingToMin = minOrder > 0 ? minOrder - group.subtotal : 0;
@@ -447,7 +504,7 @@ export const PharmacyCart: React.FC = () => {
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium font-mono" dir="ltr">
                       +{group.supplierWhatsapp}
                     </p>
-                    <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">توصيل {user?.city || user?.governorate ? `(${user?.city || user?.governorate})` : '(منطقتك غير محددة)'}: {deliveryRule.days.join('، ') || 'غير محدد لهذه المنطقة — تواصل مع المستودع'}{deliveryRule.cutoffTime ? ` · يغلق الطلب ${deliveryRule.cutoffTime}` : ''}{minOrder ? ` · الحد الأدنى ${formatCurrency(minOrder)}` : ''}</p>
+                    <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">توصيل {selectedBranch ? `(${selectedBranch.city} · ${selectedBranch.street})` : '(فرع الطلب غير محدد)'}: {deliveryRule.days.join('، ') || 'غير محدد لهذه المنطقة — تواصل مع المستودع'}{deliveryRule.cutoffTime ? ` · يغلق الطلب ${deliveryRule.cutoffTime}` : ''}{minOrder ? ` · الحد الأدنى ${formatCurrency(minOrder)}` : ''}</p>
                   </div>
                 </div>
 
@@ -634,8 +691,8 @@ export const PharmacyCart: React.FC = () => {
                 <div>
                   <span className="font-bold text-slate-400 block mb-1">الجهة الطالبة (الصيدلية):</span>
                   <div className="font-bold text-slate-900 dark:text-white">{user?.pharmacyName || user?.name}</div>
-                  <div className="text-slate-600 dark:text-slate-300">{user?.address}</div>
-                  <div className="text-slate-600 dark:text-slate-300 font-mono" dir="ltr">{user?.phone}</div>
+                  <div className="text-slate-600 dark:text-slate-300">{orderPharmacy?.address || user?.address}</div>
+                  <div className="text-slate-600 dark:text-slate-300 font-mono" dir="ltr">{orderPharmacy?.phone || user?.phone}</div>
                 </div>
                 <div>
                   <span className="font-bold text-slate-400 block mb-1">المستودع المورد:</span>

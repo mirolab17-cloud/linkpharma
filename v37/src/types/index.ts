@@ -27,6 +27,53 @@ export interface WarehouseLinkRequest {
   permissions?: RepresentativePermissions;
 }
 
+export interface LocationStreet {
+  id: string;
+  name: string;
+}
+
+export interface LocationCity {
+  id: string;
+  name: string;
+  streets: LocationStreet[];
+}
+
+export interface LocationGovernorate {
+  id: string;
+  name: string;
+  cities: LocationCity[];
+}
+
+export interface PharmacyBranch {
+  id: string;
+  name: string;
+  governorateId: string;
+  governorate: string;
+  cityId: string;
+  city: string;
+  streetId: string;
+  street: string;
+  addressDetail: string;
+  phone?: string;
+}
+
+export interface ProductAlias {
+  id: string;
+  supplierId: string;
+  productId: string;
+  rawName: string;
+  normalizedName: string;
+  manufacturer?: string;
+  strength?: string;
+  form?: string;
+  packSize?: string;
+  barcode?: string;
+  identityKey: string;
+  createdAt: string;
+  createdByUid: string;
+  createdByName?: string;
+}
+
 export interface SystemSettings {
   id: string; // 'system'
   defaultTrialDays: number;
@@ -37,6 +84,7 @@ export interface SystemSettings {
   updatedBy?: string;
   platformName?: string;
   gazaLocations?: Record<string, string[]>;
+  locationCatalog?: LocationGovernorate[];
   loginWhatsAppEnabled?: boolean;
   loginWhatsApp?: string;
   showDeliveryDays?: boolean;
@@ -57,8 +105,12 @@ export interface UserProfile {
   ownerName?: string;
   governorate?: string;
   city?: string;
+  street?: string;
+  streetId?: string;
   addressDetail?: string;
   address?: string;
+  branches?: PharmacyBranch[];
+  defaultBranchId?: string;
   phone?: string;
   allowedSuppliers?: string[]; // Array of supplier IDs, empty means all allowed
   profileComplete?: boolean;
@@ -163,10 +215,11 @@ export interface PriceHistory {
   importedAt: string;
   importBatchId: string;
   changeType?: 'created' | 'updated';
-  previous?: Pick<PriceRecord, 'price' | 'publicPrice' | 'available' | 'expiry' | 'bonus'> | null;
-  next?: Pick<PriceRecord, 'price' | 'publicPrice' | 'available' | 'expiry' | 'bonus'>;
+  previous?: Pick<PriceRecord, 'price' | 'publicPrice' | 'available' | 'expiry' | 'bonus' | 'hidden' | 'updatedAt'> | null;
+  next?: Pick<PriceRecord, 'price' | 'publicPrice' | 'available' | 'expiry' | 'bonus' | 'hidden' | 'updatedAt'>;
   actorUid?: string;
   actorName?: string;
+  rolledBackAt?: string;
 }
 
 export interface ImportBatch {
@@ -178,6 +231,10 @@ export interface ImportBatch {
   createdBy: string;
   createdByUid?: string;
   createdAt: string;
+  importStatus?: 'in_progress' | 'completed' | 'interrupted' | 'rolling_back' | 'rolled_back';
+  writtenRowsCount?: number;
+  progressUpdatedAt?: string;
+  rollbackOwnerToken?: string;
 }
 
 export interface AdminChangeApproval {
@@ -211,6 +268,7 @@ export interface Order {
   pharmacyId: string;
   pharmacyName: string;
   pharmacyAddress: string;
+  pharmacyBranchId?: string;
   pharmacyPhone: string;
   supplierId: string;
   supplierName: string;

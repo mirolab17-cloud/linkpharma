@@ -33,8 +33,10 @@ import {
   UserProfile,
   AppNotification,
   SystemSettings,
-  RecurringOrderTemplate
+  RecurringOrderTemplate,
+  ProductAlias
 } from '../types';
+import { runTransaction } from 'firebase/firestore';
 import {
   SEED_ACTIVE_INGREDIENTS,
   SEED_PRODUCTS,
@@ -45,6 +47,7 @@ import { setSystemCurrency, formatCurrency } from '../utils/formatPrice';
 import { formatGregorianDate } from '../utils/formatDate';
 import { useAuthStore } from '../store/useAuthStore';
 import { filterVisiblePrices, recordActivity } from './v18Features';
+import { createAliasIdentityKey, normalizeAliasValue, productAliasDocumentId } from '../utils/productAliases';
 
 const STORAGE_KEYS = {
   activeIngredients: 'pharma_db_active_ingredients',
@@ -67,6 +70,11 @@ interface CacheEntry<T> {
 const memoryCache = new Map<string, CacheEntry<any>>();
 const inFlightRequests = new Map<string, Promise<any>>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function isFirestorePermissionDenied(error: unknown): boolean {
+  const code = (error as any)?.code;
+  return code === 'permission-denied' || code === 'firestore/permission-denied';
+}
 
 export function invalidateCache(keys?: string[]): void {
   if (!keys || keys.length === 0) {
@@ -104,6 +112,58 @@ async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>): Promis
 
   inFlightRequests.set(key, promise);
   return promise;
+}
+
+interface LiveCollection<T> {
+  rows: Map<string, T>;
+  initialized: boolean;
+  loading?: Promise<T[]>;
+  unsubscribe?: () => void;
+}
+
+const liveCollections = new Map<string, LiveCollection<any>>();
+
+async function getLiveCollection<T extends { id: string }>(collectionName: string, storageKey: string): Promise<T[]> {
+  if (!isFirebaseConfigured) return getLocal<T>(storageKey);
+  let state = liveCollections.get(collectionName) as LiveCollection<T> | undefined;
+  if (!state) {
+    state = { rows: new Map<string, T>(), initialized: false };
+    liveCollections.set(collectionName, state);
+  }
+  if (state.initialized) return [...state.rows.values()];
+  if (state.loading) return state.loading;
+
+  state.loading = new Promise<T[]>((resolve, reject) => {
+    state!.unsubscribe = onSnapshot(collection(db, collectionName), (snapshot: any) => {
+      for (const change of snapshot.docChanges()) {
+        if (change.type === 'removed') state!.rows.delete(change.doc.id);
+        else state!.rows.set(change.doc.id, { id: change.doc.id, ...change.doc.data() } as T);
+      }
+      state!.initialized = true;
+      const rows = [...state!.rows.values()];
+      setLocal(storageKey, rows);
+      memoryCache.set(collectionName, { data: rows, timestamp: Date.now() });
+      resolve(rows);
+    }, (cause: unknown) => {
+      state!.unsubscribe?.();
+      state!.unsubscribe = undefined;
+      state!.loading = undefined;
+      state!.initialized = false;
+      state!.rows.clear();
+      reject(cause);
+    });
+  });
+  return state.loading;
+}
+
+function updateLiveCollection<T extends { id: string }>(collectionName: string, storageKey: string, item: T | null, id?: string): void {
+  const state = liveCollections.get(collectionName) as LiveCollection<T> | undefined;
+  if (!state?.initialized) return;
+  if (item) state.rows.set(item.id, item);
+  else if (id) state.rows.delete(id);
+  const rows = [...state.rows.values()];
+  setLocal(storageKey, rows);
+  memoryCache.set(collectionName, { data: rows, timestamp: Date.now() });
 }
 
 function resolveSupplierScope(actor: UserProfile | null, requestedSupplierIds?: string[]): string[] | null {
@@ -205,17 +265,7 @@ function setLocal<T>(key: string, items: T[]) {
 
 // ======================= Active Ingredients =======================
 export async function getActiveIngredients(): Promise<ActiveIngredient[]> {
-  return fetchWithCache('activeIngredients', async () => {
-    if (isFirebaseConfigured) {
-      try {
-        const snap = await getDocs(collection(db, 'activeIngredients'));
-        return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ActiveIngredient));
-      } catch (e) {
-        console.warn('Firestore fallback to local for activeIngredients:', e);
-      }
-    }
-    return getLocal<ActiveIngredient>(STORAGE_KEYS.activeIngredients);
-  });
+  return getLiveCollection<ActiveIngredient>('activeIngredients', STORAGE_KEYS.activeIngredients);
 }
 
 export async function saveActiveIngredient(item: Omit<ActiveIngredient, 'id'> & { id?: string }): Promise<ActiveIngredient> {
@@ -232,6 +282,7 @@ export async function saveActiveIngredient(item: Omit<ActiveIngredient, 'id'> & 
       await setDoc(doc(db, 'activeIngredients', id), newItem);
     } catch (e) {
       console.error('Firestore saveActiveIngredient failed:', e);
+      throw new Error('تعذر حفظ المادة الفعالة في قاعدة البيانات.');
     }
   }
 
@@ -243,6 +294,7 @@ export async function saveActiveIngredient(item: Omit<ActiveIngredient, 'id'> & 
     list.unshift(newItem);
   }
   setLocal(STORAGE_KEYS.activeIngredients, list);
+  updateLiveCollection('activeIngredients', STORAGE_KEYS.activeIngredients, newItem);
   return newItem;
 }
 
@@ -255,6 +307,7 @@ export async function deleteActiveIngredients(ids: string[]): Promise<void> {
       await batch.commit();
     } catch (e) {
       console.error('Firestore deleteActiveIngredients failed:', e);
+      throw new Error('تعذر حذف المواد الفعالة من قاعدة البيانات.');
     }
   }
 
@@ -262,6 +315,7 @@ export async function deleteActiveIngredients(ids: string[]): Promise<void> {
     (item) => !ids.includes(item.id)
   );
   setLocal(STORAGE_KEYS.activeIngredients, list);
+  ids.forEach((id) => updateLiveCollection<ActiveIngredient>('activeIngredients', STORAGE_KEYS.activeIngredients, null, id));
 }
 
 // ======================= Products =======================
@@ -338,6 +392,7 @@ export async function getPricesForProductIds(
           .filter((row) => !allowed || allowed.has(row.supplierId));
         return includeHidden ? rows : filterVisiblePrices(rows);
       } catch (e) {
+        if (isFirestorePermissionDenied(e)) throw e;
         console.warn('Firestore paged prices unavailable; using cached fallback:', (e as any)?.code || 'unknown');
       }
     }
@@ -349,17 +404,7 @@ export async function getPricesForProductIds(
 }
 
 export async function getProducts(): Promise<Product[]> {
-  return fetchWithCache('products', async () => {
-    if (isFirebaseConfigured) {
-      try {
-        const snap = await getDocs(collection(db, 'products'));
-        return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
-      } catch (e) {
-        console.warn('Firestore fallback to local for products:', e);
-      }
-    }
-    return getLocal<Product>(STORAGE_KEYS.products);
-  });
+  return getLiveCollection<Product>('products', STORAGE_KEYS.products);
 }
 
 export async function saveProduct(item: Omit<Product, 'id'> & { id?: string }): Promise<Product> {
@@ -376,6 +421,7 @@ export async function saveProduct(item: Omit<Product, 'id'> & { id?: string }): 
       await setDoc(doc(db, 'products', id), newItem);
     } catch (e) {
       console.error('Firestore saveProduct failed:', e);
+      throw new Error('تعذر حفظ الصنف في قاعدة البيانات.');
     }
   }
 
@@ -387,6 +433,7 @@ export async function saveProduct(item: Omit<Product, 'id'> & { id?: string }): 
     list.unshift(newItem);
   }
   setLocal(STORAGE_KEYS.products, list);
+  updateLiveCollection('products', STORAGE_KEYS.products, newItem);
   return newItem;
 }
 
@@ -416,6 +463,7 @@ export async function saveProductsBatch(
     const ids = new Set(chunk.map((product) => product.id));
     const existing = getLocal<Product>(STORAGE_KEYS.products).filter((product) => !ids.has(product.id));
     setLocal(STORAGE_KEYS.products, [...chunk, ...existing]);
+    chunk.forEach((product) => updateLiveCollection('products', STORAGE_KEYS.products, product));
     invalidateCache(['products', 'prices']);
     onChunkSaved?.(chunk, startIndex, products.length);
   }
@@ -432,11 +480,13 @@ export async function deleteProducts(ids: string[]): Promise<void> {
       await batch.commit();
     } catch (e) {
       console.error('Firestore deleteProducts failed:', e);
+      throw new Error('تعذر حذف الأصناف من قاعدة البيانات.');
     }
   }
 
   const list = getLocal<Product>(STORAGE_KEYS.products).filter((p) => !ids.includes(p.id));
   setLocal(STORAGE_KEYS.products, list);
+  ids.forEach((id) => updateLiveCollection<Product>('products', STORAGE_KEYS.products, null, id));
 }
 
 export async function updateProductsCategory(ids: string[], newCategory: string): Promise<void> {
@@ -448,6 +498,7 @@ export async function updateProductsCategory(ids: string[], newCategory: string)
       await batch.commit();
     } catch (e) {
       console.error('Firestore updateProductsCategory failed:', e);
+      throw new Error('تعذر تعديل تصنيف الأصناف في قاعدة البيانات.');
     }
   }
 
@@ -458,21 +509,63 @@ export async function updateProductsCategory(ids: string[], newCategory: string)
     return p;
   });
   setLocal(STORAGE_KEYS.products, list);
+  list.filter((product) => ids.includes(product.id)).forEach((product) => updateLiveCollection('products', STORAGE_KEYS.products, product));
 }
 
 // ======================= Suppliers =======================
 export async function getSuppliers(): Promise<Supplier[]> {
-  return fetchWithCache('suppliers', async () => {
+  return getLiveCollection<Supplier>('suppliers', STORAGE_KEYS.suppliers);
+}
+
+export async function getProductAliases(supplierId: string): Promise<ProductAlias[]> {
+  const actor = useAuthStore.getState().user;
+  if (!actor || (actor.role !== 'admin' && !(actor.role === 'representative' && actor.supplierId === supplierId && actor.representativePermissions?.managePrices))) {
+    throw new Error('ليس لديك صلاحية قراءة أسماء أصناف هذا المستودع.');
+  }
+  if (!supplierId) return [];
+  const key = `productAliases_${actor.uid}_${supplierId}`;
+  return fetchWithCache(key, async () => {
     if (isFirebaseConfigured) {
-      try {
-        const snap = await getDocs(collection(db, 'suppliers'));
-        return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Supplier));
-      } catch (e) {
-        console.warn('Firestore fallback to local for suppliers:', e);
-      }
+      const snapshot = await getDocs(query(collection(db, 'productAliases'), where('supplierId', '==', supplierId)));
+      const aliases = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as ProductAlias));
+      try { localStorage.setItem(`pharma_db_${key}`, JSON.stringify(aliases)); } catch (_) {}
+      return aliases;
     }
-    return getLocal<Supplier>(STORAGE_KEYS.suppliers);
+    try { return JSON.parse(localStorage.getItem(`pharma_db_${key}`) || '[]') as ProductAlias[]; } catch (_) { return []; }
   });
+}
+
+export async function saveProductAlias(input: {
+  supplierId: string; productId: string; rawName: string; manufacturer?: string; strength?: string;
+  form?: string; packSize?: string; barcode?: string;
+}): Promise<ProductAlias> {
+  const actor = useAuthStore.getState().user;
+  if (!actor || (actor.role !== 'admin' && !(actor.role === 'representative' && actor.supplierId === input.supplierId && actor.representativePermissions?.managePrices))) {
+    throw new Error('ليس لديك صلاحية حفظ أسماء بديلة لهذا المستودع.');
+  }
+  const rawName = input.rawName.trim();
+  if (!input.supplierId || !input.productId || !rawName) throw new Error('اسم المورد والصنف والاسم البديل مطلوبة.');
+  const id = productAliasDocumentId({ ...input, rawName });
+  const now = new Date().toISOString();
+  const alias: ProductAlias = {
+    ...input, id, rawName, normalizedName: normalizeAliasValue(rawName),
+    identityKey: createAliasIdentityKey({ ...input, rawName }),
+    createdAt: now, createdByUid: actor.uid, createdByName: actor.name || actor.email,
+  };
+  const key = `productAliases_${actor.uid}_${input.supplierId}`;
+  const cachedEntry = memoryCache.get(key);
+  const cached = (cachedEntry?.data as ProductAlias[] | undefined) || await getProductAliases(input.supplierId);
+  const existing = cached.find((item) => item.id === id);
+  if (existing && (existing.productId !== input.productId || existing.identityKey !== alias.identityKey)) {
+    throw new Error('هذا الاسم البديل مرتبط مسبقاً بصنف آخر؛ راجع المطابقة يدوياً ولا يمكن استبداله تلقائياً.');
+  }
+  if (isFirebaseConfigured) {
+    if (!existing) await setDoc(doc(db, 'productAliases', id), alias);
+  }
+  const rows = existing ? cached : [...cached, alias];
+  memoryCache.set(key, { data: rows, timestamp: Date.now() });
+  try { localStorage.setItem(`pharma_db_${key}`, JSON.stringify(rows)); } catch (_) {}
+  return alias;
 }
 
 export async function saveSupplier(item: Omit<Supplier, 'id'> & { id?: string }): Promise<Supplier> {
@@ -489,6 +582,7 @@ export async function saveSupplier(item: Omit<Supplier, 'id'> & { id?: string })
       await setDoc(doc(db, 'suppliers', id), newItem);
     } catch (e) {
       console.error('Firestore saveSupplier failed:', e);
+      throw new Error('تعذر حفظ بيانات المستودع في قاعدة البيانات.');
     }
   }
 
@@ -500,6 +594,7 @@ export async function saveSupplier(item: Omit<Supplier, 'id'> & { id?: string })
     list.unshift(newItem);
   }
   setLocal(STORAGE_KEYS.suppliers, list);
+  updateLiveCollection('suppliers', STORAGE_KEYS.suppliers, newItem);
   return newItem;
 }
 
@@ -510,11 +605,13 @@ export async function deleteSupplier(id: string): Promise<void> {
       await deleteDoc(doc(db, 'suppliers', id));
     } catch (e) {
       console.error('Firestore deleteSupplier failed:', e);
+      throw new Error('تعذر حذف المستودع من قاعدة البيانات.');
     }
   }
 
   const list = getLocal<Supplier>(STORAGE_KEYS.suppliers).filter((s) => s.id !== id);
   setLocal(STORAGE_KEYS.suppliers, list);
+  updateLiveCollection<Supplier>('suppliers', STORAGE_KEYS.suppliers, null, id);
 }
 
 // ======================= Prices & Import Batches =======================
@@ -553,6 +650,7 @@ export async function getPrices(allowedSupplierIds?: string[], includeHidden = f
         const records = snap.docs.map((d) => ({ id: d.id, ...d.data() } as PriceRecord));
         return includeHidden ? records : filterVisiblePrices(records);
       } catch (e) {
+        if (isFirestorePermissionDenied(e)) throw e;
         console.warn('Firestore fallback to local for prices:', e);
       }
     }
@@ -596,7 +694,7 @@ export async function commitImportBatch(params: {
   }
 
   const { supplierId, fileName, createdBy, priceRecords } = params;
-  const batchId = 'batch_' + Date.now();
+  const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const now = new Date().toISOString();
   const deduped = new Map<string, typeof priceRecords[number]>();
   for (const rec of priceRecords) {
@@ -609,8 +707,15 @@ export async function commitImportBatch(params: {
   let existingRows: PriceRecord[] = [];
   if (isFirebaseConfigured) {
     try {
-      const snap = await getDocs(query(collection(db, 'prices'), where('supplierId', '==', supplierId)));
-      existingRows = snap.docs.map((item) => ({ id: item.id, ...item.data() } as PriceRecord));
+      const productIds = uniquePriceRecords.map((record) => record.productId);
+      const productIdChunks: string[][] = [];
+      for (let index = 0; index < productIds.length; index += 10) productIdChunks.push(productIds.slice(index, index + 10));
+      const snapshots = await Promise.all(productIdChunks.map((chunk) => getDocs(query(
+        collection(db, 'prices'),
+        where('supplierId', '==', supplierId),
+        where('productId', 'in', chunk)
+      ))));
+      existingRows = snapshots.flatMap((snap) => snap.docs.map((item) => ({ id: item.id, ...item.data() } as PriceRecord)));
     } catch (error) {
       console.error('Could not read current supplier prices before import:', error);
       throw new Error('تعذر قراءة الأسعار الحالية من Firestore؛ أوقفنا الاستيراد حتى لا نكتب سجلًا ناقصًا.');
@@ -642,7 +747,12 @@ export async function commitImportBatch(params: {
     };
     updatedPrices.push(next);
     if (previous) updatedCount++; else newCount++;
-    const snapshot = (row: PriceRecord): Pick<PriceRecord, 'price' | 'publicPrice' | 'available' | 'expiry' | 'bonus'> => ({ price: row.price, available: row.available, ...(row.publicPrice === undefined ? {} : { publicPrice: row.publicPrice }), ...(row.expiry === undefined ? {} : { expiry: row.expiry }), ...(row.bonus === undefined ? {} : { bonus: row.bonus }) });
+    const snapshot = (row: PriceRecord): Pick<PriceRecord, 'price' | 'publicPrice' | 'available' | 'expiry' | 'bonus' | 'hidden' | 'updatedAt'> => ({
+      price: row.price, available: row.available, hidden: row.hidden ?? false, updatedAt: row.updatedAt,
+      ...(row.publicPrice === undefined ? {} : { publicPrice: row.publicPrice }),
+      ...(row.expiry === undefined ? {} : { expiry: row.expiry }),
+      ...(row.bonus === undefined ? {} : { bonus: row.bonus }),
+    });
     const historyRecord: PriceHistory = {
       id: `hist_${batchId}_${rec.productId}`,
       productId: rec.productId,
@@ -677,6 +787,9 @@ export async function commitImportBatch(params: {
     createdBy: actor.name || createdBy,
     createdByUid: actor.uid,
     createdAt: now,
+    importStatus: 'in_progress',
+    writtenRowsCount: 0,
+    progressUpdatedAt: now,
   };
   const activityId = `activity_price_${batchId}`;
   const activity = {
@@ -691,7 +804,9 @@ export async function commitImportBatch(params: {
   };
 
   if (isFirebaseConfigured) {
-    const CHUNK_SIZE = 248; // 2 writes per product plus 3 final metadata writes <= 500
+    // Each price write now verifies its product reference in Firestore rules.
+    // Keep at most 10 distinct product lookups per batch (the rules access-call limit is 20).
+    const CHUNK_SIZE = 10;
     for (let offset = 0; offset < updatedPrices.length; offset += CHUNK_SIZE) {
       const chunkPrices = updatedPrices.slice(offset, offset + CHUNK_SIZE);
       const chunkHistory = historyRecords.slice(offset, offset + CHUNK_SIZE);
@@ -712,8 +827,13 @@ export async function commitImportBatch(params: {
         batch.set(doc(db, 'prices', `${supplierId}_${price.productId}`), priceData, { merge: true });
       });
       chunkHistory.forEach((history) => batch.set(doc(db, 'priceHistory', history.id), history));
+      batch.set(doc(db, 'importBatches', batchId), {
+        ...importBatch,
+        importStatus: isLast ? 'completed' : 'in_progress',
+        writtenRowsCount: offset + chunkPrices.length,
+        progressUpdatedAt: new Date().toISOString(),
+      }, { merge: true });
       if (isLast) {
-        batch.set(doc(db, 'importBatches', batchId), importBatch);
         batch.set(doc(db, 'platform_activity', activityId), activity);
         batch.update(doc(db, 'suppliers', supplierId), {
           lastPriceUpdate: now,
@@ -728,8 +848,17 @@ export async function commitImportBatch(params: {
       try {
         await batch.commit();
       } catch (error) {
+        invalidateCache(['prices', 'priceHistory', 'importBatches', 'suppliers']);
+        try {
+          await updateDoc(doc(db, 'importBatches', batchId), {
+            importStatus: 'interrupted',
+            progressUpdatedAt: new Date().toISOString(),
+          });
+        } catch (statusError) {
+          console.warn('Could not mark interrupted import batch:', statusError);
+        }
         console.error('Firestore import chunk failed:', error);
-        throw new Error('فشل حفظ الأسعار أو سجل التغييرات في Firestore. لم تُعرض العملية كنجاح؛ راجع سجل المستودع قبل إعادة المحاولة.');
+        throw new Error('فشل حفظ جزء من الاستيراد. راجع سجل الدفعات؛ إذا ظهرت كغير مكتملة فتراجع عنها قبل إعادة الرفع.');
       }
     }
   }
@@ -739,7 +868,13 @@ export async function commitImportBatch(params: {
   setLocal(STORAGE_KEYS.prices, [...localPrices.filter((row) => !changedKeys.has(`${row.supplierId}_${row.productId}`)), ...updatedPrices]);
   setLocal(STORAGE_KEYS.priceHistory, [...getLocal<PriceHistory>(STORAGE_KEYS.priceHistory), ...historyRecords]);
   const localBatches = getLocal<ImportBatch>(STORAGE_KEYS.importBatches);
-  setLocal(STORAGE_KEYS.importBatches, [importBatch, ...localBatches.filter((row) => row.id !== batchId)]);
+  const completedImportBatch: ImportBatch = {
+    ...importBatch,
+    importStatus: 'completed',
+    writtenRowsCount: updatedPrices.length,
+    progressUpdatedAt: now,
+  };
+  setLocal(STORAGE_KEYS.importBatches, [completedImportBatch, ...localBatches.filter((row) => row.id !== batchId)]);
   const localSuppliers = getLocal<Supplier>(STORAGE_KEYS.suppliers);
   setLocal(STORAGE_KEYS.suppliers, localSuppliers.map((supplier) => supplier.id === supplierId ? { ...supplier, lastPriceUpdate: now } : supplier));
   invalidateCache(['prices', 'priceHistory', 'importBatches', 'suppliers']);
@@ -775,34 +910,244 @@ export async function commitImportBatch(params: {
 export async function rollbackImportBatch(batchId: string): Promise<boolean> {
   const actor = useAuthStore.getState().user;
   if (!actor || actor.role !== 'admin') throw new Error('التراجع عن دفعات الاستيراد متاح للمشرف فقط.');
-  const batches = getLocal<ImportBatch>(STORAGE_KEYS.importBatches);
-  const targetBatch = batches.find((b) => b.id === batchId);
-  if (!targetBatch) return false;
+  const now = new Date().toISOString();
+  const localBatches = getLocal<ImportBatch>(STORAGE_KEYS.importBatches);
+  let targetBatch = localBatches.find((batch) => batch.id === batchId);
+  let batchHistory: PriceHistory[] = [];
+  let allBatchHistory: PriceHistory[] = [];
+  const rollbackToken = `rollback_${actor.uid}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
-  const currentPrices = getLocal<PriceRecord>(STORAGE_KEYS.prices);
-  const histories = getLocal<PriceHistory>(STORAGE_KEYS.priceHistory);
-
-  const batchHistory = histories.filter((h) => h.importBatchId === batchId);
-
-  // استرجاع الأسعار القديمة
-  batchHistory.forEach((hist) => {
-    const idx = currentPrices.findIndex(
-      (p) => p.supplierId === hist.supplierId && p.productId === hist.productId
-    );
-    if (idx > -1) {
-      currentPrices[idx].price = hist.price;
-      currentPrices[idx].publicPrice = hist.publicPrice;
-      currentPrices[idx].updatedAt = hist.importedAt;
+  if (isFirebaseConfigured) {
+    const batchRef = doc(db, 'importBatches', batchId);
+    const acquired = await runTransaction(db, async (transaction) => {
+      const batchSnapshot = await transaction.get(batchRef);
+      if (!batchSnapshot.exists()) return false;
+      const currentBatch = { ...batchSnapshot.data(), id: batchId } as ImportBatch;
+      if (currentBatch.importStatus === 'rolled_back') return false;
+      const progressAt = Date.parse(currentBatch.progressUpdatedAt || currentBatch.createdAt);
+      const activeState = currentBatch.importStatus === 'in_progress' || currentBatch.importStatus === 'rolling_back';
+      if (activeState && (!Number.isFinite(progressAt) || Date.now() - progressAt < 5 * 60 * 1000)) {
+        throw new Error(currentBatch.importStatus === 'rolling_back'
+          ? 'هناك عملية تراجع أخرى تعمل على هذه الدفعة؛ انتظر خمس دقائق من آخر تقدم قبل استئنافها.'
+          : 'دفعة الاستيراد ما زالت تعمل. أعد المحاولة بعد انتهاء الرفع أو بعد خمس دقائق من آخر تقدم.');
+      }
+      transaction.update(batchRef, {
+        importStatus: 'rolling_back',
+        progressUpdatedAt: now,
+        rollbackOwnerToken: rollbackToken,
+      });
+      targetBatch = { ...currentBatch, importStatus: 'rolling_back', progressUpdatedAt: now, rollbackOwnerToken: rollbackToken };
+      return true;
+    });
+    if (!acquired) return false;
+    const historySnapshot = await getDocs(query(collection(db, 'priceHistory'), where('importBatchId', '==', batchId)));
+    allBatchHistory = historySnapshot.docs.map((item) => ({ id: item.id, ...item.data() } as PriceHistory));
+    if (!allBatchHistory.length) throw new Error('لا يوجد سجل تغييرات كامل لهذه الدفعة؛ أوقفنا التراجع حتى لا نخمن الأسعار السابقة.');
+    if (allBatchHistory.some((history) => history.supplierId !== targetBatch!.supplierId || !history.productId)) {
+      throw new Error('بيانات تاريخ الدفعة غير متطابقة مع المستودع؛ لم يتم تغيير أي سعر.');
     }
-  });
+    batchHistory = allBatchHistory.filter((history) => !history.rolledBackAt);
+    if (batchHistory.some((history) => history.changeType !== 'created' && !history.previous)) {
+      throw new Error('هذه الدفعة لا تحتوي لقطة كاملة للأسعار السابقة؛ لا يمكن التراجع عنها بأمان.');
+    }
 
-  setLocal(STORAGE_KEYS.prices, currentPrices);
-  // حذف الدفعة من القائمة
-  setLocal(
-    STORAGE_KEYS.importBatches,
-    batches.filter((b) => b.id !== batchId)
-  );
+    const currentByProduct = new Map<string, PriceRecord>();
+    for (let offset = 0; offset < batchHistory.length; offset += 20) {
+      const chunk = batchHistory.slice(offset, offset + 20);
+      const snapshots = await Promise.all(chunk.map((history) => getDoc(doc(db, 'prices', `${history.supplierId}_${history.productId}`))));
+      snapshots.forEach((snapshot, index) => {
+        if (snapshot.exists()) currentByProduct.set(chunk[index].productId, { id: snapshot.id, ...snapshot.data() } as PriceRecord);
+      });
+    }
 
+    const actions: Array<{ history: PriceHistory; kind: 'delete' | 'skip' } | { history: PriceHistory; kind: 'restore'; record: PriceRecord }> = [];
+    for (const history of batchHistory) {
+      const current = currentByProduct.get(history.productId);
+      if (!current && history.changeType === 'created') {
+        actions.push({ history, kind: 'skip' });
+        continue;
+      }
+      if (!current) throw new Error(`السعر الحالي للصنف ${history.productId} غير موجود؛ لم يتم التراجع عن أي عنصر.`);
+      const expectedUpdatedAt = history.next?.updatedAt || history.importedAt;
+      if (expectedUpdatedAt && current.updatedAt !== expectedUpdatedAt) {
+        throw new Error(`تم تحديث سعر الصنف ${history.productId} بعد هذه الدفعة؛ أوقفنا التراجع كي لا نمحو تعديلاً أحدث.`);
+      }
+      if (history.changeType === 'created') {
+        actions.push({ history, kind: 'delete' });
+      } else {
+        const previous = history.previous!;
+        actions.push({ history, kind: 'restore', record: {
+          id: `${history.supplierId}_${history.productId}`,
+          productId: history.productId,
+          supplierId: history.supplierId,
+          price: previous.price,
+          publicPrice: previous.publicPrice,
+          available: previous.available ?? true,
+          expiry: previous.expiry,
+          bonus: previous.bonus,
+          hidden: previous.hidden ?? current.hidden ?? false,
+          updatedAt: now,
+        } });
+      }
+    }
+
+    const supplierSnapshot = await getDoc(doc(db, 'suppliers', targetBatch!.supplierId));
+    if (!supplierSnapshot.exists()) throw new Error('المستودع المرتبط بالدفعة غير موجود؛ لم يتم التراجع.');
+    const activityId = `activity_rollback_${batchId}`;
+    // Keep product checks at 10 per atomic transaction; reread prices and history transactionally
+    // so a concurrent import cannot be overwritten between validation and rollback commit.
+    for (let offset = 0; offset < Math.max(1, actions.length); offset += 10) {
+      const chunkActions = actions.slice(offset, offset + 10);
+      const isLast = offset + 10 >= Math.max(1, actions.length);
+      try {
+        await runTransaction(db, async (transaction) => {
+          const batchRef = doc(db, 'importBatches', batchId);
+          const supplierRef = doc(db, 'suppliers', targetBatch!.supplierId);
+          const historyRefs = chunkActions.map((action) => doc(db, 'priceHistory', action.history.id));
+          const priceRefs = chunkActions.map((action) => doc(db, 'prices', `${action.history.supplierId}_${action.history.productId}`));
+          const [batchSnapshot, historySnapshots, priceSnapshots, currentSupplier] = await Promise.all([
+            transaction.get(batchRef),
+            Promise.all(historyRefs.map((ref) => transaction.get(ref))),
+            Promise.all(priceRefs.map((ref) => transaction.get(ref))),
+            isLast ? transaction.get(supplierRef) : Promise.resolve(null),
+          ]);
+
+          if (!batchSnapshot.exists()) {
+            if (historySnapshots.every((snapshot) => snapshot.exists() && Boolean(snapshot.data().rolledBackAt))) return;
+            throw new Error('اختفى سجل الدفعة أثناء التراجع؛ حدّث الصفحة قبل المحاولة مجدداً.');
+          }
+          if (batchSnapshot.data().rollbackOwnerToken !== rollbackToken) {
+            throw new Error('انتقلت ملكية التراجع إلى جلسة أخرى؛ أوقفنا هذه المحاولة لتجنب التعارض.');
+          }
+          if (isLast && !currentSupplier?.exists()) throw new Error('المستودع المرتبط بالدفعة غير موجود؛ لم يتم التراجع.');
+
+          for (let index = 0; index < chunkActions.length; index += 1) {
+            const historySnapshot = historySnapshots[index];
+            if (!historySnapshot.exists()) throw new Error('اختفى سجل تاريخ سعر أثناء التراجع؛ أوقفنا العملية بأمان.');
+            const history = { ...historySnapshot.data(), id: historySnapshot.id } as PriceHistory;
+            if (history.rolledBackAt) continue;
+            if (history.supplierId !== targetBatch!.supplierId || !history.productId) {
+              throw new Error('بيانات تاريخ الدفعة غير متطابقة مع المستودع؛ لم يتم تغيير هذا الجزء.');
+            }
+
+            const priceSnapshot = priceSnapshots[index];
+            const priceRef = priceRefs[index];
+            if (!priceSnapshot.exists() && history.changeType === 'created') {
+              transaction.update(historyRefs[index], { rolledBackAt: now });
+              continue;
+            }
+            if (!priceSnapshot.exists()) throw new Error(`السعر الحالي للصنف ${history.productId} غير موجود؛ أوقفنا التراجع.`);
+            const current = { id: priceSnapshot.id, ...priceSnapshot.data() } as PriceRecord;
+            const expectedUpdatedAt = history.next?.updatedAt || history.importedAt;
+            if (expectedUpdatedAt && current.updatedAt !== expectedUpdatedAt) {
+              throw new Error(`تم تحديث سعر الصنف ${history.productId} بعد هذه الدفعة؛ أوقفنا التراجع كي لا نمحو تعديلاً أحدث.`);
+            }
+
+            if (history.changeType === 'created') {
+              transaction.delete(priceRef);
+            } else {
+              if (!history.previous) throw new Error('هذه الدفعة لا تحتوي لقطة سابقة لهذا السعر؛ أوقفنا التراجع.');
+              const previous = history.previous;
+              transaction.set(priceRef, {
+                productId: history.productId,
+                supplierId: history.supplierId,
+                price: previous.price,
+                publicPrice: previous.publicPrice ?? null,
+                available: previous.available ?? true,
+                expiry: previous.expiry ?? null,
+                bonus: previous.bonus ?? null,
+                hidden: previous.hidden ?? false,
+                updatedAt: now,
+              });
+            }
+            transaction.update(historyRefs[index], { rolledBackAt: now });
+          }
+
+          if (isLast) {
+            transaction.update(supplierRef, {
+              lastPriceUpdate: now,
+              lastPriceUpdatedByUid: actor.uid,
+              lastPriceUpdatedByName: actor.name || actor.email || 'مشرف',
+            });
+            transaction.update(batchRef, {
+              importStatus: 'rolled_back',
+              progressUpdatedAt: now,
+              rollbackOwnerToken: rollbackToken,
+            });
+            transaction.set(doc(db, 'platform_activity', activityId), {
+              id: activityId,
+              type: 'price_import_rolled_back',
+              actorId: actor.uid,
+              actorName: actor.name || actor.email || 'مشرف',
+              actorRole: actor.role,
+              message: `تم التراجع عن دفعة أسعار ${targetBatch!.supplierName || targetBatch!.supplierId} (${targetBatch!.fileName}).`,
+              createdAt: now,
+              metadata: { supplierId: targetBatch!.supplierId, batchId, rowsCount: allBatchHistory.length },
+            });
+          } else {
+            transaction.update(batchRef, {
+              importStatus: 'rolling_back',
+              progressUpdatedAt: new Date().toISOString(),
+              rollbackOwnerToken: rollbackToken,
+            });
+          }
+        });
+      } catch (cause) {
+        invalidateCache(['prices', 'priceHistory', 'importBatches', 'suppliers']);
+        console.error('Import rollback chunk failed:', cause);
+        if (cause instanceof Error && cause.message.includes('تم تحديث سعر الصنف')) throw cause;
+        throw new Error('تعذر إكمال التراجع. حدّث الصفحة ثم أعد المحاولة؛ سيُستكمل فقط ما لم يُسترجع بعد.');
+      }
+    }
+  } else {
+    if (!targetBatch) return false;
+    batchHistory = getLocal<PriceHistory>(STORAGE_KEYS.priceHistory).filter((history) => history.importBatchId === batchId);
+    allBatchHistory = batchHistory;
+    if (!batchHistory.length || batchHistory.some((history) => history.changeType !== 'created' && !history.previous)) {
+      throw new Error('لا توجد لقطة محلية كاملة للأسعار السابقة؛ لا يمكن التراجع بأمان.');
+    }
+    let currentPrices = getLocal<PriceRecord>(STORAGE_KEYS.prices);
+    for (const history of batchHistory) {
+      const index = currentPrices.findIndex((price) => price.supplierId === history.supplierId && price.productId === history.productId);
+      if (history.changeType === 'created') {
+        if (index >= 0) currentPrices.splice(index, 1);
+      } else if (index < 0) {
+        throw new Error(`السعر المحلي للصنف ${history.productId} غير موجود؛ لم يتم التراجع.`);
+      } else {
+        const previous = history.previous!;
+        currentPrices[index] = { ...currentPrices[index], ...previous, updatedAt: now };
+      }
+    }
+    setLocal(STORAGE_KEYS.prices, currentPrices);
+    const localSuppliers = getLocal<Supplier>(STORAGE_KEYS.suppliers);
+    setLocal(STORAGE_KEYS.suppliers, localSuppliers.map((supplier) => supplier.id === targetBatch!.supplierId ? { ...supplier, lastPriceUpdate: now } : supplier));
+  }
+
+  setLocal(STORAGE_KEYS.importBatches, localBatches.map((batch) => batch.id === batchId
+    ? { ...batch, importStatus: 'rolled_back', progressUpdatedAt: now, rollbackOwnerToken: rollbackToken }
+    : batch));
+  if (isFirebaseConfigured) {
+    const updatedIds = new Set(allBatchHistory.map((history) => history.productId));
+    const current = getLocal<PriceRecord>(STORAGE_KEYS.prices);
+    const next = current.filter((price) => !(price.supplierId === targetBatch!.supplierId && updatedIds.has(price.productId)));
+    for (const history of allBatchHistory) {
+      if (history.changeType === 'created') continue;
+      const previous = history.previous;
+      if (!previous) continue;
+      next.push({
+        id: `${history.supplierId}_${history.productId}`, productId: history.productId, supplierId: history.supplierId,
+        price: previous.price, publicPrice: previous.publicPrice, available: previous.available ?? true,
+        expiry: previous.expiry, bonus: previous.bonus, hidden: previous.hidden ?? false, updatedAt: now,
+      });
+    }
+    setLocal(STORAGE_KEYS.prices, next);
+    const localSuppliers = getLocal<Supplier>(STORAGE_KEYS.suppliers);
+    const nextSuppliers = localSuppliers.map((supplier) => supplier.id === targetBatch!.supplierId ? { ...supplier, lastPriceUpdate: now } : supplier);
+    setLocal(STORAGE_KEYS.suppliers, nextSuppliers);
+    const updatedSupplier = nextSuppliers.find((supplier) => supplier.id === targetBatch!.supplierId);
+    if (updatedSupplier) updateLiveCollection('suppliers', STORAGE_KEYS.suppliers, updatedSupplier);
+  }
+  invalidateCache(['prices', 'priceHistory', 'importBatches', 'suppliers']);
   return true;
 }
 
@@ -1029,11 +1374,21 @@ export async function restoreDataBackup(payload: Record<string, any>): Promise<R
     writes.push({ collection: 'settings', id: 'system', value: { ...payload.settings, id: 'system' } });
   }
   if (isFirebaseConfigured) {
-    for (let offset = 0; offset < writes.length; offset += 400) {
-      const batch = writeBatch(db);
-      writes.slice(offset, offset + 400).forEach((entry) => batch.set(doc(db, entry.collection, entry.id), entry.value, { merge: true }));
-      await batch.commit();
+    let batch = writeBatch(db);
+    let batchWriteCount = 0;
+    let batchPriceChecks = 0;
+    for (const entry of writes) {
+      if (batchWriteCount >= 400 || (entry.collection === 'prices' && batchPriceChecks >= 10)) {
+        await batch.commit();
+        batch = writeBatch(db);
+        batchWriteCount = 0;
+        batchPriceChecks = 0;
+      }
+      batch.set(doc(db, entry.collection, entry.id), entry.value, { merge: true });
+      batchWriteCount += 1;
+      if (entry.collection === 'prices') batchPriceChecks += 1;
     }
+    if (batchWriteCount > 0) await batch.commit();
     for (const [key, rows] of Object.entries(payload)) {
       if (key === 'settings' || !Array.isArray(rows)) continue;
       const storageKey = (STORAGE_KEYS as Record<string, string>)[key];
@@ -1395,7 +1750,7 @@ export async function updateSystemSettings(settings: Partial<SystemSettings>): P
     try {
       await setDoc(doc(db, 'settings', 'system'), updated, { merge: true });
       {
-        await setDoc(doc(db, 'settings', 'public'), { loginWhatsApp: updated.loginWhatsApp || updated.supportWhatsApp || '970599999999', loginWhatsAppEnabled: updated.loginWhatsAppEnabled !== false, showDeliveryDays: updated.showDeliveryDays !== false, warehousePriceSortMode: updated.warehousePriceSortMode || 'cheapest', defaultTrialDays: updated.defaultTrialDays || 7, ...(updated.gazaLocations ? { gazaLocations: updated.gazaLocations } : {}), updatedAt: updated.updatedAt, currency: updated.currency || '₪', platformName: updated.platformName || 'فارما لينك', supportWhatsApp: updated.supportWhatsApp || updated.loginWhatsApp || '970599999999' }, { merge: true });
+        await setDoc(doc(db, 'settings', 'public'), { loginWhatsApp: updated.loginWhatsApp || updated.supportWhatsApp || '970599999999', loginWhatsAppEnabled: updated.loginWhatsAppEnabled !== false, showDeliveryDays: updated.showDeliveryDays !== false, warehousePriceSortMode: updated.warehousePriceSortMode || 'cheapest', defaultTrialDays: updated.defaultTrialDays || 7, ...(updated.gazaLocations ? { gazaLocations: updated.gazaLocations } : {}), ...(updated.locationCatalog ? { locationCatalog: updated.locationCatalog } : {}), updatedAt: updated.updatedAt, currency: updated.currency || '₪', platformName: updated.platformName || 'فارما لينك', supportWhatsApp: updated.supportWhatsApp || updated.loginWhatsApp || '970599999999' }, { merge: true });
       }
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'settings/system');

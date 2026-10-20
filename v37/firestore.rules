@@ -42,6 +42,10 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
     }
 
+    function productExists(productId) {
+      return exists(/databases/$(database)/documents/products/$(productId));
+    }
+
     function representativeForSupplier(supplierId) {
       return isActiveRepresentative() &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.supplierId == supplierId &&
@@ -115,14 +119,16 @@ service cloud.firestore {
           request.resource.data.keys().hasOnly([
             'uid', 'name', 'email', 'role', 'status', 'subscriptionStatus',
             'subscriptionExpiresAt', 'subscriptionExpiresAtMillis', 'trialDays',
-            'pharmacyName', 'ownerName', 'phone', 'address', 'addressDetail', 'governorate', 'city', 'commercialRegister',
+            'pharmacyName', 'ownerName', 'phone', 'address', 'addressDetail', 'governorate', 'city', 'street', 'streetId', 'branches', 'defaultBranchId', 'commercialRegister',
             'profileComplete', 'allowedSuppliers', 'favorites', 'priceAlerts', 'createdAt', 'updatedAt'
           ]) &&
           request.resource.data.role == 'pharmacy' &&
           request.resource.data.status == 'active' &&
           request.resource.data.subscriptionStatus in ['active', 'trial'] &&
           request.resource.data.subscriptionExpiresAtMillis is number &&
-          request.resource.data.subscriptionExpiresAtMillis <= request.time.toMillis() + (366 * 24 * 60 * 60 * 1000)
+          request.resource.data.subscriptionExpiresAtMillis <= request.time.toMillis() + (366 * 24 * 60 * 60 * 1000) &&
+          (!('branches' in request.resource.data) || (request.resource.data.branches is list && request.resource.data.branches.size() <= 10)) &&
+          (!('defaultBranchId' in request.resource.data) || request.resource.data.defaultBranchId is string)
         )
       );
 
@@ -130,11 +136,37 @@ service cloud.firestore {
       allow update: if isAdmin() || (
         isCurrentUser(userId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'name', 'pharmacyName', 'ownerName', 'phone', 'address', 'addressDetail', 'governorate', 'city',
+          'name', 'pharmacyName', 'ownerName', 'phone', 'address', 'addressDetail', 'governorate', 'city', 'street', 'streetId', 'branches', 'defaultBranchId',
           'commercialRegister', 'profileComplete', 'favorites', 'priceAlerts', 'updatedAt'
-        ])
+        ]) &&
+        (!('branches' in request.resource.data) || (request.resource.data.branches is list && request.resource.data.branches.size() <= 10)) &&
+        (!('defaultBranchId' in request.resource.data) || request.resource.data.defaultBranchId is string)
       );
 
+      allow delete: if isAdmin();
+    }
+
+    // Product aliases are private to admins and representatives assigned to the alias supplier.
+    match /productAliases/{aliasId} {
+      allow read: if isAdmin() || representativeCanManagePrices(resource.data.supplierId);
+      allow create: if productExists(request.resource.data.productId) &&
+        request.resource.data.keys().hasOnly([
+          'id', 'supplierId', 'productId', 'rawName', 'normalizedName', 'manufacturer', 'strength', 'form', 'packSize', 'barcode', 'identityKey', 'createdAt', 'createdByUid', 'createdByName'
+        ]) &&
+        request.resource.data.id == aliasId &&
+        request.resource.data.supplierId is string && request.resource.data.productId is string &&
+        request.resource.data.normalizedName is string && request.resource.data.identityKey is string &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt is string &&
+        (isAdmin() || representativeCanManagePrices(request.resource.data.supplierId));
+      allow update: if productExists(request.resource.data.productId) && (isAdmin() || (
+        representativeCanManagePrices(resource.data.supplierId) &&
+        request.resource.data.supplierId == resource.data.supplierId &&
+        request.resource.data.productId == resource.data.productId &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'rawName', 'normalizedName', 'manufacturer', 'strength', 'form', 'packSize', 'barcode', 'identityKey'
+        ])
+      ));
       allow delete: if isAdmin();
     }
 
@@ -186,15 +218,15 @@ service cloud.firestore {
           resource.data.supplierId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.allowedSuppliers
         )
       );
-      allow create: if isAdmin() || (
+      allow create: if productExists(request.resource.data.productId) && (isAdmin() || (
         representativeCanManagePrices(request.resource.data.supplierId) &&
         request.resource.data.keys().hasOnly(['productId', 'supplierId', 'price', 'publicPrice', 'available', 'expiry', 'bonus', 'hidden', 'updatedAt']) &&
         request.resource.data.productId is string &&
         request.resource.data.price is number && request.resource.data.price > 0 &&
         request.resource.data.available is bool && request.resource.data.hidden == false &&
         (representativeCanManagePromotions(request.resource.data.supplierId) || !('bonus' in request.resource.data))
-      );
-      allow update: if isAdmin() || (
+      ));
+      allow update: if productExists(request.resource.data.productId) && (isAdmin() || (
         representativeCanManagePrices(resource.data.supplierId) &&
         request.resource.data.supplierId == resource.data.supplierId &&
         request.resource.data.productId == resource.data.productId &&
@@ -202,7 +234,7 @@ service cloud.firestore {
         request.resource.data.price is number && request.resource.data.price > 0 &&
         request.resource.data.hidden == resource.data.get('hidden', false) &&
         (representativeCanManagePromotions(resource.data.supplierId) || request.resource.data.get('bonus', null) == resource.data.get('bonus', null))
-      );
+      ));
       allow delete: if isAdmin();
     }
 
@@ -261,11 +293,38 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // Import batches are scoped to the representative's assigned supplier; only admins can roll back/delete.
+    // Import batches are supplier-scoped; representatives may update progress only, while rollback/delete remain admin-only.
     match /importBatches/{batchId} {
       allow read: if isAdmin() || (representativeCanManagePrices(resource.data.supplierId));
-      allow create: if isAdmin() || (representativeCanManagePrices(request.resource.data.supplierId) && request.resource.data.createdByUid == request.auth.uid);
-      allow update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+        representativeCanManagePrices(request.resource.data.supplierId) &&
+        request.resource.data.createdByUid == request.auth.uid &&
+        request.resource.data.rowsCount is int && request.resource.data.rowsCount > 0 &&
+        request.resource.data.writtenRowsCount is int &&
+        request.resource.data.writtenRowsCount >= 0 && request.resource.data.writtenRowsCount <= request.resource.data.rowsCount &&
+        request.resource.data.importStatus in ['in_progress', 'completed'] &&
+        request.resource.data.progressUpdatedAt is string
+      );
+      allow update: if (isAdmin() && (
+        request.resource.data.importStatus == 'rolled_back' ||
+        (resource.data.importStatus != 'rolled_back' && (
+          resource.data.importStatus != 'rolling_back' ||
+          request.resource.data.importStatus in ['rolling_back', 'rolled_back']
+        ))
+      )) || (
+        representativeCanManagePrices(resource.data.supplierId) &&
+        resource.data.importStatus != 'rolling_back' &&
+        resource.data.importStatus != 'rolled_back' &&
+        request.resource.data.supplierId == resource.data.supplierId &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['importStatus', 'writtenRowsCount', 'progressUpdatedAt']) &&
+        request.resource.data.importStatus in ['in_progress', 'completed', 'interrupted'] &&
+        request.resource.data.writtenRowsCount is int &&
+        request.resource.data.writtenRowsCount >= resource.data.get('writtenRowsCount', 0) &&
+        request.resource.data.writtenRowsCount <= resource.data.rowsCount &&
+        request.resource.data.progressUpdatedAt is string
+      );
+      allow delete: if isAdmin();
     }
 
     // Large price-imports may be submitted by an authorized admin/representative but only a different admin may approve them.

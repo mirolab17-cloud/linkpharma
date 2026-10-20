@@ -51,6 +51,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { triggerHaptic } from '../../utils/profile';
 import { PharmacyGlobalSearch, SearchScope } from '../../components/PharmacyGlobalSearch';
 import { productDisplayName } from '../../utils/productCatalog';
+import { getDeliveryAreaKeys } from '../../utils/gaza';
 import { deliveryRuleForSupplier } from '../../services/v18Features';
 
 // عدد البطاقات التي تُضاف في كل دفعة عرض أثناء التمرير.
@@ -77,6 +78,7 @@ const mergePrices = (current: PriceRecord[], incoming: PriceRecord[]): PriceReco
 export const PharmacyPrices: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { user } = useAuthStore();
+  const defaultBranch = user?.branches?.find((branch) => branch.id === user.defaultBranchId) || user?.branches?.[0];
   const { addItem } = useCartStore();
   const { success, error: toastError, info } = useToastStore();
   const toastErrorRef = useRef(toastError);
@@ -1047,7 +1049,7 @@ export const PharmacyPrices: React.FC = () => {
                         (expandedSupplierProducts.has(product.id) ? prodPrices : prodPrices.slice(0, 3)).map((priceRec) => {
                           const sup = suppliersMap.get(priceRec.supplierId);
                           if (!sup) return null;
-                          const deliveryRule = deliveryRuleForSupplier(sup, [user?.city, user?.governorate]);
+                          const deliveryRule = deliveryRuleForSupplier(sup, defaultBranch ? getDeliveryAreaKeys(defaultBranch) : [user?.city, user?.governorate]);
 
                           const isCheapest =
                             priceRec.available &&
@@ -1076,7 +1078,7 @@ export const PharmacyPrices: React.FC = () => {
                                   <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
                                     {sup.name}
                                   </span>
-                                  {showDeliveryDays && <span className="text-[9px] text-slate-400 whitespace-nowrap">توصيل{user?.city || user?.governorate ? ` ${user?.city || user?.governorate}:` : ':'} {deliveryRule.days.join('، ') || 'غير محدد لهذه المنطقة'}{deliveryRule.cutoffTime ? ` · إغلاق ${deliveryRule.cutoffTime}` : ''}{deliveryRule.minimumOrderAmount ? ` · حد ${formatCurrency(deliveryRule.minimumOrderAmount)}` : ''}</span>}
+                                  {showDeliveryDays && <span className="text-[9px] text-slate-400 whitespace-nowrap">توصيل{defaultBranch?.street || defaultBranch?.city || user?.city || user?.governorate ? ` ${defaultBranch?.street || defaultBranch?.city || user?.city || user?.governorate}:` : ':'} {deliveryRule.days.join('، ') || 'غير محدد لهذه المنطقة'}{deliveryRule.cutoffTime ? ` · إغلاق ${deliveryRule.cutoffTime}` : ''}{deliveryRule.minimumOrderAmount ? ` · حد ${formatCurrency(deliveryRule.minimumOrderAmount)}` : ''}</span>}
                                   {isCheapest && (
                                     <span className="px-1.5 py-0.5 bg-[#0f9d7a] text-white text-[9px] font-black rounded-md flex items-center gap-0.5 shrink-0">
                                       <Sparkles className="w-2.5 h-2.5" />

@@ -102,6 +102,10 @@ const profileFallback = (fbUser: any, cached?: UserProfile | null): UserProfile 
   addressDetail: cached?.addressDetail,
   governorate: cached?.governorate,
   city: cached?.city,
+  street: cached?.street,
+  streetId: cached?.streetId,
+  branches: cached?.branches || [],
+  defaultBranchId: cached?.defaultBranchId,
   allowedSuppliers: cached?.allowedSuppliers || [],
   profileComplete: cached?.profileComplete === true || Boolean(cached && isProfileComplete(cached)),
   createdAt: cached?.createdAt || new Date().toISOString(),
@@ -731,6 +735,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       } else {
         localStorage.setItem('pharma_local_user', JSON.stringify(updated));
       }
+      if (isFirebaseConfigured) writeCachedProfile(updated);
       set({ user: updated });
       useToastStore.getState().success('تم حفظ بيانات الملف بنجاح.');
       return true;

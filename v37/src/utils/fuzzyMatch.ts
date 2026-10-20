@@ -1,7 +1,7 @@
-// src/utils/fuzzyMatch.ts
 import Fuse from 'fuse.js';
+import { Product, ProductAlias } from '../types';
 import { normalizeArabic } from './arabicNormalize';
-import { Product } from '../types';
+import { aliasFieldCompatible, findProductAliasMatch, normalizeAliasValue } from './productAliases';
 
 export interface MatchResult {
   status: 'exact' | 'fuzzy' | 'none';
@@ -10,104 +10,102 @@ export interface MatchResult {
   normalizedInput: string;
 }
 
+export interface MatchIdentityDetails {
+  tradeName?: string;
+  manufacturer?: string;
+  strength?: string;
+  form?: string;
+  packSize?: string;
+  barcode?: string;
+}
+
+function inferStrengthFromName(name: string): string | undefined {
+  const normalized = normalizeAliasValue(name);
+  const measurement = normalized.match(/\d+(?:\.\d+)?\s*(?:mcg|mg|g|ml|iu|%)(?:\s*\/\s*\d+(?:\.\d+)?\s*(?:mcg|mg|g|ml|iu|%)?)/i);
+  if (measurement) return measurement[0].replace(/\s+/g, '');
+  const ratio = normalized.match(/\b\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?\b/);
+  return ratio?.[0].replace(/\s+/g, '');
+}
+
 export class ProductMatcher {
   private products: Product[];
-  private exactMap: Map<string, Product>;
   private fuse: Fuse<Product>;
+  private aliases: ProductAlias[];
+  private supplierId: string;
 
-  constructor(products: Product[]) {
+  constructor(products: Product[], aliases: ProductAlias[] = [], supplierId = '') {
     this.products = products;
-    this.exactMap = new Map();
-
-    products.forEach((p) => {
-      const norm = p.normalizedName || normalizeArabic(p.tradeName);
-      this.exactMap.set(norm, p);
-    });
-
+    this.aliases = aliases;
+    this.supplierId = supplierId;
     this.fuse = new Fuse(products, {
       keys: [
-        { name: 'normalizedName', weight: 0.65 },
-        { name: 'tradeName', weight: 0.5 },
+        // استخدم الاسم التجاري الحالي فقط؛ normalizedName قد يكون قيمة مفهرسة قديمة بعد تحرير الصنف.
+        { name: 'tradeName', weight: 0.65 },
         { name: 'strength', weight: 0.25 },
         { name: 'form', weight: 0.2 },
         { name: 'packSize', weight: 0.2 },
         { name: 'manufacturer', weight: 0.15 },
+        { name: 'barcode', weight: 0.4 },
       ],
-      threshold: 0.4, // حد التشابه المطلوب
+      threshold: 0.4,
       includeScore: true,
       minMatchCharLength: 2,
     });
   }
 
-  public match(rawName: string, manufacturer?: string): MatchResult {
-    const norm = normalizeArabic(rawName);
+  public match(rawName: string, manufacturer?: string, details: MatchIdentityDetails = {}): MatchResult {
+    const name = String(rawName || '').trim();
+    const norm = normalizeArabic(name);
+    if (!name) return { status: 'none', matchedProduct: null, suggestions: [], normalizedInput: norm };
 
-    // 1) فحص التطابق التام بعد التطبيع
-    if (this.exactMap.has(norm)) {
-      return {
-        status: 'exact',
-        matchedProduct: this.exactMap.get(norm)!,
-        suggestions: [],
-        normalizedInput: norm,
-      };
+    // عند وجود اسم تجاري منفصل (كما في صف الاستيراد) لا نعامل القوة/العبوة الملحقة بالاسم كجزء من الاسم التجاري.
+    const tradeName = String(details.tradeName || name).trim();
+    const row = {
+      ...details,
+      rawName: name,
+      manufacturer: details.manufacturer || manufacturer,
+      strength: details.strength || (details.tradeName ? undefined : inferStrengthFromName(name)),
+    };
+    const aliasMatch = this.supplierId
+      ? findProductAliasMatch(this.aliases, this.products, this.supplierId, row)
+      : null;
+    if (aliasMatch) return { status: 'exact', matchedProduct: aliasMatch, suggestions: [], normalizedInput: norm };
+
+    const normalizedName = normalizeAliasValue(tradeName);
+    const nameCandidates = this.products.filter((product) => {
+      const trade = normalizeAliasValue(product.tradeName);
+      const nameFits = normalizedName === trade;
+      if (!nameFits) return false;
+      return this.isCompatible(product, row);
+    });
+    const uniqueCandidates = [...new Map(nameCandidates.map((product) => [product.id, product])).values()];
+    if (uniqueCandidates.length === 1) {
+      return { status: 'exact', matchedProduct: uniqueCandidates[0], suggestions: [], normalizedInput: norm };
     }
 
-    // فحص تطابق تام جزئي إذا كان اسم الصنف يتطابق مع بداية أو جزء رئيسي
-    for (const [key, p] of this.exactMap.entries()) {
-      if (key === norm || (norm.length > 4 && key.includes(norm)) || (key.length > 4 && norm.includes(key))) {
-        // إذا كان الفارق طفيفاً جداً
-        if (Math.abs(key.length - norm.length) <= 3) {
-          return {
-            status: 'exact',
-            matchedProduct: p,
-            suggestions: [],
-            normalizedInput: norm,
-          };
-        }
-      }
-    }
+    const queryText = [tradeName, name !== tradeName ? name : undefined, row.manufacturer, row.strength, row.form, row.packSize, row.barcode]
+      .filter(Boolean).join(' ');
+    const suggestions = this.fuse.search(queryText)
+      .filter((result) => this.isCompatible(result.item, row))
+      .slice(0, 3)
+      .map((result) => ({ product: result.item, score: result.score ?? 1 }));
 
-    // 2) فحص التطابق التقريبي عبر Fuse.js
-    const queryText = manufacturer?.trim() ? `${norm} ${normalizeArabic(manufacturer)}` : norm;
-    const results = this.fuse.search(queryText);
-
-    if (results.length > 0) {
-      const topMatch = results[0];
-      const suggestions = results.slice(0, 3).map((r) => ({
-        product: r.item,
-        score: r.score ?? 1,
-      }));
-
-      // إذا كانت درجة التطابق قوية جداً (أقل من 0.2 في Fuse تعني تشابه مرتفع جداً)
-      if (topMatch.score !== undefined && topMatch.score <= 0.15) {
-        return {
-          status: 'exact',
-          matchedProduct: topMatch.item,
-          suggestions,
-          normalizedInput: norm,
-        };
-      }
-
-      // إذا كانت درجة التطابق مقبولة للاقتراح (أقل من 0.4)
-      if (topMatch.score !== undefined && topMatch.score <= 0.45) {
-        return {
-          status: 'fuzzy',
-          matchedProduct: topMatch.item,
-          suggestions,
-          normalizedInput: norm,
-        };
-      }
-    }
-
-    // 3) لا يوجد تطابق
+    // التشابه التقريبي اقتراح فقط؛ لا يعتمد صنفاً حتى يختاره المستخدم.
     return {
-      status: 'none',
+      status: uniqueCandidates.length || suggestions.length ? 'fuzzy' : 'none',
       matchedProduct: null,
-      suggestions: results.slice(0, 3).map((r) => ({
-        product: r.item,
-        score: r.score ?? 1,
-      })),
+      suggestions: uniqueCandidates.length
+        ? uniqueCandidates.slice(0, 3).map((product) => ({ product, score: 0 }))
+        : suggestions,
       normalizedInput: norm,
     };
+  }
+
+  private isCompatible(product: Product, row: MatchIdentityDetails): boolean {
+    return aliasFieldCompatible('barcode', row.barcode, product.barcode) &&
+      aliasFieldCompatible('manufacturer', row.manufacturer, product.manufacturer) &&
+      aliasFieldCompatible('strength', row.strength, product.strength) &&
+      aliasFieldCompatible('form', row.form, product.form) &&
+      aliasFieldCompatible('packSize', row.packSize, product.packSize);
   }
 }

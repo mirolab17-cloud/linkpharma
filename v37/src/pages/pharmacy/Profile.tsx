@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, Building2, Lightbulb, MapPin, Pencil, Phone, UserRound, UserRoundCheck } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { getSystemSettings } from '../../services/dataStorage';
+import { formatBranchAddress } from '../../utils/gaza';
 
 export const PharmacyProfile: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -20,6 +21,8 @@ export const PharmacyProfile: React.FC = () => {
   if (!user) return null;
   const pharmacyName = user.pharmacyName || 'بيانات الصيدلية غير مكتملة';
   const ownerName = user.ownerName || user.name || '—';
+  const defaultBranch = user.branches?.find((branch) => branch.id === user.defaultBranchId) || user.branches?.[0];
+  const defaultAddress = defaultBranch ? formatBranchAddress(defaultBranch) : [user.governorate, user.city, user.street, user.addressDetail].filter(Boolean).join(' - ');
   const supportMessage = `السلام عليكم، أنا ${ownerName} من ${user.pharmacyName || 'الصيدلية'} وأحتاج مساعدة في المنصة.`;
   const supportUrl = `https://wa.me/${supportPhone.replace(/\D/g, '')}?text=${encodeURIComponent(supportMessage)}`;
 
@@ -39,7 +42,7 @@ export const PharmacyProfile: React.FC = () => {
 
       <section className="grid gap-3 sm:grid-cols-2">
         <Link to="/app/profile/edit" className="group flex min-h-24 items-center justify-between rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-400 hover:shadow-md">
-          <span className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-50 text-[#0f9d7a]"><Pencil className="h-5 w-5" /></span><span><strong className="block text-sm font-black text-slate-900">تعديل بياناتي</strong><small className="mt-1 block text-xs text-slate-500">تحديث معلومات الصيدلية والمالك</small></span></span><ArrowLeft className="h-4 w-4 text-slate-400 transition group-hover:-translate-x-1 group-hover:text-emerald-700" />
+          <span className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-50 text-[#0f9d7a]"><Pencil className="h-5 w-5" /></span><span><strong className="block text-sm font-black text-slate-900">تعديل بياناتي</strong><small className="mt-1 block text-xs text-slate-500">تحديث معلومات الصيدلية والفروع ({user.branches?.length || 0} فرع)</small></span></span><ArrowLeft className="h-4 w-4 text-slate-400 transition group-hover:-translate-x-1 group-hover:text-emerald-700" />
         </Link>
         <Link to="/app/representative-request" className="group flex min-h-24 items-center justify-between rounded-2xl border border-teal-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-400 hover:shadow-md">
           <span className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-teal-50 text-teal-700"><UserRoundCheck className="h-5 w-5" /></span><span><strong className="block text-sm font-black text-slate-900">أنا مندوب</strong><small className="mt-1 block text-xs text-slate-500">طلب ربط حسابك بمستودع</small></span></span><ArrowLeft className="h-4 w-4 text-slate-400 transition group-hover:-translate-x-1 group-hover:text-teal-700" />
@@ -54,7 +57,7 @@ export const PharmacyProfile: React.FC = () => {
         <div className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
           <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-slate-700"><UserRound className="h-4 w-4 text-emerald-700" />{ownerName}</div>
           <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-slate-700"><Phone className="h-4 w-4 text-emerald-700" /><span dir="ltr">{user.phone || '—'}</span></div>
-          <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-slate-700"><MapPin className="h-4 w-4 text-emerald-700" />{[user.governorate, user.city].filter(Boolean).join(' · ') || 'الموقع غير محدد'}</div>
+          <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-slate-700"><MapPin className="h-4 w-4 text-emerald-700" /><span>{defaultBranch ? `الفرع الافتراضي: ${defaultBranch.name} · ${defaultAddress}` : defaultAddress || 'الموقع غير محدد'}</span></div><div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-slate-700"><Building2 className="h-4 w-4 text-emerald-700" />عدد الفروع: {user.branches?.length || 0}</div>
           <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-slate-700"><Building2 className="h-4 w-4 text-emerald-700" />{pharmacyName}</div>
         </div>
       </section>

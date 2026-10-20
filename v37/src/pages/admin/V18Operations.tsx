@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, Eye, EyeOff, MapPinned, RefreshCw, ShieldCheck } from 'lucide-react';
-import { getPrices, getProducts, getSuppliers, saveSupplier } from '../../services/dataStorage';
+import { getPrices, getProducts, getSuppliers, getSystemSettings, saveSupplier } from '../../services/dataStorage';
 import { getSuggestions, setPriceVisibility, updateSuggestionStatus } from '../../services/v18Features';
-import { PharmacySuggestion, PriceRecord, Product, Supplier } from '../../types';
+import { LocationGovernorate, PharmacySuggestion, PriceRecord, Product, Supplier } from '../../types';
 import { useToastStore } from '../../store/useToastStore';
 import { formatGregorianDate } from '../../utils/formatDate';
+import { getLocationCatalog } from '../../utils/gaza';
 
 const statusLabels: Record<string, string> = { new: 'جديد', reviewed: 'قيد المراجعة', resolved: 'تمت المعالجة', dismissed: 'مغلق' };
 type Tab = 'overview' | 'suggestions' | 'visibility' | 'delivery';
@@ -24,8 +25,11 @@ export const V18Operations: React.FC = () => {
   const [prices, setPrices] = useState<PriceRecord[]>([]);
   const [selectedSupplier, setSelectedSupplier] = useState('');
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
-  const [deliveryArea, setDeliveryArea] = useState('');
-  const [deliveryDays, setDeliveryDays] = useState('');
+  const [locationCatalog, setLocationCatalog] = useState<LocationGovernorate[]>([]);
+  const [deliveryGovernorateId, setDeliveryGovernorateId] = useState('');
+  const [deliveryCityId, setDeliveryCityId] = useState('');
+  const [deliveryStreetId, setDeliveryStreetId] = useState('');
+  const [deliveryDays, setDeliveryDays] = useState<string[]>([]);
 
   const loadTab = useCallback(async (target: Tab, force = false) => {
     if (target === 'overview' || (!force && loadedTabs.current.has(target))) return;
@@ -36,6 +40,10 @@ export const V18Operations: React.FC = () => {
         const rows = await getSuppliers();
         setSuppliers(rows);
         if (target === 'visibility') setProducts(await getProducts());
+        if (target === 'delivery') {
+          const settings = await getSystemSettings();
+          setLocationCatalog(getLocationCatalog(settings.locationCatalog, settings.gazaLocations));
+        }
       }
       loadedTabs.current.add(target);
     } catch {
@@ -67,13 +75,32 @@ export const V18Operations: React.FC = () => {
     } catch { error('تعذر تحديث ظهور العروض.'); }
   };
 
+  const selectedDeliveryGovernorate = locationCatalog.find((item) => item.id === deliveryGovernorateId);
+  const selectedDeliveryCity = selectedDeliveryGovernorate?.cities.find((item) => item.id === deliveryCityId);
+  const deliveryAreaKey = deliveryStreetId ? `street:${deliveryStreetId}` : deliveryCityId ? `city:${deliveryCityId}` : deliveryGovernorateId ? `governorate:${deliveryGovernorateId}` : '';
+  const deliveryAreaName = selectedDeliveryCity?.streets.find((item) => item.id === deliveryStreetId)?.name || selectedDeliveryCity?.name || selectedDeliveryGovernorate?.name || '';
+  const deliveryWeekdays = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+  const toggleDeliveryDay = (day: string) => setDeliveryDays((old) => old.includes(day) ? old.filter((item) => item !== day) : [...old, day]);
+  const savedAreaLabel = (key: string): string => {
+    const [level, id] = key.split(':');
+    if (!id) return key;
+    for (const region of locationCatalog) {
+      if (level === 'governorate' && region.id === id) return region.name;
+      for (const city of region.cities) {
+        if (level === 'city' && city.id === id) return city.name;
+        const street = city.streets.find((item) => item.id === id);
+        if (level === 'street' && street) return `${city.name} · ${street.name}`;
+      }
+    }
+    return key;
+  };
   const saveDelivery = async () => {
-    if (!selectedSupplierObject || !deliveryArea.trim() || !deliveryDays.trim()) return error('اكتب المنطقة وأيام التوصيل.');
-    const days = deliveryDays.split(',').map((day) => day.trim()).filter(Boolean);
+    if (!selectedSupplierObject || !deliveryAreaKey || deliveryDays.length === 0) return error('اختر محافظة أو مدينة أو شارعاً ويوم توصيل واحداً على الأقل.');
     try {
-      await saveSupplier({ ...selectedSupplierObject, deliveryDaysByArea: { ...(selectedSupplierObject.deliveryDaysByArea || {}), [deliveryArea.trim()]: days } });
-      setSuppliers((old) => old.map((item) => item.id === selectedSupplier ? { ...item, deliveryDaysByArea: { ...(item.deliveryDaysByArea || {}), [deliveryArea.trim()]: days } } : item));
-      setDeliveryArea(''); setDeliveryDays(''); success('تم حفظ جدول التوصيل حسب المنطقة.');
+      const nextDays = { ...(selectedSupplierObject.deliveryDaysByArea || {}), [deliveryAreaKey]: deliveryDays };
+      await saveSupplier({ ...selectedSupplierObject, deliveryDaysByArea: nextDays });
+      setSuppliers((old) => old.map((item) => item.id === selectedSupplier ? { ...item, deliveryDaysByArea: nextDays } : item));
+      setDeliveryGovernorateId(''); setDeliveryCityId(''); setDeliveryStreetId(''); setDeliveryDays([]); success(`تم حفظ جدول التوصيل لمنطقة ${deliveryAreaName}.`);
     } catch { error('تعذر حفظ جدول التوصيل.'); }
   };
 
@@ -103,7 +130,7 @@ export const V18Operations: React.FC = () => {
     {!loading && (tab === 'visibility' || tab === 'delivery') && <Panel title={tab === 'visibility' ? 'إدارة ظهور عروض الأسعار' : 'جدول أيام التوصيل'} note="اختر المستودع أولاً؛ لا تُقرأ أسعار بقية المستودعات.">
       <label className="block max-w-xl text-xs font-bold text-slate-600">المستودع<select value={selectedSupplier} onChange={(event) => { setSelectedSupplier(event.target.value); setSelectedProductIds([]); }} className="mt-1 w-full rounded-xl border border-slate-200 bg-white p-3 text-xs"><option value="">اختر مستودعاً</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
       {tab === 'visibility' && selectedSupplier && <div className="mt-4 space-y-3"><div className="flex flex-wrap gap-2"><button onClick={() => setSelectedProductIds(supplierPrices.filter((price) => !price.hidden).map((price) => price.productId))} className="min-h-10 rounded-xl border px-3 text-xs font-bold">تحديد الظاهر ({supplierPrices.filter((price) => !price.hidden).length})</button><button onClick={() => setSelectedProductIds(supplierPrices.filter((price) => price.hidden).map((price) => price.productId))} className="min-h-10 rounded-xl border px-3 text-xs font-bold">تحديد المخفي ({supplierPrices.filter((price) => price.hidden).length})</button><button onClick={() => setSelectedProductIds([])} className="min-h-10 rounded-xl border px-3 text-xs font-bold">إلغاء التحديد</button><button onClick={() => void togglePriceVisibility(true)} className="min-h-10 rounded-xl bg-rose-600 px-3 text-xs font-bold text-white"><EyeOff className="ml-1 inline h-4 w-4" />إخفاء</button><button onClick={() => void togglePriceVisibility(false)} className="min-h-10 rounded-xl bg-emerald-700 px-3 text-xs font-bold text-white"><Eye className="ml-1 inline h-4 w-4" />إظهار</button></div><div className="grid max-h-[460px] gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">{supplierPrices.map((price) => { const product = products.find((row) => row.id === price.productId); return <label key={price.id || price.productId} className={`flex cursor-pointer items-start gap-2 rounded-xl border p-3 ${selectedProductIds.includes(price.productId) ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200'}`}><input type="checkbox" checked={selectedProductIds.includes(price.productId)} onChange={() => setSelectedProductIds((old) => old.includes(price.productId) ? old.filter((id) => id !== price.productId) : [...old, price.productId])} /><span className="flex-1 text-xs font-bold">{product?.tradeName || price.productId}<small className={`mt-1 block ${price.hidden ? 'text-rose-600' : 'text-emerald-700'}`}>{price.hidden ? 'مخفي' : 'ظاهر'} · {price.price}</small></span></label>; })}</div></div>}
-      {tab === 'delivery' && selectedSupplierObject && <div className="mt-4"><div className="grid gap-3 sm:grid-cols-3"><input value={deliveryArea} onChange={(event) => setDeliveryArea(event.target.value)} placeholder="المنطقة / المدينة" className="rounded-xl border p-3 text-xs" /><input value={deliveryDays} onChange={(event) => setDeliveryDays(event.target.value)} placeholder="الأحد، الثلاثاء" className="rounded-xl border p-3 text-xs" /><button onClick={() => void saveDelivery()} className="min-h-11 rounded-xl bg-[#0f9d7a] px-4 text-xs font-black text-white"><MapPinned className="ml-1 inline h-4 w-4" />حفظ الجدول</button></div><div className="mt-4 grid gap-2 sm:grid-cols-2">{Object.entries(selectedSupplierObject.deliveryDaysByArea || {}).map(([area, days]) => <div key={area} className="rounded-xl border bg-slate-50 p-3 text-xs"><b>{area}</b><span className="mt-1 block text-slate-500">{days.join('، ')}</span></div>)}</div></div>}
+      {tab === 'delivery' && selectedSupplierObject && <div className="mt-4"><div className="grid gap-3 sm:grid-cols-3"><label className="text-xs font-bold">المحافظة<select value={deliveryGovernorateId} onChange={(event) => { setDeliveryGovernorateId(event.target.value); setDeliveryCityId(''); setDeliveryStreetId(''); }} className="mt-1 w-full rounded-xl border p-3 text-xs"><option value="">اختر المحافظة</option>{locationCatalog.map((region) => <option key={region.id} value={region.id}>{region.name}</option>)}</select></label><label className="text-xs font-bold">المدينة<select value={deliveryCityId} disabled={!selectedDeliveryGovernorate} onChange={(event) => { setDeliveryCityId(event.target.value); setDeliveryStreetId(''); }} className="mt-1 w-full rounded-xl border p-3 text-xs"><option value="">اختياري: كل مدن المحافظة</option>{selectedDeliveryGovernorate?.cities.map((city) => <option key={city.id} value={city.id}>{city.name}</option>)}</select></label><label className="text-xs font-bold">الشارع<select value={deliveryStreetId} disabled={!selectedDeliveryCity || selectedDeliveryCity.streets.length === 0} onChange={(event) => setDeliveryStreetId(event.target.value)} className="mt-1 w-full rounded-xl border p-3 text-xs"><option value="">اختياري: كل المدينة</option>{selectedDeliveryCity?.streets.map((street) => <option key={street.id} value={street.id}>{street.name}</option>)}</select></label></div><p className="mt-2 text-[11px] text-slate-500">سيُحفظ الجدول على أدق مستوى اخترته: شارع ثم مدينة ثم محافظة.</p><div className="mt-3 flex flex-wrap gap-2">{deliveryWeekdays.map((day) => <label key={day} className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold ${deliveryDays.includes(day) ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}><input type="checkbox" checked={deliveryDays.includes(day)} onChange={() => toggleDeliveryDay(day)} />{day}</label>)}</div><button onClick={() => void saveDelivery()} className="mt-3 min-h-11 rounded-xl bg-[#0f9d7a] px-4 text-xs font-black text-white"><MapPinned className="ml-1 inline h-4 w-4" />حفظ الجدول</button><div className="mt-4 grid gap-2 sm:grid-cols-2">{Object.entries(selectedSupplierObject.deliveryDaysByArea || {}).map(([area, days]) => <div key={area} className="rounded-xl border bg-slate-50 p-3 text-xs"><b>{savedAreaLabel(area)}</b><small className="mt-1 block font-mono text-[10px] text-slate-400" dir="ltr">{area}</small><span className="mt-1 block text-slate-500">{days.join('، ')}</span></div>)}</div></div>}
       {tab === 'visibility' && !selectedSupplier && <Empty text="اختر مستودعاً لتحميل أسعاره فقط." />}
     </Panel>}
   </div>;

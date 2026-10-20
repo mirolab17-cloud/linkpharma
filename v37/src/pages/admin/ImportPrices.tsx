@@ -5,15 +5,18 @@ import {
   getProducts,
   getActiveIngredients,
   saveSupplier,
+  getProductAliases,
+  saveProductAlias,
+  saveProduct,
   saveProductsBatch,
   commitImportBatch,
   getImportBatches,
   rollbackImportBatch,
   getPrices
 } from '../../services/dataStorage';
-import { Supplier, Product, ActiveIngredient, ImportBatch, PriceRecord } from '../../types';
+import { Supplier, Product, ProductAlias, ActiveIngredient, ImportBatch, PriceRecord } from '../../types';
 import { parseSpreadsheetFile, processMappedRows, SheetParseResult, MappedPriceRow } from '../../services/import';
-import { ProductMatcher, MatchResult } from '../../utils/fuzzyMatch';
+import { ProductMatcher } from '../../utils/fuzzyMatch';
 import { normalizeArabic } from '../../utils/arabicNormalize';
 import { classifyProduct } from '../../services/importQuality';
 import { formatCurrency } from '../../utils/formatPrice';
@@ -37,12 +40,12 @@ import {
   Trash2,
   Eye,
   Search,
-  Check,
   X,
   Clock,
   History,
   Building,
-  Key
+  Key,
+  Pencil
 } from 'lucide-react';
 import { Modal } from '../../components/Modal';
 import { SearchSelect } from '../../components/SearchSelect';
@@ -60,6 +63,7 @@ interface RowMatchItem {
   form?: string;
   manufacturer?: string;
   pack?: string;
+  barcode?: string;
   bonus?: string;
   price: number;
   publicPrice?: number;
@@ -68,6 +72,33 @@ interface RowMatchItem {
   status: 'exact' | 'fuzzy' | 'none' | 'ignored';
   selectedProductId: string | null;
   suggestions: { product: Product; score: number }[];
+}
+
+interface RowEditDraft {
+  originalName: string;
+  strength: string;
+  form: string;
+  pack: string;
+  manufacturer: string;
+  barcode: string;
+  price: string;
+  publicPrice: string;
+  available: boolean;
+  expiry: string;
+  bonus: string;
+}
+
+interface ProductEditDraft {
+  id: string;
+  tradeName: string;
+  activeIngredientId: string;
+  form: string;
+  strength: string;
+  packSize: string;
+  manufacturer: string;
+  category: string;
+  barcode: string;
+  productType: NewProductKind;
 }
 
 export const ImportPrices: React.FC = () => {
@@ -98,6 +129,7 @@ export const ImportPrices: React.FC = () => {
   const [formCol, setFormCol] = useState<number>(-1);
   const [packCol, setPackCol] = useState<number>(-1);
   const [manufacturerCol, setManufacturerCol] = useState<number>(-1);
+  const [barcodeCol, setBarcodeCol] = useState<number>(-1);
   const [bonusCol, setBonusCol] = useState<number>(-1);
   const [priceCol, setPriceCol] = useState<number>(-1);
   const [publicPriceCol, setPublicPriceCol] = useState<number>(-1);
@@ -106,8 +138,21 @@ export const ImportPrices: React.FC = () => {
 
   // Matching State
   const [matchRows, setMatchRows] = useState<RowMatchItem[]>([]);
+  const [supplierAliases, setSupplierAliases] = useState<ProductAlias[]>([]);
+  const supplierAliasCacheRef = useRef<Map<string, ProductAlias[]>>(new Map());
+  const [loadingSupplierAliases, setLoadingSupplierAliases] = useState(false);
   const [filterMatchStatus, setFilterMatchStatus] = useState<'all' | 'exact' | 'fuzzy' | 'none' | 'ignored'>('all');
   const [matchSearchTerm, setMatchSearchTerm] = useState('');
+
+  // تحرير صف السعر قبل الاعتماد
+  const [isRowEditModalOpen, setIsRowEditModalOpen] = useState(false);
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [rowEditDraft, setRowEditDraft] = useState<RowEditDraft | null>(null);
+
+  // تحرير الصنف المرتبط من شاشة المطابقة
+  const [isProductEditModalOpen, setIsProductEditModalOpen] = useState(false);
+  const [productEditDraft, setProductEditDraft] = useState<ProductEditDraft | null>(null);
+  const [isSavingProductEdit, setIsSavingProductEdit] = useState(false);
 
   // Audit Diff & Anomaly Detection State (تدقيق الاستيراد والمعاينة)
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
@@ -135,6 +180,7 @@ export const ImportPrices: React.FC = () => {
     newCount: number;
     ignoredCount: number;
     approvalPending?: boolean;
+    rolledBack?: boolean;
   } | null>(null);
 
   // Rollback Confirm
@@ -170,6 +216,56 @@ export const ImportPrices: React.FC = () => {
   const selectedSupplier = useMemo(() => {
     return suppliers.find((s) => s.id === selectedSupplierId);
   }, [suppliers, selectedSupplierId]);
+
+  // لا نخلط aliases بين الموردين: لكل مورد cache مستقل داخل هذه الشاشة.
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedSupplierId) {
+      setSupplierAliases([]);
+      setLoadingSupplierAliases(false);
+      return;
+    }
+    const cached = supplierAliasCacheRef.current.get(selectedSupplierId);
+    if (cached) {
+      setSupplierAliases(cached);
+      setLoadingSupplierAliases(false);
+      return;
+    }
+    setLoadingSupplierAliases(true);
+    getProductAliases(selectedSupplierId)
+      .then((rows) => {
+        if (cancelled) return;
+        supplierAliasCacheRef.current.set(selectedSupplierId, rows);
+        setSupplierAliases(rows);
+      })
+      .catch((err: any) => {
+        if (!cancelled) {
+          setSupplierAliases([]);
+          warning('تعذر تحميل أسماء هذا المورد البديلة؛ ستبقى المطابقة اليدوية لهذه الدفعة فقط.');
+          console.error(err);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSupplierAliases(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedSupplierId]);
+
+  const productMatcher = useMemo(
+    () => new ProductMatcher(products, supplierAliases, selectedSupplierId),
+    [products, supplierAliases, selectedSupplierId]
+  );
+
+  const productOptions = useMemo(() => products.map((product) => ({
+    id: product.id,
+    label: product.tradeName,
+    subLabel: [
+      product.strength || 'بدون تركيز',
+      product.form || 'بدون شكل',
+      product.packSize || 'بدون عبوة',
+      product.manufacturer || 'بدون شركة',
+    ].join(' • '),
+  })), [products]);
 
   // تطبيق القالب المحفوظ للمورد تلقائياً إن وُجد
   useEffect(() => {
@@ -273,6 +369,8 @@ export const ImportPrices: React.FC = () => {
           if (packCol === -1) setPackCol(idx);
         } else if (norm.includes('شرك') || norm.includes('مصنع') || norm.includes('manufacturer') || norm.includes('brand owner')) {
           if (manufacturerCol === -1) setManufacturerCol(idx);
+        } else if (norm.includes('باركود') || norm.includes('barcode') || norm.includes('ean') || norm.includes('gtin')) {
+          if (barcodeCol === -1) setBarcodeCol(idx);
         } else if (norm.includes('صنف') || norm.includes('اسم') || norm.includes('دواء') || norm.includes('item') || norm.includes('name')) {
           if (nameCol === -1) setNameCol(idx);
         } else if (norm.includes('بونص') || norm.includes('عرض') || norm.includes('bonus') || norm.includes('offer')) {
@@ -297,6 +395,10 @@ export const ImportPrices: React.FC = () => {
 
   // الانتقال لخطوة المطابقة (Matching Step)
   const handleProceedToMatching = () => {
+    if (loadingSupplierAliases) {
+      warning('انتظر اكتمال تحميل أسماء المورد البديلة قبل بدء المطابقة.');
+      return;
+    }
     let rowsToMatch: {
       rawName: string;
       tradeName: string;
@@ -304,6 +406,7 @@ export const ImportPrices: React.FC = () => {
       form?: string;
       manufacturer?: string;
       pack?: string;
+      barcode?: string;
       bonus?: string;
       price: number;
       publicPrice?: number;
@@ -345,6 +448,7 @@ export const ImportPrices: React.FC = () => {
       form: r.rawForm,
       manufacturer: r.rawManufacturer,
       pack: r.rawPack,
+      barcode: barcodeCol >= 0 ? sheetData.allRows.find((sourceRow) => sourceRow.rowNumber === r.rowNumber)?.cells[barcodeCol]?.trim() || undefined : undefined,
       bonus: r.rawBonus,
       price: r.rawPrice!,
       publicPrice: r.rawPublicPrice || undefined,
@@ -353,9 +457,14 @@ export const ImportPrices: React.FC = () => {
     }));
 
     // تشغيل محرك المطابقة (Fuse.js + Normalization)
-    const matcher = new ProductMatcher(products);
     const results: RowMatchItem[] = rowsToMatch.map((row, idx) => {
-      const matchResult = matcher.match(row.rawName, row.manufacturer);
+      const matchResult = productMatcher.match(row.rawName, row.manufacturer, {
+        tradeName: row.tradeName,
+        strength: row.strength,
+        form: row.form,
+        packSize: row.pack,
+        barcode: row.barcode,
+      });
 
       return {
         rowId: 'row_' + idx + '_' + Date.now(),
@@ -365,6 +474,7 @@ export const ImportPrices: React.FC = () => {
         form: row.form,
         manufacturer: row.manufacturer,
         pack: row.pack,
+        barcode: row.barcode,
         bonus: row.bonus,
         price: row.price,
         publicPrice: row.publicPrice,
@@ -379,6 +489,203 @@ export const ImportPrices: React.FC = () => {
     setMatchRows(results);
     setStep(3);
     info(`تمت مطابقة ${results.length} صفاً. يرجى مراجعة الحالات.`);
+  };
+
+  const handleOpenRowEditor = (row: RowMatchItem) => {
+    setEditingRowId(row.rowId);
+    setRowEditDraft({
+      originalName: row.originalName || '',
+      strength: row.strength || '',
+      form: row.form || '',
+      pack: row.pack || '',
+      manufacturer: row.manufacturer || '',
+      barcode: row.barcode || '',
+      price: String(row.price ?? ''),
+      publicPrice: row.publicPrice === undefined ? '' : String(row.publicPrice),
+      available: row.available,
+      expiry: row.expiry || '',
+      bonus: row.bonus || '',
+    });
+    setIsRowEditModalOpen(true);
+  };
+
+  const handleSaveRowEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRowId || !rowEditDraft) return;
+    const price = Number(rowEditDraft.price.replace(/,/g, '').trim());
+    const publicPriceText = rowEditDraft.publicPrice.replace(/,/g, '').trim();
+    const publicPrice = publicPriceText ? Number(publicPriceText) : undefined;
+    if (!Number.isFinite(price) || price <= 0) {
+      error('يرجى إدخال سعر شراء صحيح أكبر من صفر.');
+      return;
+    }
+    if (publicPriceText && (!Number.isFinite(publicPrice) || (publicPrice as number) < 0)) {
+      error('السعر العام غير صالح. اتركه فارغاً أو أدخل رقماً صحيحاً.');
+      return;
+    }
+
+    const currentRow = matchRows.find((row) => row.rowId === editingRowId);
+    const originalName = rowEditDraft.originalName.trim();
+    // عند تعديل القوة/العبوة فقط يبقى الاسم التجاري الأساسي، ولا نعيد استخدام الاسم المركب القديم كاسم تجاري.
+    const tradeName = currentRow && originalName === currentRow.originalName
+      ? (currentRow.tradeName || originalName)
+      : originalName;
+    const identity = {
+      strength: rowEditDraft.strength.trim() || undefined,
+      form: rowEditDraft.form.trim() || undefined,
+      packSize: rowEditDraft.pack.trim() || undefined,
+      barcode: rowEditDraft.barcode.trim() || undefined,
+    };
+    const matchResult = productMatcher.match(
+      originalName,
+      rowEditDraft.manufacturer.trim() || undefined,
+      {
+        ...identity,
+        tradeName,
+        manufacturer: rowEditDraft.manufacturer.trim() || undefined,
+      }
+    );
+
+    setMatchRows((prev) => prev.map((row) => row.rowId === editingRowId ? {
+      ...row,
+      originalName,
+      tradeName,
+      strength: identity.strength,
+      form: identity.form,
+      pack: identity.packSize,
+      manufacturer: rowEditDraft.manufacturer.trim() || undefined,
+      barcode: identity.barcode,
+      price,
+      publicPrice,
+      available: rowEditDraft.available,
+      expiry: rowEditDraft.expiry.trim() || undefined,
+      bonus: rowEditDraft.bonus.trim() || undefined,
+      status: matchResult.status,
+      selectedProductId: matchResult.matchedProduct?.id || null,
+      suggestions: matchResult.suggestions,
+    } : row));
+    setIsRowEditModalOpen(false);
+    setEditingRowId(null);
+    setRowEditDraft(null);
+    success('تم حفظ بيانات الصف وإعادة بناء المطابقة فوراً.');
+  };
+
+  const handleManualProductSelect = async (row: RowMatchItem, productId: string) => {
+    const selectedProduct = products.find((product) => product.id === productId);
+    setMatchRows((prev) => prev.map((item) => item.rowId === row.rowId ? {
+      ...item,
+      selectedProductId: selectedProduct?.id || null,
+      status: selectedProduct ? 'exact' : 'none',
+    } : item));
+    if (!selectedProduct) return;
+    const rawName = row.originalName.trim();
+    if (!selectedSupplierId || !rawName) {
+      info('تم الربط لهذه الدفعة فقط لأن الاسم الأصلي فارغ.');
+      return;
+    }
+    try {
+      const alias = await saveProductAlias({
+        supplierId: selectedSupplierId,
+        productId: selectedProduct.id,
+        rawName,
+        manufacturer: row.manufacturer?.trim() || undefined,
+        strength: row.strength?.trim() || undefined,
+        form: row.form?.trim() || undefined,
+        packSize: row.pack?.trim() || undefined,
+        barcode: row.barcode?.trim() || undefined,
+      });
+      setSupplierAliases((prev) => {
+        const next = [...prev.filter((item) => item.id !== alias.id), alias];
+        supplierAliasCacheRef.current.set(selectedSupplierId, next);
+        return next;
+      });
+      success('تم ربط الصنف وحفظ الاسم الأصلي كاسم بديل لهذا المورد.');
+    } catch (err: any) {
+      warning(`تم الربط لهذه الدفعة فقط؛ تعذر حفظ الاسم البديل: ${err?.message || 'خطأ غير معروف'}`);
+    }
+  };
+
+  const handleOpenProductEditor = (product: Product) => {
+    setProductEditDraft({
+      id: product.id,
+      tradeName: product.tradeName || '',
+      activeIngredientId: product.activeIngredientId || '',
+      form: product.form || '',
+      strength: product.strength || '',
+      packSize: product.packSize || '',
+      manufacturer: product.manufacturer || '',
+      category: product.category || '',
+      barcode: product.barcode || '',
+      productType: product.productType || (product.activeIngredientId ? 'medicine' : 'other'),
+    });
+    setIsProductEditModalOpen(true);
+  };
+
+  const handleSaveProductEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!productEditDraft) return;
+    if (!productEditDraft.tradeName.trim()) {
+      error('يرجى إدخال الاسم التجاري للصنف.');
+      return;
+    }
+    const effectiveType: NewProductKind = productEditDraft.productType === 'medicine' && !productEditDraft.activeIngredientId
+      ? 'other'
+      : productEditDraft.productType;
+    setIsSavingProductEdit(true);
+    try {
+      const existing = products.find((product) => product.id === productEditDraft.id);
+      const saved = await saveProduct({
+        ...(existing || {}),
+        id: productEditDraft.id,
+        tradeName: productEditDraft.tradeName.trim(),
+        normalizedName: normalizeArabic(productEditDraft.tradeName.trim()),
+        activeIngredientId: effectiveType === 'medicine' ? productEditDraft.activeIngredientId : '',
+        form: productEditDraft.form.trim(),
+        strength: productEditDraft.strength.trim(),
+        packSize: productEditDraft.packSize.trim(),
+        manufacturer: productEditDraft.manufacturer.trim(),
+        category: productEditDraft.category.trim() || 'عام',
+        barcode: productEditDraft.barcode.trim() || undefined,
+        productType: effectiveType,
+      });
+      const nextProducts = [saved, ...products.filter((product) => product.id !== saved.id)];
+      const latestMatcher = new ProductMatcher(nextProducts, supplierAliases, selectedSupplierId);
+      setProducts(nextProducts);
+      setMatchRows((prev) => prev.map((row) => {
+        if (row.status === 'ignored') return row;
+        const matchResult = latestMatcher.match(row.originalName, row.manufacturer, {
+          tradeName: row.tradeName || row.originalName,
+          strength: row.strength,
+          form: row.form,
+          packSize: row.pack,
+          barcode: row.barcode,
+        });
+        // اختيار المستخدم/الربط السابق مقصود، فلا نستبدله باقتراح تقريبي بعد تعديل المنتج.
+        if (row.selectedProductId) {
+          return {
+            ...row,
+            status: 'exact',
+            suggestions: matchResult.suggestions,
+          };
+        }
+        return {
+          ...row,
+          status: matchResult.status,
+          selectedProductId: matchResult.matchedProduct?.id || null,
+          suggestions: matchResult.suggestions,
+        };
+      }));
+      setIsProductEditModalOpen(false);
+      setProductEditDraft(null);
+      success('تم حفظ تعديل الصنف مع الحفاظ على معرفه وربطه الحالي.');
+      if (productEditDraft.productType === 'medicine' && !productEditDraft.activeIngredientId) {
+        info('لم تُختر مادة فعالة؛ حُفظ الصنف كغير دوائي.');
+      }
+    } catch (err: any) {
+      error('تعذر حفظ تعديل الصنف: ' + (err?.message || 'تحقق من الاتصال والصلاحيات ثم أعد المحاولة.'));
+    } finally {
+      setIsSavingProductEdit(false);
+    }
   };
 
   // فتح نافذة إنشاء صنف جديد من جدول المطابقة
@@ -550,23 +857,6 @@ export const ImportPrices: React.FC = () => {
     }
   };
 
-  // قبول كل المطابقات التلقائية
-  const handleAcceptAllAutoMatches = () => {
-    setMatchRows((prev) =>
-      prev.map((r) => {
-        if (r.status === 'fuzzy' && r.suggestions.length > 0) {
-          return {
-            ...r,
-            selectedProductId: r.suggestions[0].product.id,
-            status: 'exact',
-          };
-        }
-        return r;
-      })
-    );
-    success('تم قبول أفضل الاقتراحات لجميع الصفوف المعلقة.');
-  };
-
   // اعتماد الاستيراد وحفظ الأسعار
   const handleCommitImport = async () => {
     if (!selectedSupplierId || !user) return;
@@ -632,6 +922,7 @@ export const ImportPrices: React.FC = () => {
           metadata: { supplierId: selectedSupplierId, fileName: currentFileName, error: err?.message || String(err) },
         });
       } catch { /* preserve the original import error */ }
+      await loadBaseData();
       error('فشل اعتماد الاستيراد: ' + err.message);
     } finally {
       setLoading(false);
@@ -645,6 +936,9 @@ export const ImportPrices: React.FC = () => {
     try {
       const ok = await rollbackImportBatch(targetRollbackBatchId);
       if (ok) {
+        setCommitSummary((current) => current?.batchId === targetRollbackBatchId
+          ? { ...current, rolledBack: true }
+          : current);
         success('تم التراجع عن دفعة الاستيراد واستعادة الأسعار السابقة بنجاح.');
         setIsRollbackOpen(false);
         await loadBaseData();
@@ -725,6 +1019,7 @@ export const ImportPrices: React.FC = () => {
                   </option>
                 ))}
               </select>}
+              {loadingSupplierAliases && selectedSupplierId && <p className="mt-1.5 text-[11px] text-slate-500">جاري تحميل أسماء هذا المورد البديلة...</p>}
             </div>
 
             {/* طريقة الإدخال */}
@@ -793,6 +1088,14 @@ export const ImportPrices: React.FC = () => {
               <div className="divide-y divide-slate-100">
                 {recentBatches.map((batch) => {
                   const sup = suppliers.find((s) => s.id === batch.supplierId);
+                  const progressAt = Date.parse(batch.progressUpdatedAt || batch.createdAt);
+                  const progressIsFresh = !Number.isFinite(progressAt) || Date.now() - progressAt < 5 * 60 * 1000;
+                  const isImportActive = batch.importStatus === 'in_progress' && progressIsFresh;
+                  const isRollbackActive = batch.importStatus === 'rolling_back' && progressIsFresh;
+                  const isActive = isImportActive || isRollbackActive;
+                  const isRolledBack = batch.importStatus === 'rolled_back';
+                  const isIncomplete = batch.importStatus === 'interrupted' ||
+                    ((batch.importStatus === 'in_progress' || batch.importStatus === 'rolling_back') && !isActive);
                   return (
                     <div
                       key={batch.id}
@@ -803,7 +1106,10 @@ export const ImportPrices: React.FC = () => {
                         <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
                           <span>الملف: {batch.fileName}</span>
                           <span>•</span>
-                          <span>{batch.rowsCount} صنفاً</span>
+                          <span>{batch.writtenRowsCount ?? batch.rowsCount} / {batch.rowsCount} صنفاً</span>
+                          <span className={`rounded-full px-2 py-0.5 font-bold ${isActive ? 'bg-sky-50 text-sky-700' : isIncomplete ? 'bg-amber-50 text-amber-700' : isRolledBack ? 'bg-slate-100 text-slate-600' : 'bg-emerald-50 text-emerald-700'}`}>
+                            {isImportActive ? 'قيد الاستيراد' : isRollbackActive ? 'قيد التراجع' : isIncomplete ? 'غير مكتملة — يمكن استكمال التراجع' : isRolledBack ? 'تم التراجع' : 'مكتملة'}
+                          </span>
                           <span>•</span>
                           <span>بواسطة: {batch.createdBy}</span>
                           <span>•</span>
@@ -811,12 +1117,13 @@ export const ImportPrices: React.FC = () => {
                         </div>
                       </div>
 
-                      {!isRepresentative && <button
+                      {!isRepresentative && !isRolledBack && <button
+                        disabled={isActive}
                         onClick={() => {
                           setTargetRollbackBatchId(batch.id);
                           setIsRollbackOpen(true);
                         }}
-                        className="px-3 py-1.5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold transition flex items-center gap-1.5 w-fit"
+                        className="px-3 py-1.5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold transition flex items-center gap-1.5 w-fit disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                         <span>التراجع عن هذه الدفعة</span>
@@ -911,7 +1218,7 @@ export const ImportPrices: React.FC = () => {
                 </div>
 
                 {/* أعمدة اختيارية لتوحيد أسماء الموردين */}
-                {[['التركيز (اختياري)', strengthCol, setStrengthCol], ['الشكل (اختياري)', formCol, setFormCol], ['العبوة (اختياري)', packCol, setPackCol], ['الشركة (اختياري)', manufacturerCol, setManufacturerCol]].map(([label, value, setter]: any) => (
+                {[['التركيز (اختياري)', strengthCol, setStrengthCol], ['الشكل (اختياري)', formCol, setFormCol], ['العبوة (اختياري)', packCol, setPackCol], ['الشركة (اختياري)', manufacturerCol, setManufacturerCol], ['الباركود (اختياري)', barcodeCol, setBarcodeCol]].map(([label, value, setter]: any) => (
                   <div key={label as string}>
                     <label className="block text-xs font-bold text-slate-700 mb-1">{label as string}</label>
                     <select value={value as number} onChange={(e) => setter(parseInt(e.target.value))} className="w-full px-2.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold bg-white">
@@ -1094,9 +1401,10 @@ export const ImportPrices: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleProceedToMatching}
-                  className="px-6 py-2.5 rounded-xl bg-[#0f9d7a] hover:bg-[#0b7a5e] text-white text-xs font-bold transition shadow-xs flex items-center gap-2 active:scale-95"
+                  disabled={loadingSupplierAliases}
+                  className="px-6 py-2.5 rounded-xl bg-[#0f9d7a] hover:bg-[#0b7a5e] text-white text-xs font-bold transition shadow-xs flex items-center gap-2 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <span>متابعة لمطابقة الأصناف</span>
+                  <span>{loadingSupplierAliases ? 'جاري تحميل الأسماء البديلة...' : 'متابعة لمطابقة الأصناف'}</span>
                   <ArrowLeft className="w-4 h-4" />
                 </button>
               </div>
@@ -1130,15 +1438,6 @@ export const ImportPrices: React.FC = () => {
                   <Plus className="w-4 h-4" />
                   <span>{bulkCreateProgress?.status === 'running' ? `جاري الإضافة (${bulkCreateProgress.completed}/${bulkCreateProgress.total})` : `إضافة كل الأصناف غير المربوطة (${matchStats.none})`}</span>
                 </button>}
-                <button
-                  type="button"
-                  onClick={handleAcceptAllAutoMatches}
-                  className="px-3.5 py-2 rounded-xl bg-emerald-50 text-[#0f9d7a] hover:bg-emerald-100 border border-emerald-200 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>قبول كل الاقتراحات التلقائية</span>
-                </button>
-
                 <button
                   type="button"
                   onClick={handleCommitImport}
@@ -1321,77 +1620,45 @@ export const ImportPrices: React.FC = () => {
                           )}
                         </td>
 
-                        {/* 4) الصنف المرتبط أو الاقتراحات */}
-                        <td className="py-3 px-4">
-                          {row.status === 'fuzzy' && row.suggestions.length > 0 ? (
-                            <div className="space-y-1">
-                              <select
-                                value={row.selectedProductId || ''}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setMatchRows((prev) =>
-                                    prev.map((r) =>
-                                      r.rowId === row.rowId
-                                        ? {
-                                            ...r,
-                                            selectedProductId: val || null,
-                                            status: val ? 'exact' : 'none',
-                                          }
-                                        : r
-                                    )
-                                  );
-                                }}
-                                className="w-full px-2.5 py-1.5 rounded-xl border border-amber-300 bg-amber-50/50 text-xs font-bold text-slate-800 focus:outline-hidden"
-                              >
-                                <option value="">اختر من أقرب الاقتراحات ({row.suggestions.length})...</option>
-                                {row.suggestions.map((sug) => (
-                                  <option key={sug.product.id} value={sug.product.id}>
-                                    {sug.product.tradeName} ({sug.product.manufacturer})
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          ) : matchedProd ? (
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-[#0f9d7a]">
-                                {matchedProd.tradeName}
-                              </span>
-                              <span className="text-[10px] text-slate-400">
-                                {matchedProd.manufacturer}
-                              </span>
-                            </div>
-                          ) : (
-                            <select
+                        {/* 4) الصنف المرتبط أو الاختيار اليدوي */}
+                        <td className="py-3 px-4 min-w-[240px]">
+                          <div className="space-y-2">
+                            <SearchSelect
+                              placeholder="ابحث واربط بصنف موجود في النظام..."
+                              options={productOptions}
                               value={row.selectedProductId || ''}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setMatchRows((prev) =>
-                                  prev.map((r) =>
-                                    r.rowId === row.rowId
-                                      ? {
-                                          ...r,
-                                          selectedProductId: val || null,
-                                          status: val ? 'exact' : 'none',
-                                        }
-                                      : r
-                                  )
-                                );
-                              }}
-                              className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs text-slate-700 bg-white"
-                            >
-                              <option value="">ربط يدوي بصنف موجود في النظام...</option>
-                              {products.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.tradeName}
-                                </option>
-                              ))}
-                            </select>
-                          )}
+                              onChange={(value) => { void handleManualProductSelect(row, value); }}
+                            />
+                            {row.status === 'fuzzy' && row.suggestions.length > 0 && (
+                              <p className="text-[10px] text-amber-700">اقتراحات تقريبية فقط؛ اختر يدوياً ولا يعتمد أي اقتراح تلقائياً.</p>
+                            )}
+                            {matchedProd && (
+                              <div className="flex items-start justify-between gap-2 rounded-lg bg-emerald-50/60 px-2 py-1.5">
+                                <div className="min-w-0">
+                                  <span className="font-bold text-[#0f9d7a] block truncate">{matchedProd.tradeName}</span>
+                                  <span className="text-[10px] text-slate-500 block">{[matchedProd.strength, matchedProd.form, matchedProd.packSize, matchedProd.manufacturer].filter(Boolean).join(' • ') || 'بيانات الهوية غير مكتملة'}</span>
+                                </div>
+                                {!isRepresentative && <button type="button" onClick={() => handleOpenProductEditor(matchedProd)} className="shrink-0 p-1 rounded-lg text-slate-500 hover:text-[#0f9d7a] hover:bg-white" title="تعديل الصنف المحدد">
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>}
+                              </div>
+                            )}
+                          </div>
                         </td>
 
                         {/* 5) الإجراءات (إنشاء صنف جديد، تجاهل) */}
                         <td className="py-3 px-4 text-center">
                           <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRowEditor(row)}
+                              className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg font-bold text-[11px] transition flex items-center gap-1"
+                              title="تحرير بيانات صف السعر قبل الاعتماد"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              <span>تحرير الصف</span>
+                            </button>
+
                             {!isRepresentative && row.status === 'none' && (
                               <button
                                 type="button"
@@ -1521,7 +1788,11 @@ export const ImportPrices: React.FC = () => {
               استيراد دفعة أسعار أخرى
             </button>
 
-            {!commitSummary.approvalPending && <button
+            {commitSummary.rolledBack ? (
+              <span className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold">
+                تم التراجع عن هذا الاستيراد
+              </span>
+            ) : !commitSummary.approvalPending && <button
               type="button"
               onClick={() => {
                 setTargetRollbackBatchId(commitSummary.batchId);
@@ -1642,6 +1913,104 @@ export const ImportPrices: React.FC = () => {
             </div>
           )}
         </form>
+      </Modal>
+
+      {/* نافذة تحرير صف السعر قبل الاعتماد */}
+      <Modal
+        isOpen={isRowEditModalOpen}
+        onClose={() => { setIsRowEditModalOpen(false); setEditingRowId(null); setRowEditDraft(null); }}
+        title="تحرير بيانات صف السعر"
+        maxWidth="lg"
+        footer={
+          <>
+            <button type="button" onClick={() => { setIsRowEditModalOpen(false); setEditingRowId(null); setRowEditDraft(null); }} className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl">إلغاء</button>
+            <button type="button" onClick={() => (document.getElementById('edit-price-row-form') as HTMLFormElement | null)?.requestSubmit()} className="px-5 py-2 text-xs font-bold text-white bg-[#0f9d7a] hover:bg-[#0b7a5e] rounded-xl shadow-xs">حفظ وإعادة المطابقة</button>
+          </>
+        }
+      >
+        {rowEditDraft && (
+          <form id="edit-price-row-form" onSubmit={handleSaveRowEdit} className="space-y-4">
+            <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-[11px] text-sky-800">يمكن تعديل بيانات هذا الصف فقط قبل الاعتماد؛ لا تتغير بقية البيانات الخام في الملف.</div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">الاسم التجاري الأصلي</label>
+              <input type="text" value={rowEditDraft.originalName} onChange={(e) => setRowEditDraft({ ...rowEditDraft, originalName: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {([
+                ['التركيز', 'strength'], ['الشكل', 'form'], ['العبوة', 'pack'], ['الشركة المصنعة', 'manufacturer'], ['الباركود', 'barcode'], ['تاريخ الانتهاء', 'expiry'], ['البونص', 'bonus'],
+              ] as const).map(([label, key]) => (
+                <div key={key}>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">{label}</label>
+                  <input type="text" value={rowEditDraft[key]} onChange={(e) => setRowEditDraft({ ...rowEditDraft, [key]: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]" />
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">السعر</label>
+                <input type="text" inputMode="decimal" value={rowEditDraft.price} onChange={(e) => setRowEditDraft({ ...rowEditDraft, price: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold focus:outline-hidden focus:border-[#0f9d7a]" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">السعر العام</label>
+                <input type="text" inputMode="decimal" value={rowEditDraft.publicPrice} onChange={(e) => setRowEditDraft({ ...rowEditDraft, publicPrice: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold focus:outline-hidden focus:border-[#0f9d7a]" />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
+              <input type="checkbox" checked={rowEditDraft.available} onChange={(e) => setRowEditDraft({ ...rowEditDraft, available: e.target.checked })} className="accent-[#0f9d7a]" />
+              متوفر لدى المورد
+            </label>
+          </form>
+        )}
+      </Modal>
+
+      {/* نافذة تحرير الصنف المرتبط مع الحفاظ على المعرّف */}
+      <Modal
+        isOpen={isProductEditModalOpen}
+        onClose={() => { if (!isSavingProductEdit) { setIsProductEditModalOpen(false); setProductEditDraft(null); } }}
+        title="تحرير الصنف المرتبط"
+        maxWidth="lg"
+        footer={
+          <>
+            <button type="button" disabled={isSavingProductEdit} onClick={() => { setIsProductEditModalOpen(false); setProductEditDraft(null); }} className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl disabled:opacity-50">إلغاء</button>
+            <button type="button" disabled={isSavingProductEdit} onClick={() => (document.getElementById('edit-linked-product-form') as HTMLFormElement | null)?.requestSubmit()} className="px-5 py-2 text-xs font-bold text-white bg-[#0f9d7a] hover:bg-[#0b7a5e] rounded-xl shadow-xs disabled:opacity-50">{isSavingProductEdit ? 'جاري الحفظ...' : 'حفظ تعديل الصنف'}</button>
+          </>
+        }
+      >
+        {productEditDraft && (
+          <form id="edit-linked-product-form" onSubmit={handleSaveProductEdit} className="space-y-4">
+            <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">سيُحفظ التعديل على الصنف نفسه (المعرّف: {productEditDraft.id}) ولن يتغير ربط الصفوف الحالي.</div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">الاسم التجاري *</label>
+              <input required type="text" value={productEditDraft.tradeName} onChange={(e) => setProductEditDraft({ ...productEditDraft, tradeName: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">نوع المنتج</label>
+              <select value={productEditDraft.productType} onChange={(e) => setProductEditDraft({ ...productEditDraft, productType: e.target.value as NewProductKind, activeIngredientId: e.target.value === 'medicine' ? productEditDraft.activeIngredientId : '' })} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-[#0f9d7a]">
+                <option value="medicine">دواء</option>
+                <option value="medical_supply">مستلزم طبي</option>
+                <option value="other">غير دوائي</option>
+              </select>
+            </div>
+            <SearchSelect
+              label="المادة الفعالة (اختياري)"
+              placeholder="ابحث في قائمة المواد الفعالة..."
+              options={ingredients.map((ingredient) => ({ id: ingredient.id, label: ingredient.name, subLabel: ingredient.category }))}
+              value={productEditDraft.activeIngredientId}
+              onChange={(value) => setProductEditDraft({ ...productEditDraft, activeIngredientId: value })}
+            />
+            <p className="-mt-2 text-[11px] text-slate-500">ترك المادة الفعالة فارغاً يحفظ الصنف غير دوائي، أو كمستلزم حسب النوع المختار.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {([
+                ['التركيز', 'strength'], ['الشكل', 'form'], ['العبوة', 'packSize'], ['الشركة المصنعة', 'manufacturer'], ['التصنيف', 'category'], ['الباركود', 'barcode'],
+              ] as const).map(([label, key]) => (
+                <div key={key}>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">{label}</label>
+                  <input type="text" value={productEditDraft[key]} onChange={(e) => setProductEditDraft({ ...productEditDraft, [key]: e.target.value })} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-[#0f9d7a]" />
+                </div>
+              ))}
+            </div>
+          </form>
+        )}
       </Modal>
 
       {/* تأكيد التراجع عن دفعة استيراد */}
