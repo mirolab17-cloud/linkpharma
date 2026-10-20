@@ -296,6 +296,16 @@ jobs:
           cp -r dist/. ../dist/v35/
           cd ..
 
+          # Build v37 separately from v35 and publish under /v37/
+          cd v37
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v37
+          cp -r dist/. ../dist/v37/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
