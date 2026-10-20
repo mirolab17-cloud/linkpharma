@@ -277,9 +277,10 @@ jobs:
           cp -r dist/. ../dist/v32/
           cd ..
 
-          # Build v33 (independent copy of v32; future improvements isolated here) under /v33/
+          # Build v33 (independent admin improvements) under /v33/
           cd v33
           npm install --legacy-peer-deps --no-audit --no-fund
+          npm run test:quality
           npm run build
           mkdir -p ../dist/v33
           cp -r dist/. ../dist/v33/

@@ -32,6 +32,7 @@ const PendingApproval = lazy(() => importWithRecovery(() => import('./pages/auth
 
 // Admin Pages (Lazy loaded to reduce initial bundle size)
 const AdminDashboard = lazy(() => importWithRecovery(() => import('./pages/admin/Dashboard').then(m => ({ default: m.AdminDashboard }))));
+const AdminInsights = lazy(() => importWithRecovery(() => import('./pages/admin/AdminInsights').then(m => ({ default: m.AdminInsights }))));
 const ActiveIngredients = lazy(() => importWithRecovery(() => import('./pages/admin/ActiveIngredients').then(m => ({ default: m.ActiveIngredients }))));
 const Products = lazy(() => importWithRecovery(() => import('./pages/admin/Products').then(m => ({ default: m.Products }))));
 const Suppliers = lazy(() => importWithRecovery(() => import('./pages/admin/Suppliers').then(m => ({ default: m.Suppliers }))));
@@ -331,6 +332,7 @@ export default function App() {
           }
         >
           <Route index element={<AdminDashboard />} />
+          <Route path="insights" element={<AdminInsights />} />
           <Route path="ingredients" element={<ActiveIngredients />} />
           <Route path="products" element={<Products />} />
           <Route path="suppliers" element={<Suppliers />} />

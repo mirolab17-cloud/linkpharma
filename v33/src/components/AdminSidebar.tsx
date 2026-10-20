@@ -3,6 +3,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
+  BarChart3,
   FlaskConical,
   Pill,
   Truck,
@@ -34,6 +35,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 }) => {
   const menuItems = [
     { to: '/admin', label: 'الرئيسية', icon: LayoutDashboard, end: true },
+    { to: '/admin/insights', label: 'التقارير وجودة البيانات', icon: BarChart3, highlight: true },
     { to: '/admin/ingredients', label: 'المواد الفعالة', icon: FlaskConical },
     { to: '/admin/products', label: 'الأصناف التجارية', icon: Pill },
     { to: '/admin/suppliers', label: 'الموردون والمستودعات', icon: Truck },
