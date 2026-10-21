@@ -351,6 +351,15 @@ jobs:
           mkdir -p ../dist/v42
           cp -r dist/. ../dist/v42/
           cd ..
+          # Build v43: auth trial fix, hidden-price-safe snapshots and security updates
+          cd v43
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v43
+          cp -r dist/. ../dist/v43/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

@@ -17,9 +17,16 @@ const MAX_REQUESTS_PER_WINDOW = 20;
 
 // Simple in-memory rate limiter per UID
 const rateLimitMap = new Map();
+let lastRateLimitCleanup = 0;
 
 function checkRateLimit(uid) {
   const now = Date.now();
+  if (now - lastRateLimitCleanup >= 5 * 60 * 1000) {
+    lastRateLimitCleanup = now;
+    for (const [key, val] of rateLimitMap.entries()) {
+      if (now > val.resetAt) rateLimitMap.delete(key);
+    }
+  }
   const userRate = rateLimitMap.get(uid);
 
   if (!userRate || now > userRate.resetAt) {
@@ -34,16 +41,6 @@ function checkRateLimit(uid) {
   userRate.count++;
   return true;
 }
-
-// Clean up stale rate limit entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of rateLimitMap.entries()) {
-    if (now > val.resetAt) {
-      rateLimitMap.delete(key);
-    }
-  }
-}, 5 * 60 * 1000);
 
 function getCorsHeaders(request, env) {
   const origin = request.headers.get('Origin') || '';

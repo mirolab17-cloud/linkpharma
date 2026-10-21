@@ -4,6 +4,8 @@ compatibility_date = "2024-01-01"
 
 [vars]
 FIREBASE_PROJECT_ID = "refined-might-8mn89"
+# Optional exact origin for a custom production domain.
+ALLOWED_ORIGIN = "https://mirolab17-cloud.github.io"
 
 # The following secrets must be set using `wrangler secret put <KEY>`:
 # ONESIGNAL_APP_ID
