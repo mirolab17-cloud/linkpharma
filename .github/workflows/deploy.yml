@@ -325,6 +325,23 @@ jobs:
           mkdir -p ../dist/v39
           cp -r dist/. ../dist/v39/
           cd ..
+          # Build v40: auth race fix, city-only pharmacy addresses, cloud-persisted plans
+          cd v40
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run build
+          mkdir -p ../dist/v40
+          cp -r dist/. ../dist/v40/
+          cd ..
+          # Build v41: security-hardened release
+          cd v41
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v41
+          cp -r dist/. ../dist/v41/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
