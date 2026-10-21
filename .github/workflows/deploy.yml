@@ -342,6 +342,15 @@ jobs:
           mkdir -p ../dist/v41
           cp -r dist/. ../dist/v41/
           cd ..
+          # Build v42: Firebase catalog snapshots and local cache, no Google Sheets
+          cd v42
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v42
+          cp -r dist/. ../dist/v42/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
