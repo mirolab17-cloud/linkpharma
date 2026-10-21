@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useCartStore } from '../../store/useCartStore';
 import { useToastStore } from '../../store/useToastStore';
-import { createOrder, updateOrderItems, getSuppliers, getPrices, getRecurringOrderTemplates, saveRecurringOrderTemplates } from '../../services/dataStorage';
+import { createOrder, updateOrderItems, getSuppliers, getPrices, getVerifiedOrderItems, getRecurringOrderTemplates, saveRecurringOrderTemplates } from '../../services/dataStorage';
 import { buildOrderWhatsAppMessage, openWhatsAppOrder } from '../../services/whatsapp';
 import { formatCurrency, calculateEffectiveUnitPrice } from '../../utils/formatPrice';
 import { formatGregorianDate } from '../../utils/formatDate';
@@ -278,18 +278,19 @@ export const PharmacyCart: React.FC = () => {
     triggerHaptic([10, 35, 10]);
 
     try {
+      // السعر المعتمد للرسالة والطلبية يُقرأ من Firebase لحظة الضغط، وليس من قيمة السلة.
+      const requestedItems = group.items.map((item) => ({ productId: item.productId, name: item.tradeName, qty: item.qty, price: item.price, bonus: item.bonus }));
+      const verifiedItems = await getVerifiedOrderItems(supplierId, requestedItems);
+      const verifiedByProduct = new Map(verifiedItems.map((item) => [item.productId, item]));
+      const verifiedCartItems = group.items.map((item) => ({ ...item, price: verifiedByProduct.get(item.productId)!.price, bonus: verifiedByProduct.get(item.productId)!.bonus }));
+      const verifiedSubtotal = verifiedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+
       // 1) تحديث الطلبية المرسلة قبل تأكيد المستودع، أو إنشاء طلبية جديدة.
       const editKey = `pharma_edit_order_${user.uid}`;
       const editingOrderId = localStorage.getItem(editKey);
       const wasEditing = Boolean(editingOrderId);
       if (editingOrderId) {
-        await updateOrderItems(editingOrderId, user.uid, group.items.map((item) => ({
-          productId: item.productId,
-          name: item.tradeName,
-          qty: item.qty,
-          price: item.price,
-          bonus: item.bonus,
-        })), group.subtotal);
+        await updateOrderItems(editingOrderId, user.uid, verifiedItems, verifiedSubtotal);
         localStorage.removeItem(editKey);
       } else {
         await createOrder({
@@ -300,14 +301,8 @@ export const PharmacyCart: React.FC = () => {
           pharmacyPhone: orderPharmacy.phone,
           supplierId: group.supplierId,
           supplierName: group.supplierName,
-          items: group.items.map((item) => ({
-            productId: item.productId,
-            name: item.tradeName,
-            qty: item.qty,
-            price: item.price,
-            bonus: item.bonus,
-          })),
-          total: group.subtotal,
+          items: verifiedItems,
+          total: verifiedSubtotal,
           status: 'sent',
         });
       }
@@ -315,8 +310,8 @@ export const PharmacyCart: React.FC = () => {
       // 2) إنشاء نص رسالة واتساب وفتح المحادثة
       const message = buildOrderWhatsAppMessage({
         pharmacy: orderPharmacy,
-        items: group.items,
-        subtotal: group.subtotal,
+        items: verifiedCartItems,
+        subtotal: verifiedSubtotal,
       });
 
       openWhatsAppOrder(group.supplierWhatsapp, message);

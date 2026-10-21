@@ -614,6 +614,30 @@ export async function deleteSupplier(id: string): Promise<void> {
   updateLiveCollection<Supplier>('suppliers', STORAGE_KEYS.suppliers, null, id);
 }
 
+/** جلب أسعار الطلبية مباشرة من Firebase لحظة الإرسال، بلا الاعتماد على كاش السلة. */
+export async function getVerifiedOrderItems(supplierId: string, items: OrderItem[]): Promise<OrderItem[]> {
+  const productIds = Array.from(new Set(items.map((item) => item.productId).filter(Boolean)));
+  if (!supplierId || !productIds.length) throw new Error('لا توجد أصناف صالحة للتحقق من أسعارها.');
+  let records: PriceRecord[];
+  if (isFirebaseConfigured) {
+    try {
+      const snapshot = await getDocs(query(collection(db, 'prices'), where('supplierId', '==', supplierId)));
+      records = snapshot.docs.map((row) => ({ id: row.id, ...row.data() } as PriceRecord));
+    } catch (error) {
+      console.error('Fresh Firebase price verification failed:', error);
+      throw new Error('تعذر التحقق من الأسعار الحالية من Firebase؛ لم يتم إرسال الطلبية.');
+    }
+  } else {
+    records = getLocal<PriceRecord>(STORAGE_KEYS.prices).filter((row) => row.supplierId === supplierId);
+  }
+  const byProduct = new Map(records.filter((row) => productIds.includes(row.productId) && row.available !== false && row.hidden !== true).map((row) => [row.productId, row]));
+  if (productIds.some((productId) => !byProduct.has(productId))) throw new Error('تغيرت أسعار بعض الأصناف أو لم تعد متوفرة؛ حدّث السلة ثم أعد المحاولة.');
+  return items.map((item) => {
+    const current = byProduct.get(item.productId)!;
+    return { ...item, price: current.price, ...(current.bonus ? { bonus: current.bonus } : {}) };
+  });
+}
+
 // ======================= Prices & Import Batches =======================
 export async function getPrices(allowedSupplierIds?: string[], includeHidden = false): Promise<PriceRecord[]> {
   const actor = useAuthStore.getState().user;
@@ -1419,11 +1443,12 @@ export async function updateOrderItems(orderId: string, pharmacyUid: string, ite
   currentOrder ||= getLocal<Order>(STORAGE_KEYS.orders).find((order) => order.id === orderId);
   if (!currentOrder || currentOrder.pharmacyId !== pharmacyUid) throw new Error('لم يتم العثور على الطلبية التابعة لحسابك.');
   if (currentOrder.status !== 'sent') throw new Error('لا يمكن تعديل الطلبية بعد تأكيد استلامها من المستودع.');
-  if (!items.length || items.some((item) => !item.productId || !Number.isFinite(item.price) || item.price < 0 || !Number.isInteger(item.qty) || item.qty < 1)) {
+  if (!items.length || items.some((item) => !item.productId || !Number.isInteger(item.qty) || item.qty < 1)) {
     throw new Error('تحتوي الطلبية على أصناف أو كميات غير صالحة.');
   }
+  const verifiedItems = await getVerifiedOrderItems(currentOrder.supplierId, items);
   const updatedAt = new Date().toISOString();
-  const normalizedTotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const normalizedTotal = verifiedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
   if (Math.abs(normalizedTotal - total) > 0.01) throw new Error('إجمالي الطلبية لا يطابق الأصناف.');
   const editHistory = [...(currentOrder.editHistory || []), {
     changedAt: updatedAt,
@@ -1431,13 +1456,13 @@ export async function updateOrderItems(orderId: string, pharmacyUid: string, ite
     previousTotal: currentOrder.total,
     total: normalizedTotal,
     previousItems: currentOrder.items,
-    items,
+    items: verifiedItems,
   }];
   if (isFirebaseConfigured) {
-    await updateDoc(doc(db, 'orders', orderId), { items, total: normalizedTotal, updatedAt, editHistory });
+    await updateDoc(doc(db, 'orders', orderId), { items: verifiedItems, total: normalizedTotal, updatedAt, editHistory });
   }
   const localOrders = getLocal<Order>(STORAGE_KEYS.orders);
-  setLocal(STORAGE_KEYS.orders, localOrders.map((order) => order.id === orderId ? { ...order, items, total: normalizedTotal, updatedAt, editHistory } : order));
+  setLocal(STORAGE_KEYS.orders, localOrders.map((order) => order.id === orderId ? { ...order, items: verifiedItems, total: normalizedTotal, updatedAt, editHistory } : order));
   await recordActivity({
     type: 'order_edited',
     actorId: pharmacyUid,
@@ -1467,8 +1492,12 @@ export async function getOrders(): Promise<Order[]> {
 export async function createOrder(orderData: Omit<Order, 'id' | 'createdAt'>): Promise<Order> {
   const id = 'ord_' + Date.now();
   const createdAt = new Date().toISOString();
+  const verifiedItems = await getVerifiedOrderItems(orderData.supplierId, orderData.items);
+  const verifiedTotal = verifiedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
   const newOrder: Order = {
     ...orderData,
+    items: verifiedItems,
+    total: verifiedTotal,
     id,
     createdAt,
     statusHistory: [{ status: orderData.status, changedAt: createdAt, changedBy: orderData.pharmacyId }],
