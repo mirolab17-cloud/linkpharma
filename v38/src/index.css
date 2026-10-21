@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+:root {
+  color-scheme: light;
+  --color-primary: #0f9d7a;
+  --color-primary-dark: #0b7a5e;
+  --color-primary-light: #e6f6f2;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* YouTube-style Shimmer Animation */
+@keyframes youtube-shimmer {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.shimmer-wave {
+  position: relative;
+  overflow: hidden;
+  background-color: #e2e8f0;
+}
+
+.shimmer-wave::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.45) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: youtube-shimmer 1.6s infinite ease-in-out;
+}
+
+/* LinkPharma brand mark + animated loader (same mark as the landing page) */
+.lp-mark {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: #fff;
+  background: linear-gradient(145deg, #10b98a, #00695c);
+  box-shadow: 0 7px 18px rgba(11, 155, 123, 0.28);
+}
+.lp-link { transform-box: fill-box; transform-origin: center; }
+
+@keyframes lp-link-a {
+  0%, 100% { transform: translate(0, 0); }
+  35%, 55% { transform: translate(-3px, 3px); }
+}
+@keyframes lp-link-b {
+  0%, 100% { transform: translate(0, 0); }
+  35%, 55% { transform: translate(3px, -3px); }
+}
+@keyframes lp-link-bar {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  35%, 55% { opacity: 0.25; transform: scale(0.55); }
+}
+@keyframes lp-mark-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 7px 18px rgba(11, 155, 123, 0.28); }
+  50% { transform: scale(1.06); box-shadow: 0 12px 28px rgba(11, 155, 123, 0.42); }
+}
+@keyframes lp-halo {
+  0% { transform: scale(1); opacity: 0.45; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+
+.lp-mark-animated { animation: lp-mark-pulse 1.8s ease-in-out infinite; }
+.lp-mark-animated .lp-link-a { animation: lp-link-a 1.8s cubic-bezier(.65, 0, .35, 1) infinite; }
+.lp-mark-animated .lp-link-b { animation: lp-link-b 1.8s cubic-bezier(.65, 0, .35, 1) infinite; }
+.lp-mark-animated .lp-link-bar { animation: lp-link-bar 1.8s cubic-bezier(.65, 0, .35, 1) infinite; }
+.lp-halo {
+  background: rgba(16, 185, 138, 0.35);
+  animation: lp-halo 1.8s ease-out infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-mark-animated,
+  .lp-mark-animated .lp-link,
+  .lp-halo { animation: none; }
+  .lp-halo { display: none; }
+}
+
+
+/* يمنع تحديث المتصفح الأصلي عند السحب؛ نستخدم السحب للتحديث الخاص بالتطبيق */
+body {
+  background: #f8fafc;
+  color: #0f172a;
+  overscroll-behavior-y: auto;
+  touch-action: pan-y;
+}
+
+
+/* Mobile-first stability: no accidental horizontal scroll or content under fixed UI. */
+html, body, #root { min-height: 100%; max-width: 100%; overflow-x: hidden; }
+body { padding-top: env(safe-area-inset-top); }
+.app-header { padding-top: env(safe-area-inset-top); }
+.app-bottom-nav { padding-bottom: env(safe-area-inset-bottom); min-height: calc(4rem + env(safe-area-inset-bottom)); }
+.app-pharmacy-shell { padding-bottom: calc(4rem + env(safe-area-inset-bottom)); }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+@media (max-width: 640px) {
+  input, select, textarea, button { min-height: 44px; }
+  .app-header button { min-height: 44px; }
+  h1 { line-height: 1.25; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+
+/* LinkPharma v38 — responsive 3D login hero */
+.lp-login-scene-wrap { min-width: 0; position: relative; }
+.lp-login-scene { height: 390px; position: relative; isolation: isolate; overflow: hidden; border: 1px solid rgba(16,185,129,.2); border-radius: 30px; background: radial-gradient(ellipse at 50% 48%, #d7fff2 0%, #effcf8 34%, #f8fcff 72%); box-shadow: inset 0 1px 0 #fff, 0 24px 60px rgba(15,118,92,.12); perspective: 900px; }
+.lp-scene-grid { position:absolute; inset:0; opacity:.32; background-image:linear-gradient(rgba(16,145,112,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(16,145,112,.12) 1px,transparent 1px); background-size:32px 32px; mask-image:radial-gradient(ellipse at center,#000,transparent 78%); transform:perspective(500px) rotateX(58deg) scale(1.4) translateY(20%); transform-origin:bottom; }
+.lp-scene-orb { position:absolute; border-radius:50%; filter:blur(1px); pointer-events:none; }
+.lp-scene-orb-one { width:190px;height:190px;top:-80px;right:-35px;background:radial-gradient(circle at 35% 35%,rgba(52,211,153,.26),rgba(52,211,153,0) 70%);animation:lp-orb-drift 8s ease-in-out infinite alternate; }
+.lp-scene-orb-two { width:220px;height:220px;bottom:-120px;left:-55px;background:radial-gradient(circle,rgba(20,184,166,.2),transparent 70%);animation:lp-orb-drift 9s ease-in-out infinite alternate-reverse; }
+.lp-capsule-stage { position:absolute; width:210px;height:260px;left:50%;top:47%;transform:translate(-50%,-50%);display:grid;place-items:center; }
+.lp-capsule-halo { position:absolute;width:150px;height:150px;border-radius:50%;background:#52e5bf;filter:blur(38px);opacity:.5;animation:lp-halo-breathe 4s ease-in-out infinite; }
+.lp-capsule { position:relative;width:76px;height:154px;border-radius:50px;overflow:hidden;transform:rotate(36deg) rotateY(-18deg);box-shadow:inset -9px -5px 14px rgba(0,57,45,.22),inset 7px 5px 12px rgba(255,255,255,.85),0 24px 30px rgba(0,105,82,.27);animation:lp-capsule-float 5s ease-in-out infinite;z-index:2; }
+.lp-capsule-top,.lp-capsule-bottom {position:absolute;left:0;width:100%;height:50%;}
+.lp-capsule-top {top:0;background:linear-gradient(105deg,#004f42 0%,#008d70 28%,#20d7a4 58%,#00745d 100%);border-bottom:2px solid rgba(255,255,255,.8);}
+.lp-capsule-bottom {bottom:0;background:linear-gradient(105deg,#faffff 0%,#d5f8ef 42%,#fff 65%,#a8e9d8 100%);}
+.lp-capsule-glint {position:absolute;top:10%;left:17%;width:12px;height:65%;border-radius:20px;background:linear-gradient(transparent,rgba(255,255,255,.8),transparent);filter:blur(2px);}
+.lp-capsule-ring {position:absolute;width:190px;height:62px;border:1.5px solid rgba(16,185,129,.6);border-radius:50%;transform:rotate(-24deg);box-shadow:0 0 18px rgba(16,185,129,.16);}
+.lp-capsule-ring-one {animation:lp-ring-turn 10s linear infinite;}
+.lp-capsule-ring-two {width:166px;height:80px;border-color:rgba(45,212,191,.38);transform:rotate(52deg);animation:lp-ring-turn 13s linear infinite reverse;}
+.lp-capsule-base {position:absolute;bottom:7px;width:140px;height:30px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(180deg,#d7fff5,#70d9bd 60%,#087c65);border:1px solid rgba(255,255,255,.9);box-shadow:0 9px 0 #087c65,0 17px 25px rgba(0,105,82,.2);z-index:3;}
+.lp-float-card {position:absolute;z-index:4;display:grid;grid-template-columns:24px 1fr;align-items:center;column-gap:8px;min-width:142px;padding:12px;border:1px solid rgba(255,255,255,.95);border-radius:16px;background:rgba(255,255,255,.72);backdrop-filter:blur(12px);box-shadow:0 12px 28px rgba(15,118,92,.12);color:#087c65;animation:lp-card-float 5s ease-in-out infinite;}
+.lp-float-card span {font-size:11px;font-weight:900;color:#124e43}.lp-float-card b {grid-column:2;font-size:10px;font-weight:600;color:#64748b;margin-top:2px}.lp-float-card-left{top:22%;left:5%;}.lp-float-card-right{top:18%;right:5%;animation-delay:-1.7s}.lp-float-card-bottom{bottom:13%;right:7%;animation-delay:-3s}
+.lp-scene-copy {padding:22px 10px 6px;text-align:right}.lp-scene-eyebrow{display:inline-flex;align-items:center;gap:7px;color:#087c65;background:#e4faf3;border:1px solid #c1f0e2;border-radius:999px;padding:7px 12px;font-size:11px;font-weight:900}.lp-scene-copy h2{margin:13px 0 8px;font-size:clamp(22px,2.4vw,32px);font-weight:950;line-height:1.45;letter-spacing:-.04em;color:#102f35}.lp-scene-copy h2 span{color:#07866a}.lp-scene-copy p{font-size:13px;line-height:1.9;color:#64748b;max-width:520px}
+.lp-login-card-glow {position:absolute;inset:0 0 auto;height:5px;background:linear-gradient(90deg,#0b7a5e,#42e0b2,#0b7a5e);}
+@keyframes lp-capsule-float{0%,100%{transform:translateY(0) rotate(36deg) rotateY(-18deg)}50%{transform:translateY(-12px) rotate(31deg) rotateY(8deg)}}
+@keyframes lp-ring-turn{0%{rotate:0deg}100%{rotate:360deg}}
+@keyframes lp-card-float{0%,100%{translate:0 0}50%{translate:0 -7px}}
+@keyframes lp-orb-drift{from{transform:translate3d(-8px,0,0) scale(.9)}to{transform:translate3d(12px,15px,0) scale(1.1)}}
+@keyframes lp-halo-breathe{0%,100%{opacity:.35;scale:.9}50%{opacity:.7;scale:1.12}}
+@media(max-width:1023px){.lp-login-scene-wrap{order:0}.lp-login-scene{height:245px;border-radius:24px}.lp-capsule-stage{top:51%;scale:.72}.lp-float-card{scale:.82;padding:9px;min-width:125px}.lp-float-card-left{left:1%;top:14%}.lp-float-card-right{right:1%;top:12%}.lp-float-card-bottom{bottom:7%;right:4%}.lp-scene-copy{padding:14px 4px 2px}.lp-scene-copy h2{font-size:23px;margin-top:8px}.lp-scene-copy p{font-size:12px;margin-bottom:0}.lp-login-scene-wrap{margin-bottom:2px}}
+@media(max-width:639px){.lp-login-scene{height:205px}.lp-capsule-stage{scale:.57}.lp-float-card{scale:.7;transform-origin:center;min-width:115px}.lp-float-card-left{left:-8px;top:8%}.lp-float-card-right{right:-8px;top:8%}.lp-float-card-bottom{right:0;bottom:2%}.lp-scene-copy h2{font-size:21px}.lp-scene-copy p{font-size:11px;line-height:1.7}.lp-scene-eyebrow{font-size:10px;padding:5px 9px}}
+@media(prefers-reduced-motion:reduce){.lp-scene-orb,.lp-capsule-halo,.lp-capsule,.lp-capsule-ring,.lp-float-card{animation:none!important}}
