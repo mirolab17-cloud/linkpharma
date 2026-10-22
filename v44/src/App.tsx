@@ -6,6 +6,7 @@ import {
   Route,
   Navigate,
   useLocation,
+  useNavigate,
   Outlet
 } from 'react-router-dom';
 import { useAuthStore } from './store/useAuthStore';
@@ -106,7 +107,8 @@ const AdminLayout: React.FC = () => {
 
 // ======================= Pharmacy Layout =======================
 const PharmacyLayout: React.FC = () => {
-  const { user } = useAuthStore();
+  const { user, isPharmacyPreview, exitPharmacyPreview } = useAuthStore();
+  const navigate = useNavigate();
   // السحب للتحديث: نفرغ الكاش ثم نعيد تركيب الصفحة الحالية ليعاد جلب بياناتها
   const [refreshKey, setRefreshKey] = useState(0);
   const handleRefresh = React.useCallback(async () => {
@@ -119,6 +121,12 @@ const PharmacyLayout: React.FC = () => {
     <PullToRefresh onRefresh={handleRefresh}>
       <div className="min-h-screen bg-slate-50 flex flex-col app-pharmacy-shell">
         <Navbar />
+        {isPharmacyPreview && (
+          <div dir="rtl" className="sticky top-0 z-40 flex items-center justify-between gap-3 bg-slate-950 px-4 py-2.5 text-white shadow-lg">
+            <span className="text-[11px] font-bold sm:text-xs">أنت الآن داخل تجربة الصيدلية كمدير · الاشتراك متجاوز للمعاينة فقط</span>
+            <button onClick={() => { exitPharmacyPreview(); navigate('/admin/pharmacy-view'); }} className="shrink-0 rounded-lg bg-white/15 px-3 py-1.5 text-[11px] font-black hover:bg-white/25">العودة إلى الإدارة</button>
+          </div>
+        )}
         {user?.role === 'pharmacy' && <SubscriptionWarningBanner />}
         <main className="flex-1 min-w-0">
           <Suspense fallback={<PageSkeleton />}>
@@ -179,8 +187,8 @@ const ProtectedPharmacyRoute: React.FC<{ children: React.ReactNode }> = ({ child
     return <Navigate to="/login" replace />;
   }
 
-  // إذا كان المستخدم مديراً، يحول إلى لوحة الإدارة
-  if (user.role === 'admin') {
+  // المدير الذي اختار صيدلية يدخل واجهة الصيدلية نفسها، مع تجاوز الاشتراك داخل المعاينة فقط.
+  if (user.role === 'admin' && !useAuthStore.getState().isPharmacyPreview) {
     return <Navigate to="/admin" replace />;
   }
 

@@ -35,6 +35,8 @@ export const DEFAULT_TRIAL_DAYS = 7;
 
 interface AuthState {
   user: UserProfile | null;
+  adminPreviewUser: UserProfile | null;
+  isPharmacyPreview: boolean;
   loading: boolean;
   initialized: boolean;
   defaultTrialDays: number;
@@ -55,6 +57,8 @@ interface AuthState {
   updateUserProfile: (data: Partial<UserProfile>) => Promise<boolean>;
   isExpired: () => boolean;
   getRemainingDays: () => number;
+  enterPharmacyPreview: (pharmacy: UserProfile) => boolean;
+  exitPharmacyPreview: () => boolean;
 }
 
 let activeGoogleSignInPromise: Promise<boolean> | null = null;
@@ -116,12 +120,36 @@ const profileFallback = (fbUser: any, cached?: UserProfile | null): UserProfile 
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
+  adminPreviewUser: null,
+  isPharmacyPreview: false,
   loading: true,
   initialized: false,
   defaultTrialDays: DEFAULT_TRIAL_DAYS,
   isPasswordUser: false,
   isGoogleUser: false,
   pendingGoogleCredential: null,
+
+  enterPharmacyPreview: (pharmacy) => {
+    const current = get().user;
+    if (!current || current.role !== 'admin' || pharmacy.role !== 'pharmacy') return false;
+    const previewUser: UserProfile = {
+      ...pharmacy,
+      status: 'active',
+      subscriptionStatus: 'active',
+      subscriptionExpiresAt: undefined,
+      subscriptionExpiresAtMillis: undefined,
+      profileComplete: true,
+    };
+    set({ user: previewUser, adminPreviewUser: current, isPharmacyPreview: true });
+    return true;
+  },
+
+  exitPharmacyPreview: () => {
+    const originalAdmin = get().adminPreviewUser;
+    if (!originalAdmin) return false;
+    set({ user: originalAdmin, adminPreviewUser: null, isPharmacyPreview: false });
+    return true;
+  },
 
   clearPendingGoogleCredential: () => set({ pendingGoogleCredential: null }),
   setDefaultTrialDays: (days: number) => set({ defaultTrialDays: days }),
