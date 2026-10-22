@@ -168,6 +168,35 @@ export async function updateRepresentativeDeliverySchedule(
   await batch.commit();
 }
 
+export async function updateRepresentativePermissions(input: {
+  request: WarehouseLinkRequest;
+  permissions: RepresentativePermissions;
+  reviewNote?: string;
+}): Promise<void> {
+  requireFirebase();
+  const admin = requireAdmin();
+  if (input.request.status !== 'approved' || !input.request.userId || !input.request.supplierId) throw new Error('لا يمكن تعديل صلاحيات رابط غير نشط.');
+  const now = new Date().toISOString();
+  const activityId = `activity_rep_permissions_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'users', input.request.userId), { role: 'representative', status: 'active', supplierId: input.request.supplierId, representativePermissions: input.permissions, updatedAt: now });
+  batch.update(doc(db, 'warehouse_link_requests', input.request.id), { permissions: input.permissions, reviewedAt: now, reviewedByUid: admin.uid, reviewedByName: admin.name, reviewNote: input.reviewNote?.trim() || input.request.reviewNote || '' });
+  batch.set(doc(db, 'platform_activity', activityId), { id: activityId, type: 'representative_permissions_updated', actorId: admin.uid, actorName: admin.name, actorRole: 'admin', message: `تحديث صلاحيات المندوب ${input.request.userName}`, createdAt: now, metadata: { requestId: input.request.id, userId: input.request.userId, supplierId: input.request.supplierId, permissions: input.permissions, reviewNote: input.reviewNote || '' } });
+  await batch.commit();
+}
+
+export async function detachRepresentativeFromSupplier(): Promise<void> {
+  requireFirebase();
+  const user = useAuthStore.getState().user;
+  if (!user || user.role !== 'representative' || !user.supplierId) throw new Error('لا يوجد مستودع مرتبط بهذا الحساب.');
+  const now = new Date().toISOString();
+  const activityId = `activity_rep_detach_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'users', user.uid), { role: 'pharmacy', status: 'active', supplierId: null, representativePermissions: null, updatedAt: now });
+  batch.set(doc(db, 'platform_activity', activityId), { id: activityId, type: 'representative_self_detached', actorId: user.uid, actorName: user.name, actorRole: 'representative', message: `فك المندوب ${user.name} ارتباطه بالمستودع`, createdAt: now, metadata: { supplierId: user.supplierId } });
+  await batch.commit();
+}
+
 export async function saveSupplierImportTemplate(
   supplierId: string,
   importTemplate: NonNullable<Supplier['importTemplate']>,

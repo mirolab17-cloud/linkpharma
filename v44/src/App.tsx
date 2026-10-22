@@ -16,6 +16,7 @@ import { ToastContainer } from './components/Toast';
 import { Navbar } from './components/Navbar';
 import { AdminSidebar } from './components/AdminSidebar';
 import { PharmacyBottomNav } from './components/PharmacyBottomNav';
+import { RepresentativeBottomNav } from './components/RepresentativeBottomNav';
 import { Spinner, PharmacyBrandLoader } from './components/Loader';
 import { SubscriptionExpiredScreen } from './components/SubscriptionExpiredScreen';
 import { SubscriptionWarningBanner } from './components/SubscriptionWarningBanner';
@@ -136,6 +137,7 @@ const PharmacyLayout: React.FC = () => {
           </Suspense>
         </main>
         {user?.role === 'pharmacy' && <PharmacyBottomNav />}
+        {user?.role === 'representative' && <RepresentativeBottomNav />}
         {user?.role === 'pharmacy' && user.profileComplete && <OnboardingGuide />}
       </div>
     </PullToRefresh>

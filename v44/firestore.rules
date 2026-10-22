@@ -142,6 +142,14 @@ service cloud.firestore {
         ]) &&
         (!('branches' in request.resource.data) || (request.resource.data.branches is list && request.resource.data.branches.size() <= 10)) &&
         (!('defaultBranchId' in request.resource.data) || request.resource.data.defaultBranchId is string)
+      ) || (
+        isCurrentUser(userId) &&
+        resource.data.role == 'representative' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'status', 'supplierId', 'representativePermissions', 'updatedAt']) &&
+        request.resource.data.role == 'pharmacy' &&
+        request.resource.data.status == 'active' &&
+        request.resource.data.supplierId == null &&
+        request.resource.data.representativePermissions == null
       );
 
       allow delete: if isAdmin();

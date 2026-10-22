@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BadgePercent, CalendarDays, FileSpreadsheet, ShieldCheck, Truck } from 'lucide-react';
 import { getSuppliers } from '../../services/dataStorage';
 import { updateRepresentativeDeliverySchedule } from '../../services/representatives';
@@ -13,6 +14,7 @@ import { PriceBatchHistory } from './PriceBatchHistory';
 
 export const RepresentativeWorkspace: React.FC = () => {
   const user = useAuthStore((state) => state.user);
+  const [searchParams] = useSearchParams();
   const [supplier, setSupplier] = useState<Supplier | null>(null);
   const [scheduleText, setScheduleText] = useState('');
   const [scheduleMap, setScheduleMap] = useState<Record<string, string[]>>({});
@@ -21,6 +23,13 @@ export const RepresentativeWorkspace: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<'prices' | 'offers' | 'delivery' | 'orders' | 'catalog' | 'history'>(() => user?.representativePermissions?.managePrices ? 'prices' : 'delivery');
   const { success, error } = useToastStore();
+
+  useEffect(() => {
+    const requested = searchParams.get('tab');
+    if (requested && ['prices', 'offers', 'delivery', 'orders', 'catalog', 'history'].includes(requested)) {
+      setTab(requested as typeof tab);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!user?.supplierId) { setLoading(false); return; }
@@ -75,7 +84,7 @@ export const RepresentativeWorkspace: React.FC = () => {
   if (!supplier) return <div className="max-w-3xl mx-auto m-6 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">لا يوجد مستودع نشط مرتبط بهذا الحساب. تواصل مع الإدارة لمراجعة الربط.</div>;
 
   return (
-    <div className="max-w-7xl mx-auto p-3 sm:p-6 space-y-5" dir="rtl">
+    <div className="max-w-7xl mx-auto p-3 pb-24 sm:p-6 sm:pb-28 md:pb-6 space-y-5" dir="rtl">
       <header className="rounded-3xl bg-gradient-to-br from-emerald-800 to-teal-700 text-white p-6 sm:p-8 shadow-sm">
         <div className="flex items-center gap-2 text-emerald-100 text-xs font-bold"><ShieldCheck className="w-4 h-4" />مساحة مندوب المستودع</div>
         <h1 className="text-2xl font-black mt-2">{supplier.name}</h1>

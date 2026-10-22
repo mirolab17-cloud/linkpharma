@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BadgeCheck, Check, Clock3, RefreshCw, Shield, ShieldCheck, UserRound, X } from 'lucide-react';
 import { getSuppliers } from '../../services/dataStorage';
-import { decideWarehouseLinkRequest, getWarehouseLinkRequests } from '../../services/representatives';
+import { decideWarehouseLinkRequest, getWarehouseLinkRequests, updateRepresentativePermissions } from '../../services/representatives';
 import { RepresentativePermissions, Supplier, WarehouseLinkRequest } from '../../types';
 import { useToastStore } from '../../store/useToastStore';
 import { formatGregorianDateTime } from '../../utils/formatDate';
@@ -58,6 +58,16 @@ export const RepresentativeRequests: React.FC = () => {
     }
   };
 
+  const savePermissions = async (request: WarehouseLinkRequest) => {
+    setBusyId(request.id);
+    try {
+      await updateRepresentativePermissions({ request, permissions: permissions[request.id] || { ...emptyPermissions }, reviewNote: notes[request.id] || '' });
+      success('تم تحديث صلاحيات المندوب فوراً وتسجيل المدير المنفذ.');
+      await load();
+    } catch (e: any) { error(e.message || 'تعذر تحديث الصلاحيات.'); }
+    finally { setBusyId(null); }
+  };
+
   const pending = requests.filter((request) => request.status === 'pending');
   const history = requests.filter((request) => request.status !== 'pending');
 
@@ -111,7 +121,7 @@ export const RepresentativeRequests: React.FC = () => {
 
       <section className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex items-center gap-2"><BadgeCheck className="w-4 h-4 text-slate-500" /><h2 className="text-sm font-black text-slate-800">سجل الطلبات السابقة والروابط النشطة ({history.length})</h2></div>
-        {history.length === 0 ? <p className="p-5 text-xs text-slate-500">لا توجد سجلات بعد.</p> : <div className="divide-y divide-slate-100">{history.map((request) => <div key={request.id} className="p-4 flex flex-wrap items-center justify-between gap-3"><div className="text-xs"><b className="text-slate-800">{request.userName}</b><span className="text-slate-500"> · {supplierName(request.supplierId)} · {formatGregorianDateTime(request.reviewedAt || request.createdAt)}</span><span className={`mr-2 rounded-full px-2 py-1 text-[10px] font-bold ${request.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : request.status === 'revoked' ? 'bg-slate-100 text-slate-600' : 'bg-rose-100 text-rose-700'}`}>{request.status === 'approved' ? 'مرتبط' : request.status === 'revoked' ? 'ملغى' : 'مرفوض'}</span><div className="mt-1 text-[10px] text-slate-500">راجع القرار: {request.reviewedByName || '—'} · الصلاحيات: {[request.permissions?.managePrices && 'الأسعار', request.permissions?.managePromotions && 'العروض', request.permissions?.manageDeliverySchedule && 'التوصيل'].filter(Boolean).join('، ') || '—'}</div></div>{request.status === 'approved' && <button disabled={busyId === request.id} onClick={() => void decide(request, 'revoked')} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-2 text-[11px] font-bold text-rose-700 disabled:opacity-50"><Shield className="w-3.5 h-3.5" />إلغاء الصلاحيات</button>}</div>)}</div>}
+        {history.length === 0 ? <p className="p-5 text-xs text-slate-500">لا توجد سجلات بعد.</p> : <div className="divide-y divide-slate-100">{history.map((request) => <div key={request.id} className="p-4 space-y-3"><div className="flex flex-wrap items-center justify-between gap-3"><div className="text-xs"><b className="text-slate-800">{request.userName}</b><span className="text-slate-500"> · {supplierName(request.supplierId)} · {formatGregorianDateTime(request.reviewedAt || request.createdAt)}</span><span className={`mr-2 rounded-full px-2 py-1 text-[10px] font-bold ${request.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : request.status === 'revoked' ? 'bg-slate-100 text-slate-600' : 'bg-rose-100 text-rose-700'}`}>{request.status === 'approved' ? 'مرتبط' : request.status === 'revoked' ? 'ملغى' : 'مرفوض'}</span><div className="mt-1 text-[10px] text-slate-500">آخر مدير: {request.reviewedByName || '—'} · الصلاحيات الحالية: {[request.permissions?.managePrices && 'الأسعار', request.permissions?.managePromotions && 'العروض', request.permissions?.manageDeliverySchedule && 'التوصيل'].filter(Boolean).join('، ') || '—'}</div></div>{request.status === 'approved' && <button disabled={busyId === request.id} onClick={() => void decide(request, 'revoked')} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-2 text-[11px] font-bold text-rose-700 disabled:opacity-50"><Shield className="h-3.5 w-3.5" />فك الربط</button>}</div>{request.status === 'approved' && <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3"><p className="mb-2 text-[11px] font-black text-emerald-900">تعديل الصلاحيات بعد القبول</p><div className="flex flex-wrap gap-3 text-[11px] text-slate-700"><label><input type="checkbox" checked={permissions[request.id]?.managePrices || false} onChange={(e) => patchPermissions(request.id, 'managePrices', e.target.checked)} className="ml-1 accent-emerald-600" />الأسعار</label><label><input type="checkbox" checked={permissions[request.id]?.managePromotions || false} onChange={(e) => patchPermissions(request.id, 'managePromotions', e.target.checked)} className="ml-1 accent-emerald-600" />العروض</label><label><input type="checkbox" checked={permissions[request.id]?.manageDeliverySchedule || false} onChange={(e) => patchPermissions(request.id, 'manageDeliverySchedule', e.target.checked)} className="ml-1 accent-emerald-600" />التوصيل</label></div><button disabled={busyId === request.id} onClick={() => void savePermissions(request)} className="mt-3 rounded-lg bg-[#0f9d7a] px-3 py-2 text-[11px] font-black text-white disabled:opacity-50">{busyId === request.id ? 'جاري الحفظ...' : 'حفظ الصلاحيات الجديدة'}</button></div>}</div>)}</div>}
       </section>
     </div>
   );
