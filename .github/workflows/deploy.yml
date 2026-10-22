@@ -369,6 +369,13 @@ jobs:
           mkdir -p ../dist/v44
           cp -r dist/. ../dist/v44/
           cd ..
+          # Build v45: catalog quality controls, unified notifications, price review and PWA install UX
+          cd v45
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          mkdir -p ../dist/v45
+          cp -r dist/. ../dist/v45/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
