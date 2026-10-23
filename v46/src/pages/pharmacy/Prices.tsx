@@ -111,6 +111,8 @@ export const PharmacyPrices: React.FC = () => {
   const [searchScope, setSearchScope] = useState<SearchScope>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedSupplier, setSelectedSupplier] = useState<string>(searchParams.get('supplier') || 'all');
+  const [selectedIngredient, setSelectedIngredient] = useState<string>('all');
+  const [hideProductsWithoutOffers, setHideProductsWithoutOffers] = useState(true);
 
   // Quick Filter Chips
   const [availableOnly, setAvailableOnly] = useState<boolean>(false);
@@ -228,8 +230,9 @@ export const PharmacyPrices: React.FC = () => {
 
   useEffect(() => {
     void loadData();
-    getSystemSettings().then((settings) => { setShowDeliveryDays(settings.showDeliveryDays !== false); setWarehousePriceSortMode(settings.warehousePriceSortMode || 'cheapest'); }).catch(() => {});
+    getSystemSettings().then((settings) => { setShowDeliveryDays(settings.showDeliveryDays !== false); setWarehousePriceSortMode(settings.warehousePriceSortMode || 'cheapest'); setHideProductsWithoutOffers(settings.hideProductsWithoutOffers !== false); }).catch(() => {});
   }, [loadData]);
+  useEffect(() => { if (!features.activeIngredientFilter && selectedIngredient !== 'all') setSelectedIngredient('all'); }, [features.activeIngredientFilter, selectedIngredient]);
 
   // الموردون المسموحون لهذه الصيدلية (لا نعتمد على كائن user كاملاً)
   const allowedSuppliers = useMemo(() => {
@@ -382,6 +385,7 @@ export const PharmacyPrices: React.FC = () => {
     });
     return Array.from(cats);
   }, [products]);
+  const ingredientOptions = useMemo(() => [...ingredients].sort((a, b) => nameCollator.compare(a.name, b.name)), [ingredients]);
 
   // فحص هل السعر أقدم من 7 أيام
   const isOlderThan7Days = (dateStr?: string) => {
@@ -403,13 +407,14 @@ export const PharmacyPrices: React.FC = () => {
         name: normalizeArabic(productDisplayName(product)),
         trade: normalizeArabic(product.tradeName || ''),
         mfg: normalizeArabic(product.manufacturer || ''),
+        ingredients: getProductActiveIngredientIds(product).map((id) => normalizeArabic(ingredientsMap.get(id)?.name || '')).join(' '),
       })),
-    [baseProducts]
+    [baseProducts, ingredientsMap]
   );
 
   // الفلاتر المعتمدة على الأسعار تحتاج أسعار كل الأصناف، فنجلبها (مرة واحدة ومخزّنة) عند تفعيلها فقط.
   const needsAllPrices =
-    selectedSupplier !== 'all' || availableOnly || bonusOnly || recentlyUpdatedOnly || cheapestFirst || sortByEffective;
+    selectedSupplier !== 'all' || availableOnly || bonusOnly || recentlyUpdatedOnly || cheapestFirst || sortByEffective || hideProductsWithoutOffers;
   const pricesPending = needsAllPrices && allPricesState !== 'ready' && allPricesState !== 'error';
   const allPricesReady = allPricesState === 'ready';
   const isPriceReady = (productId: string) => allPricesReady || readyPriceIds.has(productId);
@@ -438,6 +443,8 @@ export const PharmacyPrices: React.FC = () => {
     searchScope,
     selectedCategory,
     selectedSupplier,
+    selectedIngredient,
+    hideProductsWithoutOffers,
     availableOnly,
     cheapestFirst,
     bonusOnly,
@@ -465,7 +472,7 @@ export const PharmacyPrices: React.FC = () => {
         } else if (searchScope === 'manufacturer') {
           matches = tokens.every((t) => entry.mfg.includes(t));
         } else {
-          matches = tokens.every((t) => entry.name.includes(t) || entry.mfg.includes(t));
+          matches = tokens.every((t) => entry.name.includes(t) || entry.mfg.includes(t) || entry.ingredients.includes(t));
         }
         if (!matches) continue;
         // الأصناف التي يبدأ اسمها بالكلمة المكتوبة تظهر أولاً
@@ -474,9 +481,12 @@ export const PharmacyPrices: React.FC = () => {
 
       // 2) فلتر التصنيف
       if (selectedCategory !== 'all' && prod.category !== selectedCategory) continue;
+      if (prod.visibleToPharmacies === false) continue;
+      if (features.activeIngredientFilter && selectedIngredient !== 'all' && !getProductActiveIngredientIds(prod).includes(selectedIngredient)) continue;
 
       // 3) فلاتر الأسعار (تعمل على أسعار كل الأصناف بعد اكتمال تحميلها)
       const prodPrices = filterPriceMap.get(prod.id) || [];
+      if (hideProductsWithoutOffers && (!allPricesReady || !prodPrices.some((pr) => pr.available))) continue;
       if (selectedSupplier !== 'all' && !prodPrices.some((pr) => pr.supplierId === selectedSupplier)) continue;
       if (availableOnly && !prodPrices.some((pr) => pr.available)) continue;
       if (bonusOnly && !prodPrices.some((pr) => pr.bonus && pr.bonus.trim().length > 0)) continue;
@@ -508,6 +518,10 @@ export const PharmacyPrices: React.FC = () => {
     searchScope,
     selectedCategory,
     selectedSupplier,
+    selectedIngredient,
+    features.activeIngredientFilter,
+    hideProductsWithoutOffers,
+    allPricesReady,
     availableOnly,
     bonusOnly,
     recentlyUpdatedOnly,
@@ -599,6 +613,7 @@ export const PharmacyPrices: React.FC = () => {
     setSearchScope('all');
     setSelectedCategory('all');
     setSelectedSupplier('all');
+    setSelectedIngredient('all');
     setAvailableOnly(false);
     setCheapestFirst(false);
     setBonusOnly(false);
@@ -681,7 +696,7 @@ export const PharmacyPrices: React.FC = () => {
 
     // الأصناف التي لها نفس المادة الفعالة
     const candidates = products.filter(
-      (p) => p.id !== base.id && getProductActiveIngredientIds(p).includes(ingId)
+      (p) => p.id !== base.id && p.visibleToPharmacies !== false && getProductActiveIngredientIds(p).includes(ingId)
     );
 
     // حساب أرخص سعر لكل بديل
@@ -734,7 +749,7 @@ export const PharmacyPrices: React.FC = () => {
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-xs mb-6 space-y-4">
         {/* مكون البحث الشامل مع الفلترة المهدأة بالاسم والمادة والشركة */}
         <PharmacyGlobalSearch
-          products={products}
+          products={products.filter((product) => product.visibleToPharmacies !== false)}
           ingredientsMap={ingredientsMap}
           productPricesMap={productPricesMap}
           initialQuery={searchTerm}
@@ -745,7 +760,7 @@ export const PharmacyPrices: React.FC = () => {
         />
 
         {/* فلاتر التصنيف والمستودع */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
           {/* فلتر التصنيف */}
           <div>
             <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">التصنيف الدوائي</label>
@@ -784,11 +799,24 @@ export const PharmacyPrices: React.FC = () => {
             </select>
           </div>
 
+          {features.activeIngredientFilter && <div>
+            <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">المادة الفعالة</label>
+            <select
+              value={selectedIngredient}
+              onChange={(event) => setSelectedIngredient(event.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 focus:outline-hidden focus:border-[#0f9d7a]"
+            >
+              <option value="all">كل المواد الفعالة</option>
+              {ingredientOptions.map((ingredient) => <option key={ingredient.id} value={ingredient.id}>{ingredient.name}</option>)}
+            </select>
+          </div>}
+
           {/* زر إعادة ضبط سريع */}
           <div className="flex items-end">
             {(searchTerm ||
               selectedCategory !== 'all' ||
               selectedSupplier !== 'all' ||
+              selectedIngredient !== 'all' ||
               availableOnly ||
               cheapestFirst ||
               bonusOnly ||

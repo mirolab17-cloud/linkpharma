@@ -100,11 +100,13 @@ export interface SystemSettings {
   warehousePriceSortMode?: 'cheapest' | 'latest' | 'random';
   subscriptionPolicy?: unknown;
   priceImportNotificationsEnabled?: boolean;
+  /** عند التفعيل لا تعرض الصيدلية الأصناف التي لا تملك أي سعر متاح. */
+  hideProductsWithoutOffers?: boolean;
   /** القيم العامة لإظهار ميزات الصيدلية؛ تُستثنى منها الصيدليات التي لها تخصيص خاص. */
   pharmacyFeatureDefaults?: Partial<Record<PharmacyFeatureKey, boolean>>;
 }
 
-export type PharmacyFeatureKey = 'cheapest' | 'cartOptimization' | 'publicPrice';
+export type PharmacyFeatureKey = 'cheapest' | 'cartOptimization' | 'publicPrice' | 'activeIngredientFilter';
 export type FeatureOverride = 'inherit' | 'show' | 'hide';
 export type PharmacyFeatureOverrides = Partial<Record<PharmacyFeatureKey, FeatureOverride>>;
 
@@ -166,6 +168,8 @@ export interface Product {
   activeIngredientId: string; // فارغ للمستلزمات والمنتجات غير الدوائية
   /** جميع المواد الفعالة للتركيبات؛ يبقى activeIngredientId مرجعاً أولياً للتوافق. */
   activeIngredientIds?: string[];
+  /** false hides the product from pharmacy catalogs while preserving admin access. */
+  visibleToPharmacies?: boolean;
   productType?: 'medicine' | 'medical_supply' | 'other';
   createdAt?: string;
 }

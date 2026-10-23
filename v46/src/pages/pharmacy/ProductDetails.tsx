@@ -27,7 +27,8 @@ export const ProductDetails: React.FC = () => {
       setFailed(false);
       try {
         const [allProducts, allIngredients, allSuppliers] = await Promise.all([getProducts(), getActiveIngredients(), getSuppliers()]);
-        const currentProduct = allProducts.find((item) => item.id === productId) || null;
+        const foundProduct = allProducts.find((item) => item.id === productId) || null;
+        const currentProduct = foundProduct?.visibleToPharmacies === false && user?.role !== 'admin' ? null : foundProduct;
         if (!currentProduct) { if (alive) { setProduct(null); setFailed(true); } return; }
         const allowed = user?.allowedSuppliers?.length ? new Set(user.allowedSuppliers) : null;
         const visibleSuppliers = allSuppliers.filter((supplier) => supplier.status === 'active' && (!allowed || allowed.has(supplier.id)));
@@ -50,7 +51,7 @@ export const ProductDetails: React.FC = () => {
     };
     void load();
     return () => { alive = false; };
-  }, [productId, user?.uid, user?.allowedSuppliers?.join('|')]);
+  }, [productId, user?.uid, user?.role, user?.allowedSuppliers?.join('|')]);
 
   if (loading) return <div className="max-w-5xl mx-auto p-8 text-center text-sm text-slate-500" dir="rtl">جاري تحميل تفاصيل الصنف وسجل الأسعار...</div>;
   if (failed || !product) return <div className="max-w-4xl mx-auto p-6" dir="rtl"><Link to="/app/prices" className="inline-flex items-center gap-2 text-sm text-[#0f9d7a] font-bold"><ArrowRight className="w-4 h-4" />العودة إلى الأسعار</Link><div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">تعذر تحميل تفاصيل الصنف. قد يكون غير موجود أو تعذر الاتصال.</div></div>;

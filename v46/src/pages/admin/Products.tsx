@@ -22,11 +22,12 @@ import {
   Layers,
   RotateCcw,
   Tag,
-  Building
+  Building,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { Table, Column } from '../../components/Table';
 import { Modal } from '../../components/Modal';
-import { SearchSelect, OptionItem } from '../../components/SearchSelect';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { BulkBar } from '../../components/BulkBar';
 import { Pagination } from '../../components/Pagination';
@@ -74,6 +75,8 @@ export const Products: React.FC = () => {
   // Form Fields
   const [tradeName, setTradeName] = useState('');
   const [activeIngredientId, setActiveIngredientId] = useState('');
+  const [selectedActiveIngredientIds, setSelectedActiveIngredientIds] = useState<string[]>([]);
+  const [ingredientSearch, setIngredientSearch] = useState('');
   const [form, setForm] = useState(DOSAGE_FORMS[0]);
   const [strength, setStrength] = useState('');
   const [packSize, setPackSize] = useState('');
@@ -129,14 +132,10 @@ export const Products: React.FC = () => {
     return Array.from(cats);
   }, [products]);
 
-  // Options for SearchSelect
-  const ingredientOptions: OptionItem[] = useMemo(() => {
-    return ingredients.map((i) => ({
-      id: i.id,
-      label: i.name,
-      subLabel: i.category,
-    }));
-  }, [ingredients]);
+  const filteredIngredientOptions = useMemo(() => {
+    const query = normalizeArabic(ingredientSearch.trim());
+    return ingredients.filter((ingredient) => !query || normalizeArabic(ingredient.name).includes(query) || normalizeArabic(ingredient.category).includes(query));
+  }, [ingredients, ingredientSearch]);
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
@@ -181,6 +180,8 @@ export const Products: React.FC = () => {
     setEditingProduct(null);
     setTradeName('');
     setActiveIngredientId(ingredients[0]?.id || '');
+    setSelectedActiveIngredientIds(ingredients[0]?.id ? [ingredients[0].id] : []);
+    setIngredientSearch('');
     setForm(DOSAGE_FORMS[0]);
     setStrength('');
     setPackSize('');
@@ -194,6 +195,8 @@ export const Products: React.FC = () => {
     setEditingProduct(p);
     setTradeName(p.tradeName);
     setActiveIngredientId(p.activeIngredientId);
+    setSelectedActiveIngredientIds(getProductActiveIngredientIds(p));
+    setIngredientSearch('');
     setForm(p.form);
     setStrength(p.strength);
     setPackSize(p.packSize || '');
@@ -216,10 +219,8 @@ export const Products: React.FC = () => {
         id: editingProduct ? editingProduct.id : undefined,
         tradeName: tradeName.trim(),
         normalizedName: normalizeArabic(tradeName.trim()),
-        activeIngredientId: activeIngredientId || '',
-        activeIngredientIds: editingProduct && editingProduct.activeIngredientId === activeIngredientId
-          ? getProductActiveIngredientIds(editingProduct)
-          : activeIngredientId ? [activeIngredientId] : [],
+        activeIngredientId: selectedActiveIngredientIds[0] || activeIngredientId || '',
+        activeIngredientIds: selectedActiveIngredientIds,
         form: form.trim(),
         strength: strength.trim(),
         packSize: packSize.trim(),
@@ -251,13 +252,25 @@ export const Products: React.FC = () => {
       });
       // تحديث قائمة المواد واختيارها فوراً
       setIngredients((prev) => [saved, ...prev]);
-      setActiveIngredientId(saved.id);
+      setSelectedActiveIngredientIds((prev) => prev.includes(saved.id) ? prev : [...prev, saved.id]);
+      setActiveIngredientId((prev) => prev || saved.id);
       setIsAddIngredientMiniOpen(false);
       setNewIngName('');
       setNewIngCategory('');
       success(`تمت إضافة المادة الفعالة (${saved.name}) واختيارها بنجاح.`);
     } catch (err: any) {
       error('تعذر إضافة المادة الفعالة: ' + err.message);
+    }
+  };
+
+  const toggleProductVisibility = async (product: Product) => {
+    const nextVisible = product.visibleToPharmacies === false;
+    try {
+      const updated = await saveProduct({ ...product, visibleToPharmacies: nextVisible });
+      setProducts((current) => current.map((item) => item.id === updated.id ? updated : item));
+      success(nextVisible ? 'أصبح الصنف ظاهراً للصيدليات.' : 'تم إخفاء الصنف عن الصيدليات.');
+    } catch (cause: any) {
+      error(`تعذر تغيير ظهور الصنف: ${cause?.message || ''}`);
     }
   };
 
@@ -358,6 +371,14 @@ export const Products: React.FC = () => {
       header: 'الإجراءات',
       render: (item) => (
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => void toggleProductVisibility(item)}
+            className={`p-1.5 rounded-lg transition ${item.visibleToPharmacies === false ? 'text-amber-600 hover:bg-amber-50' : 'text-emerald-700 hover:bg-emerald-50'}`}
+            title={item.visibleToPharmacies === false ? 'الصنف مخفي؛ اضغط لإظهاره' : 'الصنف ظاهر؛ اضغط لإخفائه'}
+            aria-label={item.visibleToPharmacies === false ? 'إظهار الصنف للصيدليات' : 'إخفاء الصنف عن الصيدليات'}
+          >
+            {item.visibleToPharmacies === false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
           <button
             onClick={() => handleOpenEdit(item)}
             className="p-1.5 text-slate-500 hover:text-[#0f9d7a] hover:bg-emerald-50 rounded-lg transition"
@@ -633,17 +654,26 @@ export const Products: React.FC = () => {
             />
           </div>
 
-          {/* قائمة البحث عن المادة الفعالة مع خيار إضافة جديدة مصغرة */}
-          <div>
-            <SearchSelect
-              label="المادة الفعالة (اختياري للأصناف غير الدوائية)"
-              options={ingredientOptions}
-              value={activeIngredientId}
-              onChange={(id) => setActiveIngredientId(id)}
-              onAddNewClick={() => setIsAddIngredientMiniOpen(true)}
-              addNewText="+ إضافة مادة فعالة جديدة"
-              placeholder="ابحث واختر المادة الفعالة..."
-            />
+          <div className="rounded-2xl border border-slate-200 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <label className="block text-xs font-bold text-slate-700">المواد الفعالة (يمكن اختيار أكثر من مادة)</label>
+              <button type="button" onClick={() => setIsAddIngredientMiniOpen(true)} className="text-[11px] font-bold text-emerald-700">+ إضافة مادة</button>
+            </div>
+            <input value={ingredientSearch} onChange={(event) => setIngredientSearch(event.target.value)} placeholder="ابحث عن مادة فعالة..." className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs" />
+            <div className="mt-2 max-h-44 overflow-auto space-y-1 rounded-xl bg-slate-50 p-2">
+              {filteredIngredientOptions.map((ingredient) => <label key={ingredient.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-white">
+                <input type="checkbox" checked={selectedActiveIngredientIds.includes(ingredient.id)} onChange={(event) => {
+                  const next = event.target.checked
+                    ? [...selectedActiveIngredientIds, ingredient.id]
+                    : selectedActiveIngredientIds.filter((id) => id !== ingredient.id);
+                  setSelectedActiveIngredientIds(next);
+                  setActiveIngredientId(next[0] || '');
+                }} />
+                <span className="font-semibold">{ingredient.name}</span><small className="text-slate-500">{ingredient.category}</small>
+              </label>)}
+              {filteredIngredientOptions.length === 0 && <p className="p-2 text-center text-xs text-slate-400">لا توجد مواد مطابقة.</p>}
+            </div>
+            <p className="mt-2 text-[10px] text-slate-500">المحدد: {selectedActiveIngredientIds.map((id) => ingredientsMap.get(id)?.name).filter(Boolean).join(' + ') || 'لا توجد مادة محددة'}</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

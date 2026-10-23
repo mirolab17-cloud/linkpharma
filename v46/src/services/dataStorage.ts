@@ -1995,7 +1995,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
     const fallbackSettings: SystemSettings = {
       id: 'system', defaultTrialDays: 7, currency: '₪', supportWhatsApp: '970599999999',
       loginWhatsApp: '970599999999', loginWhatsAppEnabled: true, showDeliveryDays: true,
-      warehousePriceSortMode: 'cheapest', priceImportNotificationsEnabled: true,
+      warehousePriceSortMode: 'cheapest', priceImportNotificationsEnabled: true, hideProductsWithoutOffers: true,
       updatedAt: new Date().toISOString(),
     };
 
@@ -2041,7 +2041,7 @@ export async function updateSystemSettings(settings: Partial<SystemSettings>): P
     try {
       await setDoc(doc(db, 'settings', 'system'), updated, { merge: true });
       {
-        await setDoc(doc(db, 'settings', 'public'), { loginWhatsApp: updated.loginWhatsApp || updated.supportWhatsApp || '970599999999', loginWhatsAppEnabled: updated.loginWhatsAppEnabled !== false, showDeliveryDays: updated.showDeliveryDays !== false, warehousePriceSortMode: updated.warehousePriceSortMode || 'cheapest', priceImportNotificationsEnabled: updated.priceImportNotificationsEnabled !== false, pharmacyFeatureDefaults: updated.pharmacyFeatureDefaults || {}, defaultTrialDays: updated.defaultTrialDays || 7, ...(updated.gazaLocations ? { gazaLocations: updated.gazaLocations } : {}), ...(updated.locationCatalog ? { locationCatalog: updated.locationCatalog } : {}), ...(updated.subscriptionPolicy ? { subscriptionPolicy: updated.subscriptionPolicy } : {}), updatedAt: updated.updatedAt, currency: updated.currency || '₪', platformName: updated.platformName || 'فارما لينك', supportWhatsApp: updated.supportWhatsApp || updated.loginWhatsApp || '970599999999' }, { merge: true });
+        await setDoc(doc(db, 'settings', 'public'), { loginWhatsApp: updated.loginWhatsApp || updated.supportWhatsApp || '970599999999', loginWhatsAppEnabled: updated.loginWhatsAppEnabled !== false, showDeliveryDays: updated.showDeliveryDays !== false, warehousePriceSortMode: updated.warehousePriceSortMode || 'cheapest', priceImportNotificationsEnabled: updated.priceImportNotificationsEnabled !== false, hideProductsWithoutOffers: updated.hideProductsWithoutOffers !== false, pharmacyFeatureDefaults: updated.pharmacyFeatureDefaults || {}, defaultTrialDays: updated.defaultTrialDays || 7, ...(updated.gazaLocations ? { gazaLocations: updated.gazaLocations } : {}), ...(updated.locationCatalog ? { locationCatalog: updated.locationCatalog } : {}), ...(updated.subscriptionPolicy ? { subscriptionPolicy: updated.subscriptionPolicy } : {}), updatedAt: updated.updatedAt, currency: updated.currency || '₪', platformName: updated.platformName || 'فارما لينك', supportWhatsApp: updated.supportWhatsApp || updated.loginWhatsApp || '970599999999' }, { merge: true });
       }
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'settings/system');

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { findCatalogHeader, getProductActiveIngredientIds, splitActiveIngredientNames } from '../src/utils/catalogImport';
+import { resolveAllFeatures } from '../src/utils/pharmacyFeatures';
 
 assert.equal(
   findCatalogHeader(['tradeName', 'activeIngredientName', 'category'], ['activeIngredientName', 'ingredientName', 'ingredient', 'name']),
@@ -17,4 +18,6 @@ assert.deepEqual(splitActiveIngredientNames('Omega 3 Fatty Acids (EPA + DHA)'), 
 assert.deepEqual(splitActiveIngredientNames('Metoclopramide'), ['Metoclopramide']);
 assert.deepEqual(getProductActiveIngredientIds({ activeIngredientId: 'ing_a', activeIngredientIds: ['ing_a', 'ing_b'] }), ['ing_a', 'ing_b']);
 assert.deepEqual(getProductActiveIngredientIds({ activeIngredientId: 'legacy' }), ['legacy']);
+assert.equal(resolveAllFeatures(null, null).activeIngredientFilter, true);
+assert.equal(resolveAllFeatures(null, { pharmacyFeatureDefaults: { activeIngredientFilter: false } }).activeIngredientFilter, false);
 console.log('Catalog import tests passed.');

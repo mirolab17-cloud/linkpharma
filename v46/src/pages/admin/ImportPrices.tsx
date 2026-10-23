@@ -19,6 +19,7 @@ import { Supplier, Product, ProductAlias, ActiveIngredient, ImportBatch, PriceRe
 import { parseSpreadsheetFile, processMappedRows, SheetParseResult, MappedPriceRow } from '../../services/import';
 import { ProductMatcher } from '../../utils/fuzzyMatch';
 import { normalizeArabic } from '../../utils/arabicNormalize';
+import { getProductActiveIngredientIds } from '../../utils/catalogImport';
 import { classifyProduct } from '../../services/importQuality';
 import { formatCurrency } from '../../utils/formatPrice';
 import { formatGregorianDateTime } from '../../utils/formatDate';
@@ -93,6 +94,7 @@ interface ProductEditDraft {
   id: string;
   tradeName: string;
   activeIngredientId: string;
+  activeIngredientIds: string[];
   form: string;
   strength: string;
   packSize: string;
@@ -619,6 +621,7 @@ export const ImportPrices: React.FC = () => {
       id: product.id,
       tradeName: product.tradeName || '',
       activeIngredientId: product.activeIngredientId || '',
+      activeIngredientIds: getProductActiveIngredientIds(product),
       form: product.form || '',
       strength: product.strength || '',
       packSize: product.packSize || '',
@@ -637,7 +640,7 @@ export const ImportPrices: React.FC = () => {
       error('يرجى إدخال الاسم التجاري للصنف.');
       return;
     }
-    const effectiveType: NewProductKind = productEditDraft.productType === 'medicine' && !productEditDraft.activeIngredientId
+    const effectiveType: NewProductKind = productEditDraft.productType === 'medicine' && productEditDraft.activeIngredientIds.length === 0
       ? 'other'
       : productEditDraft.productType;
     setIsSavingProductEdit(true);
@@ -648,12 +651,8 @@ export const ImportPrices: React.FC = () => {
         id: productEditDraft.id,
         tradeName: productEditDraft.tradeName.trim(),
         normalizedName: normalizeArabic(productEditDraft.tradeName.trim()),
-        activeIngredientId: effectiveType === 'medicine' ? productEditDraft.activeIngredientId : '',
-        activeIngredientIds: effectiveType !== 'medicine'
-          ? []
-          : existing && existing.activeIngredientId === productEditDraft.activeIngredientId
-            ? Array.from(new Set([...(existing.activeIngredientIds || []), existing.activeIngredientId].filter(Boolean)))
-            : productEditDraft.activeIngredientId ? [productEditDraft.activeIngredientId] : [],
+        activeIngredientId: effectiveType === 'medicine' ? productEditDraft.activeIngredientIds[0] || '' : '',
+        activeIngredientIds: effectiveType === 'medicine' ? productEditDraft.activeIngredientIds : [],
         form: productEditDraft.form.trim(),
         strength: productEditDraft.strength.trim(),
         packSize: productEditDraft.packSize.trim(),
@@ -1999,20 +1998,23 @@ export const ImportPrices: React.FC = () => {
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">نوع المنتج</label>
-              <select value={productEditDraft.productType} onChange={(e) => setProductEditDraft({ ...productEditDraft, productType: e.target.value as NewProductKind, activeIngredientId: e.target.value === 'medicine' ? productEditDraft.activeIngredientId : '' })} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-[#0f9d7a]">
+              <select value={productEditDraft.productType} onChange={(e) => setProductEditDraft({ ...productEditDraft, productType: e.target.value as NewProductKind, activeIngredientId: e.target.value === 'medicine' ? productEditDraft.activeIngredientId : '', activeIngredientIds: e.target.value === 'medicine' ? productEditDraft.activeIngredientIds : [] })} className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-[#0f9d7a]">
                 <option value="medicine">دواء</option>
                 <option value="medical_supply">مستلزم طبي</option>
                 <option value="other">غير دوائي</option>
               </select>
             </div>
-            <SearchSelect
-              label="المادة الفعالة (اختياري)"
-              placeholder="ابحث في قائمة المواد الفعالة..."
-              options={ingredients.map((ingredient) => ({ id: ingredient.id, label: ingredient.name, subLabel: ingredient.category }))}
-              value={productEditDraft.activeIngredientId}
-              onChange={(value) => setProductEditDraft({ ...productEditDraft, activeIngredientId: value })}
-            />
-            <p className="-mt-2 text-[11px] text-slate-500">ترك المادة الفعالة فارغاً يحفظ الصنف غير دوائي، أو كمستلزم حسب النوع المختار.</p>
+            <div className="rounded-xl border border-slate-200 p-3">
+              <label className="block text-xs font-bold text-slate-700 mb-2">المواد الفعالة (اختر واحدة أو أكثر)</label>
+              <div className="max-h-36 overflow-auto space-y-1">{ingredients.map((ingredient) => <label key={ingredient.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-slate-50">
+                <input type="checkbox" checked={productEditDraft.activeIngredientIds.includes(ingredient.id)} onChange={(event) => {
+                  const next = event.target.checked ? [...productEditDraft.activeIngredientIds, ingredient.id] : productEditDraft.activeIngredientIds.filter((id) => id !== ingredient.id);
+                  setProductEditDraft({ ...productEditDraft, activeIngredientIds: next, activeIngredientId: next[0] || '' });
+                }} />{ingredient.name}<small className="text-slate-400">{ingredient.category}</small>
+              </label>)}</div>
+              <p className="mt-2 text-[10px] text-slate-500">المحدد: {productEditDraft.activeIngredientIds.map((id) => ingredients.find((ingredient) => ingredient.id === id)?.name).filter(Boolean).join(' + ') || 'لا توجد مادة'}</p>
+            </div>
+            <p className="-mt-2 text-[11px] text-slate-500">يمكن للصنف أن يحتوي على أكثر من مادة فعالة؛ اترك القائمة فارغة للمستلزمات أو غير الدوائي.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {([
                 ['التركيز', 'strength'], ['الشكل', 'form'], ['العبوة', 'packSize'], ['الشركة المصنعة', 'manufacturer'], ['التصنيف', 'category'], ['الباركود', 'barcode'],

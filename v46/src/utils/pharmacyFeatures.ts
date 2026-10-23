@@ -6,12 +6,14 @@ export const PHARMACY_FEATURES: { key: PharmacyFeatureKey; label: string; descri
   { key: 'cheapest', label: 'ميزة الأرخص', description: 'شارة «الأرخص»، زر «الأرخص أولاً»، ورسائل التوفير في صفحة الأسعار.' },
   { key: 'cartOptimization', label: 'أفضل سلة', description: 'اقتراح بدائل توريد أرخص داخل السلة.' },
   { key: 'publicPrice', label: 'سعر الجمهور', description: 'السعر المشطوب (سعر العموم) بجانب سعر الشراء.' },
+  { key: 'activeIngredientFilter', label: 'البحث بالمادة الفعالة', description: 'إظهار مرشح البحث حسب المادة الفعالة في صفحة الأسعار.' },
 ];
 
 export const DEFAULT_FEATURES: Record<PharmacyFeatureKey, boolean> = {
   cheapest: true,
   cartOptimization: true,
   publicPrice: true,
+  activeIngredientFilter: true,
 };
 
 export function resolveFeature(
@@ -34,6 +36,7 @@ export function resolveAllFeatures(
     cheapest: resolveFeature(user, settings, 'cheapest'),
     cartOptimization: resolveFeature(user, settings, 'cartOptimization'),
     publicPrice: resolveFeature(user, settings, 'publicPrice'),
+    activeIngredientFilter: resolveFeature(user, settings, 'activeIngredientFilter'),
   };
 }
 
