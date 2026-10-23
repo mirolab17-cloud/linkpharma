@@ -376,6 +376,14 @@ jobs:
           mkdir -p ../dist/v45
           cp -r dist/. ../dist/v45/
           cd ..
+          # Build v46: editable governorate/city/subarea location catalog
+          cd v46
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run build
+          mkdir -p ../dist/v46
+          cp -r dist/. ../dist/v46/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
