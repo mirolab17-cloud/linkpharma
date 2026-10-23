@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Building2, Lightbulb, MapPin, Pencil, Phone, UserRound, UserRoundCheck } from 'lucide-react';
+import { ArrowLeft, Building2, CalendarClock, Lightbulb, MapPin, Pencil, Phone, UserRound, UserRoundCheck } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { getSystemSettings } from '../../services/dataStorage';
 import { formatBranchAddress } from '../../utils/gaza';
@@ -8,6 +8,8 @@ import { PWAInstallCard } from '../../components/PWAInstallCard';
 
 export const PharmacyProfile: React.FC = () => {
   const user = useAuthStore((state) => state.user);
+  const getRemainingDays = useAuthStore((state) => state.getRemainingDays);
+  const isExpired = useAuthStore((state) => state.isExpired);
   const [supportPhone, setSupportPhone] = useState('970599999999');
   const isComplete = Boolean(user?.profileComplete);
 
@@ -24,6 +26,11 @@ export const PharmacyProfile: React.FC = () => {
   const ownerName = user.ownerName || user.name || '—';
   const defaultBranch = user.branches?.find((branch) => branch.id === user.defaultBranchId) || user.branches?.[0];
   const defaultAddress = defaultBranch ? formatBranchAddress(defaultBranch) : [user.governorate, user.city, user.street, user.addressDetail].filter(Boolean).join(' - ');
+  const expiryMillis = user.subscriptionExpiresAtMillis || (user.subscriptionExpiresAt ? new Date(user.subscriptionExpiresAt).getTime() : 0);
+  const remainingDays = getRemainingDays();
+  const expired = isExpired();
+  const subscriptionLabel = user.subscriptionStatus === 'trial' ? 'فترة تجريبية' : user.subscriptionStatus === 'active' ? 'اشتراك فعّال' : 'اشتراك';
+  const daysText = remainingDays === 1 ? 'يوم واحد' : remainingDays === 2 ? 'يومان' : `${remainingDays} يومًا`;
   const supportMessage = `السلام عليكم، أنا ${ownerName} من ${user.pharmacyName || 'الصيدلية'} وأحتاج مساعدة في المنصة.`;
   const supportUrl = `https://wa.me/${supportPhone.replace(/\D/g, '')}?text=${encodeURIComponent(supportMessage)}`;
 
@@ -40,6 +47,19 @@ export const PharmacyProfile: React.FC = () => {
         </div>
         {!isComplete && <p className="mt-5 rounded-2xl border border-amber-200/40 bg-amber-100/15 p-3 text-xs leading-6 text-amber-50">أكمل بيانات الصيدلية حتى تتمكن من استخدام المنصة وإرسال الطلبات.</p>}
       </header>
+
+      {user.role === 'pharmacy' && (
+        <section className={`rounded-2xl border p-5 shadow-sm ${expired || remainingDays <= 3 ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
+          <div className="flex items-center gap-3">
+            <span className={`grid h-11 w-11 place-items-center rounded-xl ${expired || remainingDays <= 3 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-[#0f9d7a]'}`}><CalendarClock className="h-5 w-5" /></span>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-slate-600">{subscriptionLabel} · الأيام المتبقية</p>
+              <p className="mt-0.5 text-2xl font-black text-slate-900">{!expiryMillis ? 'غير محدد' : expired ? 'انتهى الاشتراك' : daysText}</p>
+              {expiryMillis > 0 && <p className="mt-0.5 text-[11px] text-slate-500">ينتهي في {new Date(expiryMillis).toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' })}</p>}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="grid gap-3 sm:grid-cols-2">
         <Link to="/app/profile/edit" className="group flex min-h-24 items-center justify-between rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-400 hover:shadow-md">

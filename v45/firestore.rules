@@ -352,22 +352,6 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Large price-imports may be submitted by an authorized admin/representative but only a different admin may approve them.
-    match /admin_change_approvals/{approvalId} {
-      allow get, list: if isAdmin() || (isActiveRepresentative() && resource.data.requestedByUid == request.auth.uid);
-      allow create: if isAdmin() || (
-        request.resource.data.type == 'price_import' &&
-        representativeCanManagePrices(request.resource.data.payload.supplierId) &&
-        request.resource.data.requestedByUid == request.auth.uid &&
-        request.resource.data.status == 'pending' &&
-        request.resource.data.payload.priceRecords is list &&
-        request.resource.data.payload.priceRecords.size() >= 50 &&
-        request.resource.data.payload.priceRecords.size() <= 248 &&
-        request.resource.data.keys().hasOnly(['id', 'type', 'status', 'summary', 'requestedByUid', 'requestedByName', 'requestedAt', 'payload'])
-      );
-      allow update, delete: if isAdmin();
-    }
-
     // Campaign records are an auditable admin-only ledger; notification documents are written per recipient.
     match /announcement_campaigns/{campaignId} {
       allow get, list: if isAdmin();

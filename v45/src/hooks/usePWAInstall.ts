@@ -1,62 +1,66 @@
 // src/hooks/usePWAInstall.ts
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
+// نلتقط حدث التثبيت على مستوى الوحدة حتى لا يضيع إذا وقع قبل تركيب أي مكوّن.
+let sharedPrompt: BeforeInstallPromptEvent | null = null;
+let sharedInstalled = false;
+const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((listener) => listener());
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    sharedPrompt = event as BeforeInstallPromptEvent;
+    notify();
+  });
+  window.addEventListener('appinstalled', () => {
+    sharedInstalled = true;
+    sharedPrompt = null;
+    notify();
+  });
+}
+
+function detectStandalone() {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as unknown as { standalone?: boolean }).standalone === true
+  );
+}
+
 export function usePWAInstall() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
+  const [, force] = useState(0);
+  const isIOS = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
 
   useEffect(() => {
-    // Detect standalone mode (already installed)
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-    setIsInstalled(isStandalone);
-
-    // Detect iOS devices
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
-    setIsIOS(isIOSDevice);
-
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
-    };
-
-    const handleAppInstalled = () => {
-      setIsInstalled(true);
-      setDeferredPrompt(null);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
-    };
+    const listener = () => force((n) => n + 1);
+    listeners.add(listener);
+    return () => { listeners.delete(listener); };
   }, []);
 
-  const install = async () => {
-    if (!deferredPrompt) return false;
-    await deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
+  // يحاول فتح نافذة التثبيت الأصلية؛ إن لم تتوفر يعيد 'manual' لعرض خطوات التثبيت اليدوية.
+  const install = useCallback(async (): Promise<'accepted' | 'dismissed' | 'manual'> => {
+    if (!sharedPrompt) return 'manual';
+    const promptEvent = sharedPrompt;
+    sharedPrompt = null;
+    notify();
+    await promptEvent.prompt();
+    const { outcome } = await promptEvent.userChoice;
     if (outcome === 'accepted') {
-      setIsInstalled(true);
-      setDeferredPrompt(null);
-      return true;
+      sharedInstalled = true;
+      notify();
     }
-    return false;
-  };
+    return outcome;
+  }, []);
 
   return {
-    isInstallable: !!deferredPrompt,
-    isInstalled,
+    isInstallable: !!sharedPrompt,
+    isInstalled: sharedInstalled || detectStandalone(),
     isIOS,
     install,
   };

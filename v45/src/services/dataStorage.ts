@@ -34,7 +34,9 @@ import {
   AppNotification,
   SystemSettings,
   RecurringOrderTemplate,
-  ProductAlias
+  ProductAlias,
+  PharmacyFeatureKey,
+  PharmacyFeatureOverrides,
 } from '../types';
 import { runTransaction } from 'firebase/firestore';
 import {
@@ -872,9 +874,6 @@ export async function commitImportBatch(params: {
   fileName: string;
   createdBy: string;
   createdByUid?: string;
-  approvalId?: string;
-  approvedByUid?: string;
-  approvedByName?: string;
   priceRecords: {
     productId: string;
     price: number;
@@ -998,8 +997,8 @@ export async function commitImportBatch(params: {
     importStatus: 'in_progress',
     writtenRowsCount: 0,
     progressUpdatedAt: now,
-    reviewStatus: params.approvalId ? 'approved' : 'not_required',
-    requiresReview: Boolean(params.approvalId),
+    reviewStatus: 'not_required',
+    requiresReview: false,
     changedCount,
     unchangedCount,
   };
@@ -1051,10 +1050,6 @@ export async function commitImportBatch(params: {
           lastPriceUpdate: now,
           lastPriceUpdatedByUid: actor.uid,
           lastPriceUpdatedByName: actor.name || createdBy,
-        });
-        if (params.approvalId) batch.update(doc(db, 'admin_change_approvals', params.approvalId), {
-          status: 'approved', resultId: batchId, reviewedAt: now,
-          reviewedByUid: params.approvedByUid || actor.uid, reviewedByName: params.approvedByName || actor.name || createdBy,
         });
       }
       try {
@@ -1967,7 +1962,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
     const fallbackSettings: SystemSettings = {
       id: 'system', defaultTrialDays: 7, currency: '₪', supportWhatsApp: '970599999999',
       loginWhatsApp: '970599999999', loginWhatsAppEnabled: true, showDeliveryDays: true,
-      warehousePriceSortMode: 'cheapest', requirePriceImportApproval: false, priceImportNotificationsEnabled: true,
+      warehousePriceSortMode: 'cheapest', priceImportNotificationsEnabled: true,
       updatedAt: new Date().toISOString(),
     };
 
@@ -2013,7 +2008,7 @@ export async function updateSystemSettings(settings: Partial<SystemSettings>): P
     try {
       await setDoc(doc(db, 'settings', 'system'), updated, { merge: true });
       {
-        await setDoc(doc(db, 'settings', 'public'), { loginWhatsApp: updated.loginWhatsApp || updated.supportWhatsApp || '970599999999', loginWhatsAppEnabled: updated.loginWhatsAppEnabled !== false, showDeliveryDays: updated.showDeliveryDays !== false, warehousePriceSortMode: updated.warehousePriceSortMode || 'cheapest', requirePriceImportApproval: updated.requirePriceImportApproval === true, priceImportNotificationsEnabled: updated.priceImportNotificationsEnabled !== false, defaultTrialDays: updated.defaultTrialDays || 7, ...(updated.gazaLocations ? { gazaLocations: updated.gazaLocations } : {}), ...(updated.locationCatalog ? { locationCatalog: updated.locationCatalog } : {}), ...(updated.subscriptionPolicy ? { subscriptionPolicy: updated.subscriptionPolicy } : {}), updatedAt: updated.updatedAt, currency: updated.currency || '₪', platformName: updated.platformName || 'فارما لينك', supportWhatsApp: updated.supportWhatsApp || updated.loginWhatsApp || '970599999999' }, { merge: true });
+        await setDoc(doc(db, 'settings', 'public'), { loginWhatsApp: updated.loginWhatsApp || updated.supportWhatsApp || '970599999999', loginWhatsAppEnabled: updated.loginWhatsAppEnabled !== false, showDeliveryDays: updated.showDeliveryDays !== false, warehousePriceSortMode: updated.warehousePriceSortMode || 'cheapest', priceImportNotificationsEnabled: updated.priceImportNotificationsEnabled !== false, pharmacyFeatureDefaults: updated.pharmacyFeatureDefaults || {}, defaultTrialDays: updated.defaultTrialDays || 7, ...(updated.gazaLocations ? { gazaLocations: updated.gazaLocations } : {}), ...(updated.locationCatalog ? { locationCatalog: updated.locationCatalog } : {}), ...(updated.subscriptionPolicy ? { subscriptionPolicy: updated.subscriptionPolicy } : {}), updatedAt: updated.updatedAt, currency: updated.currency || '₪', platformName: updated.platformName || 'فارما لينك', supportWhatsApp: updated.supportWhatsApp || updated.loginWhatsApp || '970599999999' }, { merge: true });
       }
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, 'settings/system');
@@ -2025,6 +2020,28 @@ export async function updateSystemSettings(settings: Partial<SystemSettings>): P
     localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(updated));
   } catch (_) {}
   return updated;
+}
+
+// تخصيص إظهار ميزات الواجهة (الأرخص، أفضل سلة...) لصيدلية محددة؛ 'inherit' يعني اتباع الإعداد العام.
+export async function updateUserFeatureOverrides(uid: string, overrides: PharmacyFeatureOverrides): Promise<void> {
+  const clean: PharmacyFeatureOverrides = {};
+  (Object.keys(overrides) as PharmacyFeatureKey[]).forEach((key) => {
+    if (overrides[key] === 'show' || overrides[key] === 'hide') clean[key] = overrides[key];
+  });
+  const updatedAt = new Date().toISOString();
+  if (isFirebaseConfigured) {
+    await updateDoc(doc(db, 'users', uid), { featureOverrides: clean, updatedAt });
+  }
+  const list = getLocal<UserProfile>(STORAGE_KEYS.users).map((u) => (u.uid === uid ? { ...u, featureOverrides: clean, updatedAt } : u));
+  setLocal(STORAGE_KEYS.users, list);
+  await recordActivity({
+    type: 'user_access_changed',
+    actorId: auth.currentUser?.uid,
+    actorName: auth.currentUser?.displayName || auth.currentUser?.email || 'إدارة المنصة',
+    actorRole: 'admin',
+    message: `تعديل صلاحيات إظهار الميزات لحساب ${uid}`,
+    metadata: { targetUid: uid, featureOverrides: clean },
+  });
 }
 
 // تعيين أو تغيير دور المستخدم (ترقية لمدير أو تخفيض لصيدلية)

@@ -13,7 +13,6 @@ import {
   Activity,
   Database,
   UserRoundCheck,
-  ClipboardCheck,
   ScrollText,
   BadgePercent,
   CreditCard,
@@ -22,6 +21,7 @@ import {
   ChevronRight
   ,Bell
   ,CopyCheck
+  ,BarChart3
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -43,7 +43,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { to: '/admin/products', label: 'الأصناف التجارية', icon: Pill },
     { to: '/admin/suppliers', label: 'الموردون والمستودعات', icon: Truck },
     { to: '/admin/representatives', label: 'طلبات المندوبين', icon: UserRoundCheck, highlight: true },
-    { to: '/admin/approvals', label: 'اعتماد التغييرات الحساسة', icon: ClipboardCheck, highlight: true },
     { to: '/admin/audit-log', label: 'سجل التدقيق', icon: ScrollText },
     { to: '/admin/offers', label: 'إدارة العروض', icon: BadgePercent, highlight: true },
     { to: '/admin/subscription-policies', label: 'الباقات وتجربة الاشتراك', icon: CreditCard, highlight: true },
@@ -55,6 +54,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     { to: '/admin/pharmacies', label: 'إدارة الصيدليات', icon: Building2 },
     { to: '/admin/pharmacy-view', label: 'عرض كصيدلية', icon: Eye, highlight: true },
     { to: '/admin/orders', label: 'الطلبيات الواردة', icon: ClipboardList },
+    { to: '/admin/order-stats', label: 'إحصائيات الطلبات اليومية', icon: BarChart3, highlight: true },
     { to: '/admin/control-center', label: 'مركز القيادة', icon: Command, highlight: true },
     { to: '/admin/operations', label: 'مركز التشغيل', icon: Activity, highlight: true },
   ];

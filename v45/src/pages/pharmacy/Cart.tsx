@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
+import { usePharmacyFeatures } from '../../hooks/usePharmacyFeatures';
 import { useCartStore } from '../../store/useCartStore';
 import { useToastStore } from '../../store/useToastStore';
 import { createOrder, updateOrderItems, getSuppliers, getPrices, getCatalogPricesSnapshot, getVerifiedOrderItems, getRecurringOrderTemplates, saveRecurringOrderTemplates } from '../../services/dataStorage';
@@ -36,6 +37,7 @@ import { formatBranchAddress, getDeliveryAreaKeys } from '../../utils/gaza';
 
 export const PharmacyCart: React.FC = () => {
   const { user } = useAuthStore();
+  const features = usePharmacyFeatures();
   const {
     items,
     updateQty,
@@ -419,7 +421,7 @@ export const PharmacyCart: React.FC = () => {
       </section>
 
       {/* بطاقة أفضل سلة (Best Cart Optimizer) */}
-      {bestCartOptimization.hasSavings && (
+      {features.cartOptimization && bestCartOptimization.hasSavings && (
         <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-l from-emerald-500/10 via-teal-500/10 to-transparent border-2 border-emerald-500/30 dark:border-emerald-500/40 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-[#0f9d7a] text-white flex items-center justify-center shrink-0 shadow-xs">

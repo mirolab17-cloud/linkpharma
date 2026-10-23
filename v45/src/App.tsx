@@ -38,13 +38,13 @@ const Products = lazy(() => importWithRecovery(() => import('./pages/admin/Produ
 const Suppliers = lazy(() => importWithRecovery(() => import('./pages/admin/Suppliers').then(m => ({ default: m.Suppliers }))));
 const ImportPrices = lazy(() => importWithRecovery(() => import('./pages/admin/ImportPrices').then(m => ({ default: m.ImportPrices }))));
 const Pharmacies = lazy(() => importWithRecovery(() => import('./pages/admin/Pharmacies').then(m => ({ default: m.Pharmacies }))));
+const OrderStats = lazy(() => importWithRecovery(() => import('./pages/admin/OrderStats').then(m => ({ default: m.OrderStats }))));
 const AdminOrders = lazy(() => importWithRecovery(() => import('./pages/admin/Orders').then(m => ({ default: m.AdminOrders }))));
 const ControlCenter = lazy(() => importWithRecovery(() => import('./pages/admin/ControlCenter').then(m => ({ default: m.ControlCenter }))));
 const CatalogImport = lazy(() => importWithRecovery(() => import('./pages/admin/CatalogImport').then(m => ({ default: m.CatalogImport }))));
 const CatalogSnapshots = lazy(() => importWithRecovery(() => import('./pages/admin/CatalogSnapshots').then(m => ({ default: m.CatalogSnapshots }))));
 const V18Operations = lazy(() => importWithRecovery(() => import('./pages/admin/V18Operations').then(m => ({ default: m.V18Operations }))));
 const RepresentativeRequests = lazy(() => importWithRecovery(() => import('./pages/admin/RepresentativeRequests').then(m => ({ default: m.RepresentativeRequests }))));
-const ChangeApprovals = lazy(() => importWithRecovery(() => import('./pages/admin/ChangeApprovals').then(m => ({ default: m.ChangeApprovals }))));
 const AuditLog = lazy(() => importWithRecovery(() => import('./pages/admin/AuditLog').then(m => ({ default: m.AuditLog }))));
 const AdminOffers = lazy(() => importWithRecovery(() => import('./pages/admin/Offers').then(m => ({ default: m.Offers }))));
 const SubscriptionPolicies = lazy(() => importWithRecovery(() => import('./pages/admin/SubscriptionPolicies').then(m => ({ default: m.SubscriptionPolicies }))));
@@ -352,12 +352,12 @@ export default function App() {
           <Route path="pharmacies" element={<Pharmacies />} />
           <Route path="pharmacy-view" element={<AdminPharmacyView />} />
           <Route path="orders" element={<AdminOrders />} />
+          <Route path="order-stats" element={<OrderStats />} />
           <Route path="control-center" element={<ControlCenter />} />
               <Route path="operations" element={<V18Operations />} />
           <Route path="catalog-import" element={<CatalogImport />} />
           <Route path="catalog-snapshots" element={<CatalogSnapshots />} />
           <Route path="representatives" element={<RepresentativeRequests />} />
-          <Route path="approvals" element={<ChangeApprovals />} />
           <Route path="audit-log" element={<AuditLog />} />
           <Route path="offers" element={<AdminOffers />} />
           <Route path="subscription-policies" element={<SubscriptionPolicies />} />

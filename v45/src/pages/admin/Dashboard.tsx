@@ -41,8 +41,7 @@ import {
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Spinner } from '../../components/Loader';
 import { getWarehouseLinkRequests } from '../../services/representatives';
-import { getAdminChangeApprovals } from '../../services/changeApprovals';
-import { AdminChangeApproval, WarehouseLinkRequest } from '../../types';
+import { WarehouseLinkRequest } from '../../types';
 
 export const AdminDashboard: React.FC = () => {
   const { success, error } = useToastStore();
@@ -56,7 +55,6 @@ export const AdminDashboard: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [batches, setBatches] = useState<ImportBatch[]>([]);
   const [linkRequests, setLinkRequests] = useState<WarehouseLinkRequest[]>([]);
-  const [changeApprovals, setChangeApprovals] = useState<AdminChangeApproval[]>([]);
 
   const [editingTrialDays, setEditingTrialDays] = useState<number>(defaultTrialDays || 7);
   const [savingTrialDays, setSavingTrialDays] = useState(false);
@@ -90,9 +88,8 @@ export const AdminDashboard: React.FC = () => {
     try {
       const [p, s, u, o, b] = await Promise.all([getProducts(), getSuppliers(), getUsers(), getOrders(), getImportBatches()]);
       setProducts(p); setSuppliers(s); setUsers(u); setOrders(o); setBatches(b);
-      const [requests, approvals] = await Promise.allSettled([getWarehouseLinkRequests(), getAdminChangeApprovals()]);
+      const [requests] = await Promise.allSettled([getWarehouseLinkRequests()]);
       if (requests.status === 'fulfilled') setLinkRequests(requests.value);
-      if (approvals.status === 'fulfilled') setChangeApprovals(approvals.value);
       setSummaryLoaded(true);
     } catch (e) { console.error(e); error('تعذر تحميل ملخص الإدارة.'); }
     finally { setLoading(false); }
@@ -213,7 +210,6 @@ export const AdminDashboard: React.FC = () => {
   const totalOrdersAmount = orders.reduce((sum, o) => sum + o.total, 0);
   const pendingOrders = orders.filter((order) => order.status === 'sent');
   const pendingRepresentativeLinks = linkRequests.filter((request) => request.status === 'pending');
-  const pendingChangeApprovals = changeApprovals.filter((request) => request.status === 'pending');
   const scheduleAlerts = suppliers.filter((supplier) => {
     const hasSchedule = Object.values(supplier.deliveryDaysByArea || {}).some((days) => Array.isArray(days) && days.length > 0);
     const updatedAt = supplier.deliveryScheduleUpdatedAt ? new Date(supplier.deliveryScheduleUpdatedAt).getTime() : 0;
@@ -225,7 +221,6 @@ export const AdminDashboard: React.FC = () => {
     { title: 'الطلبيات الواردة', count: pendingOrders.length, note: 'لم يبدأ تأكيدها', to: '/admin/orders' },
     { title: 'تحديث الأسعار', count: suppliersNotUpdated7Days.length, note: 'مستودعات أسعارها أقدم من 7 أيام', to: '/admin/import' },
     { title: 'جداول التوصيل', count: scheduleAlerts.length, note: 'غير محدّثة منذ 30 يومًا أو غير مهيأة', to: '/admin/suppliers' },
-    { title: 'اعتماد تغييرات حساسة', count: pendingChangeApprovals.length, note: 'تحتاج مديرًا ثانيًا', to: '/admin/approvals' },
   ];
 
   if (loading) {

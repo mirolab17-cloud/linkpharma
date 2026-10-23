@@ -91,9 +91,14 @@ export interface SystemSettings {
   showDeliveryDays?: boolean;
   warehousePriceSortMode?: 'cheapest' | 'latest' | 'random';
   subscriptionPolicy?: unknown;
-  requirePriceImportApproval?: boolean;
   priceImportNotificationsEnabled?: boolean;
+  /** القيم العامة لإظهار ميزات الصيدلية؛ تُستثنى منها الصيدليات التي لها تخصيص خاص. */
+  pharmacyFeatureDefaults?: Partial<Record<PharmacyFeatureKey, boolean>>;
 }
+
+export type PharmacyFeatureKey = 'cheapest' | 'cartOptimization' | 'publicPrice';
+export type FeatureOverride = 'inherit' | 'show' | 'hide';
+export type PharmacyFeatureOverrides = Partial<Record<PharmacyFeatureKey, FeatureOverride>>;
 
 export interface UserProfile {
   uid: string;
@@ -105,6 +110,7 @@ export interface UserProfile {
   subscriptionExpiresAt?: string; // ISO string
   subscriptionExpiresAtMillis?: number; // epoch ms
   trialDays?: number;
+  featureOverrides?: PharmacyFeatureOverrides;
   pharmacyName?: string;
   ownerName?: string;
   governorate?: string;
@@ -252,22 +258,6 @@ export interface ImportBatch {
   lastEditedByName?: string;
 }
 
-export interface AdminChangeApproval {
-  id: string;
-  type: 'price_import' | 'suspend_pharmacies';
-  status: 'pending' | 'processing' | 'approved' | 'rejected' | 'failed';
-  summary: string;
-  requestedByUid: string;
-  requestedByName: string;
-  requestedAt: string;
-  reviewedByUid?: string;
-  reviewedByName?: string;
-  reviewedAt?: string;
-  reviewNote?: string;
-  resultId?: string;
-  payload: Record<string, any>;
-}
-
 export interface OrderItem {
   productId: string;
   name: string;
@@ -376,7 +366,7 @@ export interface PharmacySuggestion {
   reviewedAt?: string;
 }
 
-export type PlatformActivityType = 'login' | 'order_created' | 'order_edited' | 'pharmacy_imported' | 'user_access_changed' | 'suggestion_created' | 'profile_updated' | 'price_imported' | 'price_import_failed' | 'price_visibility_changed' | 'order_status_changed' | 'representative_link_approved' | 'representative_link_rejected' | 'representative_link_revoked' | 'representative_permissions_updated' | 'representative_self_detached' | 'delivery_schedule_updated' | 'supplier_template_updated' | 'change_approval_requested' | 'change_approval_approved' | 'change_approval_rejected' | 'change_approval_failed' | 'backup_created' | 'backup_restored' | 'announcement_sent';
+export type PlatformActivityType = 'login' | 'order_created' | 'order_edited' | 'pharmacy_imported' | 'user_access_changed' | 'suggestion_created' | 'profile_updated' | 'price_imported' | 'price_import_published' | 'price_import_failed' | 'price_visibility_changed' | 'order_status_changed' | 'representative_link_approved' | 'representative_link_rejected' | 'representative_link_revoked' | 'representative_permissions_updated' | 'representative_self_detached' | 'delivery_schedule_updated' | 'supplier_template_updated' | 'change_approval_requested' | 'change_approval_approved' | 'change_approval_rejected' | 'change_approval_failed' | 'backup_created' | 'backup_restored' | 'announcement_sent';
 
 export interface PlatformActivity {
   id: string;

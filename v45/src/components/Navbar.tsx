@@ -115,7 +115,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen }
         <div className="flex items-center gap-1 sm:gap-3 shrink-0">
 
           {/* زر تثبيت PWA */}
-          <PWAInstallButton className="hidden sm:flex" />
+          <PWAInstallButton />
 
           {/* جرس الإشعارات والتنبيهات المباشرة */}
           {user && <NotificationBell />}

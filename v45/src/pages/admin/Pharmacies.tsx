@@ -6,6 +6,7 @@ import {
   getSuppliers,
   updateUserStatusAndSuppliers,
   updateUserSubscription,
+  updateUserFeatureOverrides,
   deleteUser,
   getSystemSettings,
   updateSystemSettings,
@@ -13,7 +14,8 @@ import {
   addAdminByEmail,
   removeAdminByEmail
 } from '../../services/dataStorage';
-import { UserProfile, Supplier } from '../../types';
+import { UserProfile, Supplier, FeatureOverride, PharmacyFeatureOverrides } from '../../types';
+import { PHARMACY_FEATURES } from '../../utils/pharmacyFeatures';
 import { formatGregorianDate } from '../../utils/formatDate';
 import { useToastStore } from '../../store/useToastStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -47,7 +49,6 @@ import { Modal } from '../../components/Modal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Spinner } from '../../components/Loader';
 import { SendAnnouncementModal } from '../../components/SendAnnouncementModal';
-import { createBulkSuspensionApproval } from '../../services/changeApprovals';
 
 export const Pharmacies: React.FC = () => {
   const { success, error } = useToastStore();
@@ -57,8 +58,6 @@ export const Pharmacies: React.FC = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoadingUid, setActionLoadingUid] = useState<string | null>(null);
-  const [selectedUids, setSelectedUids] = useState<string[]>([]);
-  const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
   // إعدادات أيام التجربة العامة
   const [editingDefaultTrialDays, setEditingDefaultTrialDays] = useState<number>(defaultTrialDays || 7);
@@ -84,6 +83,7 @@ export const Pharmacies: React.FC = () => {
   const [managedTrialType, setManagedTrialType] = useState<'set_total' | 'add_days'>('set_total');
   const [managedDays, setManagedDays] = useState<number>(30);
   const [managedAllowedSuppliers, setManagedAllowedSuppliers] = useState<string[]>([]);
+  const [managedFeatureOverrides, setManagedFeatureOverrides] = useState<PharmacyFeatureOverrides>({});
   const [adminCustomNote, setAdminCustomNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -381,6 +381,7 @@ export const Pharmacies: React.FC = () => {
     setManagedTrialType('set_total');
     setManagedDays(u.subscriptionStatus === 'trial' ? (u.trialDays || editingDefaultTrialDays || 7) : 30);
     setManagedAllowedSuppliers(u.allowedSuppliers || []);
+    setManagedFeatureOverrides(u.featureOverrides || {});
     setAdminCustomNote('');
     setIsManageModalOpen(true);
   };
@@ -405,6 +406,8 @@ export const Pharmacies: React.FC = () => {
         managedAllowedSuppliers,
         adminCustomNote
       );
+
+      if (managedRole === 'pharmacy') await updateUserFeatureOverrides(selectedUser.uid, managedFeatureOverrides);
 
       // تحديث الاشتراك بناءً على نوع الاشتراك وأيام التجربة المحددة
       if (managedSubscriptionStatus === 'trial') {
@@ -456,20 +459,6 @@ export const Pharmacies: React.FC = () => {
     }
   };
 
-  const handleRequestBulkSuspension = async () => {
-    const targets = users.filter((target) => selectedUids.includes(target.uid) && target.role === 'pharmacy' && target.status !== 'suspended');
-    if (targets.length < 2) { error('حدد صيدليتين غير موقوفتين على الأقل.'); return; }
-    const names = targets.slice(0, 6).map((target) => target.pharmacyName || target.name).join('، ');
-    if (!window.confirm(`سيُرسل طلب تعليق ${targets.length} صيدلية للمراجعة الثانية. لن تُعلّق الحسابات الآن.\n\n${names}${targets.length > 6 ? '، ...' : ''}`)) return;
-    setBulkSubmitting(true);
-    try {
-      const request = await createBulkSuspensionApproval(targets);
-      success(`تم إرسال طلب التعليق الجماعي للمراجعة الثانية (${request.id}). لم يتغير أي حساب بعد.`);
-      setSelectedUids([]);
-    } catch (e: any) { error('تعذر إنشاء طلب التعليق الجماعي: ' + (e?.message || '')); }
-    finally { setBulkSubmitting(false); }
-  };
-
   const toggleAllowedSupplier = (supplierId: string) => {
     if (managedAllowedSuppliers.includes(supplierId)) {
       setManagedAllowedSuppliers(managedAllowedSuppliers.filter((id) => id !== supplierId));
@@ -487,8 +476,7 @@ export const Pharmacies: React.FC = () => {
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <div className="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
-              {item.role === 'pharmacy' && item.status !== 'suspended' && <input aria-label={`اختيار ${item.pharmacyName || item.name}`} type="checkbox" checked={selectedUids.includes(item.uid)} onChange={(event) => setSelectedUids((prev) => event.target.checked ? [...new Set([...prev, item.uid])] : prev.filter((uid) => uid !== item.uid))} className="h-4 w-4 accent-rose-600"/>}
-              <Building2 className="w-4 h-4 text-[#0f9d7a]" />
+                            <Building2 className="w-4 h-4 text-[#0f9d7a]" />
               <span>{item.pharmacyName || 'لم يُحدد اسم الصيدلية'}</span>
             </div>
             {item.role === 'admin' ? (
@@ -977,14 +965,6 @@ export const Pharmacies: React.FC = () => {
         </div>
       </div>
 
-      {roleFilter !== 'representative' && <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-rose-100 bg-rose-50/60 p-3">
-        <span className="text-xs font-bold text-slate-700">محدد: {selectedUids.filter((uid) => users.some((target) => target.uid === uid && target.role === 'pharmacy' && target.status !== 'suspended')).length}</span>
-        <button type="button" onClick={() => setSelectedUids(filteredUsers.filter((target) => target.role === 'pharmacy' && target.status !== 'suspended').map((target) => target.uid))} className="rounded-lg border bg-white px-3 py-2 text-xs font-bold">تحديد الصيدليات الظاهرة</button>
-        <button type="button" onClick={() => setSelectedUids([])} className="rounded-lg border bg-white px-3 py-2 text-xs font-bold">إلغاء التحديد</button>
-        <button type="button" onClick={() => void handleRequestBulkSuspension()} disabled={bulkSubmitting || selectedUids.length < 2} className="rounded-lg bg-rose-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{bulkSubmitting ? 'جاري إرسال الطلب...' : 'طلب تعليق جماعي بمراجعة ثانية'}</button>
-        <span className="text-[11px] text-rose-800">لا يطبق التعليق قبل اعتماده من مدير آخر.</span>
-      </div>}
-
       {/* جدول المشتركين */}
       {loading ? (
         <div className="bg-white p-12 rounded-2xl border border-slate-200 flex justify-center">
@@ -1325,6 +1305,30 @@ export const Pharmacies: React.FC = () => {
               })}
             </div>
           </div>
+
+          {/* صلاحيات إظهار الميزات */}
+          {managedRole === 'pharmacy' && (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">صلاحيات إظهار الميزات لهذه الصيدلية</label>
+              <p className="text-[11px] text-slate-400 mb-2">«حسب الإعداد العام» تتبع ما ضُبط في مركز القيادة › الإعدادات. اختر إظهار أو إخفاء لاستثناء هذه الصيدلية فقط.</p>
+              <div className="space-y-2 border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+                {PHARMACY_FEATURES.map((feature) => (
+                  <div key={feature.key} className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-700">{feature.label}<small className="block text-[10px] font-normal text-slate-400">{feature.description}</small></span>
+                    <select
+                      value={managedFeatureOverrides[feature.key] || 'inherit'}
+                      onChange={(e) => setManagedFeatureOverrides((prev) => ({ ...prev, [feature.key]: e.target.value as FeatureOverride }))}
+                      className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-bold"
+                    >
+                      <option value="inherit">حسب الإعداد العام</option>
+                      <option value="show">إظهار</option>
+                      <option value="hide">إخفاء</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ملاحظة الإدارة */}
           <div>

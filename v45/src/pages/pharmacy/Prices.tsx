@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
+import { usePharmacyFeatures } from '../../hooks/usePharmacyFeatures';
 import { useCartStore } from '../../store/useCartStore';
 import { useToastStore } from '../../store/useToastStore';
 import {
@@ -79,6 +80,7 @@ const mergePrices = (current: PriceRecord[], incoming: PriceRecord[]): PriceReco
 export const PharmacyPrices: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { user } = useAuthStore();
+  const features = usePharmacyFeatures();
   const defaultBranch = user?.branches?.find((branch) => branch.id === user.defaultBranchId) || user?.branches?.[0];
   const { addItem } = useCartStore();
   const { success, error: toastError, info } = useToastStore();
@@ -112,6 +114,7 @@ export const PharmacyPrices: React.FC = () => {
   // Quick Filter Chips
   const [availableOnly, setAvailableOnly] = useState<boolean>(false);
   const [cheapestFirst, setCheapestFirst] = useState<boolean>(false);
+  useEffect(() => { if (!features.cheapest && cheapestFirst) setCheapestFirst(false); }, [features.cheapest, cheapestFirst]);
   const [bonusOnly, setBonusOnly] = useState<boolean>(false);
   const [recentlyUpdatedOnly, setRecentlyUpdatedOnly] = useState<boolean>(false);
   const [favoritesOnly, setFavoritesOnly] = useState<boolean>(false);
@@ -482,7 +485,7 @@ export const PharmacyPrices: React.FC = () => {
       if (favoritesOnly && !userFavorites.includes(prod.id)) continue;
 
       let sortValue = 0;
-      if (sortByEffective || cheapestFirst) {
+      if (sortByEffective || (features.cheapest && cheapestFirst)) {
         const availablePrices = prodPrices.filter((p) => p.available);
         sortValue = availablePrices.length
           ? Math.min(...availablePrices.map((p) => (sortByEffective ? p.effectivePrice || p.price : p.price)))
@@ -491,7 +494,7 @@ export const PharmacyPrices: React.FC = () => {
       entries.push({ product: prod, rank, sortValue });
     }
 
-    if (sortByEffective || cheapestFirst) {
+    if (sortByEffective || (features.cheapest && cheapestFirst)) {
       entries.sort((a, b) => (a.sortValue === b.sortValue ? 0 : a.sortValue < b.sortValue ? -1 : 1));
     } else if (tokens.length) {
       entries.sort((a, b) => a.rank - b.rank);
@@ -818,7 +821,7 @@ export const PharmacyPrices: React.FC = () => {
             <span>متوفر فقط</span>
           </button>
 
-          <button
+          {features.cheapest && <button
             onClick={() => { setCheapestFirst(!cheapestFirst); setSortByEffective(false); }}
             className={`px-3 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
               cheapestFirst
@@ -828,7 +831,7 @@ export const PharmacyPrices: React.FC = () => {
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>الأرخص أولاً</span>
-          </button>
+          </button>}
 
           <button
             onClick={() => { setSortByEffective(!sortByEffective); setCheapestFirst(false); }}
@@ -1019,7 +1022,7 @@ export const PharmacyPrices: React.FC = () => {
                     </div>
 
                     {/* شارة التوفير بين عروض الصنف الواحد */}
-                    {maxSavingsDiff > 0 && (
+                    {features.cheapest && maxSavingsDiff > 0 && (
                       <div className="mt-2.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 flex items-center justify-between text-[10px] text-emerald-800 dark:text-emerald-300 font-bold">
                         <span>فارق توفير بين المستودعات:</span>
                         <span>وفّر {formatCurrency(maxSavingsDiff)} ({maxSavingsPercent}%)</span>
@@ -1050,6 +1053,7 @@ export const PharmacyPrices: React.FC = () => {
                           const deliveryRule = deliveryRuleForSupplier(sup, defaultBranch ? getDeliveryAreaKeys(defaultBranch) : [user?.city, user?.governorate]);
 
                           const isCheapest =
+                            features.cheapest &&
                             priceRec.available &&
                             minPrice !== null &&
                             priceRec.price === minPrice &&
@@ -1099,7 +1103,7 @@ export const PharmacyPrices: React.FC = () => {
                                       صافي {formatCurrency(bonusCalc.effectivePrice)}
                                     </span>
                                   )}
-                                  {priceRec.publicPrice && !bonusCalc.hasBonus && (
+                                  {features.publicPrice && priceRec.publicPrice && !bonusCalc.hasBonus && (
                                     <span className="text-[10px] text-slate-400 line-through block font-mono">
                                       {formatCurrency(priceRec.publicPrice)}
                                     </span>

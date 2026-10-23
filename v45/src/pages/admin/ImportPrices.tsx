@@ -24,7 +24,6 @@ import { formatCurrency } from '../../utils/formatPrice';
 import { formatGregorianDateTime } from '../../utils/formatDate';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useToastStore } from '../../store/useToastStore';
-import { createPriceImportApproval } from '../../services/changeApprovals';
 import { recordActivity } from '../../services/v18Features';
 import { saveSupplierImportTemplate } from '../../services/representatives';
 import {
@@ -116,7 +115,6 @@ export const ImportPrices: React.FC = () => {
   const [recentBatches, setRecentBatches] = useState<ImportBatch[]>([]);
   const [existingPrices, setExistingPrices] = useState<PriceRecord[]>([]);
   const [reviewAcknowledged, setReviewAcknowledged] = useState(false);
-  const [requirePriceImportApproval, setRequirePriceImportApproval] = useState(false);
 
   // Selection
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
@@ -183,7 +181,6 @@ export const ImportPrices: React.FC = () => {
     updatedCount: number;
     newCount: number;
     ignoredCount: number;
-    approvalPending?: boolean;
     rolledBack?: boolean;
   } | null>(null);
 
@@ -217,7 +214,6 @@ export const ImportPrices: React.FC = () => {
       setProducts(prods);
       setIngredients(ings);
       setRecentBatches(batches);
-      setRequirePriceImportApproval(settings.requirePriceImportApproval === true);
       const preferredSupplierId = user?.role === 'representative' ? user.supplierId : selectedSupplierId || scopedSuppliers[0]?.id;
       if (preferredSupplierId && scopedSuppliers.some((supplier) => supplier.id === preferredSupplierId)) setSelectedSupplierId(preferredSupplierId);
     } catch (e) {
@@ -893,24 +889,6 @@ export const ImportPrices: React.FC = () => {
         available: r.available,
         expiry: r.expiry,
       }));
-
-      if (priceRecords.length >= 50 || (isRepresentative && requirePriceImportApproval)) {
-        await recordActivity({
-          type: 'price_import_review_acknowledged', actorId: user.uid, actorName: user.name || user.email, actorRole: user.role,
-          message: `تمت مراجعة فروقات الأسعار وإرسال دفعة ${selectedSupplier?.name || selectedSupplierId} للاعتماد`,
-          metadata: { supplierId: selectedSupplierId, fileName: currentFileName, changedRows: priceRecords.length, ignoredRows: matchRows.length - validCommitRows.length },
-        });
-        const approval = await createPriceImportApproval({
-          supplierId: selectedSupplierId,
-          supplierName: selectedSupplier?.name || selectedSupplierId,
-          fileName: currentFileName,
-          priceRecords,
-        });
-        setCommitSummary({ batchId: approval.id, updatedCount: 0, newCount: 0, ignoredCount: matchRows.length - validCommitRows.length, approvalPending: true });
-        setStep(4);
-        success('أُرسل الاستيراد للمراجعة الثانية؛ لم تُحدّث الأسعار بعد.');
-        return;
-      }
 
       const res = await commitImportBatch({
         supplierId: selectedSupplierId,
@@ -1769,20 +1747,20 @@ export const ImportPrices: React.FC = () => {
       {/* ======================= الخطوة 4: ملخص الاعتماد أو انتظار المراجعة ======================= */}
       {step === 4 && commitSummary && (
         <div className="max-w-2xl mx-auto bg-white rounded-3xl border border-slate-200 shadow-sm p-8 text-center space-y-6">
-          <div className={`w-20 h-20 rounded-3xl ${commitSummary.approvalPending ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-[#0f9d7a] border-emerald-200'} border flex items-center justify-center mx-auto shadow-sm`}>
-            {commitSummary.approvalPending ? <Clock className="w-10 h-10" /> : <CheckCircle2 className="w-10 h-10" />}
+          <div className="w-20 h-20 rounded-3xl bg-emerald-50 text-[#0f9d7a] border-emerald-200 border flex items-center justify-center mx-auto shadow-sm">
+            <CheckCircle2 className="w-10 h-10" />
           </div>
 
           <div className="space-y-2">
             <h2 className="text-2xl font-black text-slate-900">
-              {commitSummary.approvalPending ? 'الدفعة بانتظار المراجعة الثانية' : 'تم اعتماد تحديث الأسعار بنجاح!'}
+              تم اعتماد تحديث الأسعار بنجاح!
             </h2>
             <p className="text-xs text-slate-500">
-              {commitSummary.approvalPending ? `لم تُطبّق الأسعار بعد. طلب الاعتماد ${commitSummary.batchId} أرسله مدير ثانٍ للمراجعة.` : `تم تسجيل التحديثات في قاعدة الأسعار وسجل التغييرات لـ (${selectedSupplier?.name})`}
+              {`تم تسجيل التحديثات في قاعدة الأسعار وسجل التغييرات لـ (${selectedSupplier?.name})`}
             </p>
           </div>
 
-          {!commitSummary.approvalPending && <div className="grid grid-cols-3 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 text-xs">
+          <div className="grid grid-cols-3 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 text-xs">
             <div className="p-3 bg-white rounded-xl border border-slate-200">
               <span className="text-slate-400 block font-medium">الأسعار المحدثة</span>
               <span className="text-xl font-black text-[#0f9d7a] mt-1 block">
@@ -1803,7 +1781,7 @@ export const ImportPrices: React.FC = () => {
                 {commitSummary.ignoredCount}
               </span>
             </div>
-          </div>}
+          </div>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
             <button
@@ -1823,7 +1801,7 @@ export const ImportPrices: React.FC = () => {
               <span className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold">
                 تم التراجع عن هذا الاستيراد
               </span>
-            ) : !commitSummary.approvalPending && <button
+            ) : (<button
               type="button"
               onClick={() => {
                 setTargetRollbackBatchId(commitSummary.batchId);
@@ -1833,7 +1811,7 @@ export const ImportPrices: React.FC = () => {
             >
               <RotateCcw className="w-4 h-4" />
               <span>التراجع عن هذا الاستيراد</span>
-            </button>}
+            </button>)}
           </div>
         </div>
       )}

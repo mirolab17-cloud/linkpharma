@@ -249,19 +249,6 @@ describe('current Firestore rules — warehouse representatives and pharmacy bra
     }));
   });
 
-  it('limits representative price-import approvals to valid large imports for their own warehouse', async () => {
-    const db = testEnv.authenticatedContext('rep1').firestore();
-    const approval = {
-      id: 'approval1', type: 'price_import', status: 'pending', summary: 'استيراد تجريبي',
-      requestedByUid: 'rep1', requestedByName: 'مندوب تجريبي', requestedAt: new Date(),
-      payload: { supplierId: 'supplier1', priceRecords: Array.from({ length: 50 }, (_, i) => ({ productId: `p${i}` })) },
-    };
-    await assertSucceeds(setDoc(doc(db, 'admin_change_approvals/approval1'), approval));
-    await assertFails(setDoc(doc(db, 'admin_change_approvals/approval2'), {
-      ...approval, id: 'approval2', type: 'bulk_suspend', payload: { userIds: ['pharmacy1'] },
-    }));
-  });
-
   it('denies the representative access to another warehouse price record', async () => {
     const db = testEnv.authenticatedContext('rep1').firestore();
     await assertSucceeds(getDoc(doc(db, 'prices/price1')));
