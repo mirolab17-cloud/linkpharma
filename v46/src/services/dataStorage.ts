@@ -465,9 +465,20 @@ async function writeSnapshotEntries(entries: Array<{ id: string; data: Record<st
   }
 }
 
+// إعادة بناء تلقائية مؤجلة بعد تعديل الأصناف (تجمع عدة تعديلات متتالية في بناء واحد)
+let snapshotRebuildTimer: ReturnType<typeof setTimeout> | undefined;
+export function scheduleCatalogSnapshotRebuild(delayMs = 20000): void {
+  if (useAuthStore.getState().user?.role !== 'admin') return;
+  clearTimeout(snapshotRebuildTimer);
+  snapshotRebuildTimer = setTimeout(() => {
+    rebuildCatalogSnapshots().catch((error) => console.warn('Auto catalog snapshot rebuild deferred:', error));
+  }, delayMs);
+}
+
 export async function rebuildCatalogSnapshots(): Promise<{ version: string; products: number; prices: number; chunks: number }> {
   const actor = useAuthStore.getState().user;
   if (actor?.role !== 'admin') throw new Error('إعادة بناء نسخة الكتالوج متاحة للمدير فقط.');
+  clearTimeout(snapshotRebuildTimer);
   const [products, prices, suppliers, previousMeta] = await Promise.all([getProducts(), getPrices(undefined, false), getSuppliers(), getCatalogSnapshotMeta()]);
   if (!isFirebaseConfigured) return { version: 'local', products: products.length, prices: prices.length, chunks: 0 };
   const version = `v43_${Date.now()}`;
@@ -642,6 +653,7 @@ export async function saveProduct(item: Omit<Product, 'id'> & { id?: string }): 
   }
   setLocal(STORAGE_KEYS.products, list);
   updateLiveCollection('products', STORAGE_KEYS.products, newItem);
+  scheduleCatalogSnapshotRebuild();
   return newItem;
 }
 
@@ -700,6 +712,7 @@ export async function deleteProducts(ids: string[]): Promise<void> {
   const list = getLocal<Product>(STORAGE_KEYS.products).filter((p) => !ids.includes(p.id));
   setLocal(STORAGE_KEYS.products, list);
   ids.forEach((id) => updateLiveCollection<Product>('products', STORAGE_KEYS.products, null, id));
+  scheduleCatalogSnapshotRebuild();
 }
 
 export async function updateProductsCategory(ids: string[], newCategory: string): Promise<void> {
@@ -723,6 +736,7 @@ export async function updateProductsCategory(ids: string[], newCategory: string)
   });
   setLocal(STORAGE_KEYS.products, list);
   list.filter((product) => ids.includes(product.id)).forEach((product) => updateLiveCollection('products', STORAGE_KEYS.products, product));
+  scheduleCatalogSnapshotRebuild();
 }
 
 // ======================= Suppliers =======================
