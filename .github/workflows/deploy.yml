@@ -384,6 +384,16 @@ jobs:
           mkdir -p ../dist/v46
           cp -r dist/. ../dist/v46/
           cd ..
+          # Build v48: grouped admin navigation and delegated pharmacy catalog/price permissions
+          cd v48
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v48
+          cp -r dist/. ../dist/v48/
+          cd ..
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
