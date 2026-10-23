@@ -10,6 +10,7 @@ import {
 } from '../../services/dataStorage';
 import { Product, ActiveIngredient } from '../../types';
 import { normalizeArabic } from '../../utils/arabicNormalize';
+import { getProductActiveIngredientIds } from '../../utils/catalogImport';
 import { useToastStore } from '../../store/useToastStore';
 import {
   Pill,
@@ -143,8 +144,11 @@ export const Products: React.FC = () => {
     return products.filter((p) => {
       if (norm) {
         const prodNorm = p.normalizedName || normalizeArabic(p.tradeName);
-        const ing = ingredientsMap.get(p.activeIngredientId);
-        const ingNorm = ing ? ing.normalizedName || normalizeArabic(ing.name) : '';
+        const ingNorm = getProductActiveIngredientIds(p)
+          .map((id) => ingredientsMap.get(id))
+          .filter(Boolean)
+          .map((ing) => ing!.normalizedName || normalizeArabic(ing!.name))
+          .join(' ');
         const mfgNorm = normalizeArabic(p.manufacturer);
         if (!prodNorm.includes(norm) && !ingNorm.includes(norm) && !mfgNorm.includes(norm)) {
           return false;
@@ -152,7 +156,7 @@ export const Products: React.FC = () => {
       }
 
       if (selectedCategory !== 'all' && p.category !== selectedCategory) return false;
-      if (selectedIngredient !== 'all' && p.activeIngredientId !== selectedIngredient) return false;
+      if (selectedIngredient !== 'all' && !getProductActiveIngredientIds(p).includes(selectedIngredient)) return false;
       if (selectedForm !== 'all' && p.form !== selectedForm) return false;
 
       return true;
@@ -213,6 +217,9 @@ export const Products: React.FC = () => {
         tradeName: tradeName.trim(),
         normalizedName: normalizeArabic(tradeName.trim()),
         activeIngredientId: activeIngredientId || '',
+        activeIngredientIds: editingProduct && editingProduct.activeIngredientId === activeIngredientId
+          ? getProductActiveIngredientIds(editingProduct)
+          : activeIngredientId ? [activeIngredientId] : [],
         form: form.trim(),
         strength: strength.trim(),
         packSize: packSize.trim(),
@@ -307,10 +314,12 @@ export const Products: React.FC = () => {
       key: 'activeIngredientId',
       header: 'المادة الفعالة',
       render: (item) => {
-        const ing = ingredientsMap.get(item.activeIngredientId);
+        const names = getProductActiveIngredientIds(item)
+          .map((id) => ingredientsMap.get(id)?.name)
+          .filter(Boolean);
         return (
           <span className="text-xs font-bold text-[#0f9d7a]">
-            {ing?.name || 'غير محددة'}
+            {names.join(' + ') || 'غير محددة'}
           </span>
         );
       },
@@ -501,7 +510,9 @@ export const Products: React.FC = () => {
               }
             }}
             mobileCardRender={(item, isSelected, onToggle) => {
-              const ing = ingredientsMap.get(item.activeIngredientId);
+              const ingredientNames = getProductActiveIngredientIds(item)
+                .map((id) => ingredientsMap.get(id)?.name)
+                .filter(Boolean);
               return (
                 <div
                   className={`bg-white p-4 rounded-2xl border transition-all ${
@@ -524,7 +535,7 @@ export const Products: React.FC = () => {
                   </div>
 
                   <p className="text-xs text-[#0f9d7a] font-bold mb-2">
-                    {ing?.name || 'غير محددة'}
+                    {ingredientNames.join(' + ') || 'غير محددة'}
                   </p>
 
                   <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">

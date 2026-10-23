@@ -649,6 +649,11 @@ export const ImportPrices: React.FC = () => {
         tradeName: productEditDraft.tradeName.trim(),
         normalizedName: normalizeArabic(productEditDraft.tradeName.trim()),
         activeIngredientId: effectiveType === 'medicine' ? productEditDraft.activeIngredientId : '',
+        activeIngredientIds: effectiveType !== 'medicine'
+          ? []
+          : existing && existing.activeIngredientId === productEditDraft.activeIngredientId
+            ? Array.from(new Set([...(existing.activeIngredientIds || []), existing.activeIngredientId].filter(Boolean)))
+            : productEditDraft.activeIngredientId ? [productEditDraft.activeIngredientId] : [],
         form: productEditDraft.form.trim(),
         strength: productEditDraft.strength.trim(),
         packSize: productEditDraft.packSize.trim(),

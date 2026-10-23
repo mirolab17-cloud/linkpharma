@@ -164,6 +164,8 @@ export interface Product {
   category: string;
   barcode?: string;
   activeIngredientId: string; // فارغ للمستلزمات والمنتجات غير الدوائية
+  /** جميع المواد الفعالة للتركيبات؛ يبقى activeIngredientId مرجعاً أولياً للتوافق. */
+  activeIngredientIds?: string[];
   productType?: 'medicine' | 'medical_supply' | 'other';
   createdAt?: string;
 }

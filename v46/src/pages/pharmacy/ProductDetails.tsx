@@ -7,12 +7,13 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { formatCurrency, calculateEffectiveUnitPrice } from '../../utils/formatPrice';
 import { formatGregorianDate } from '../../utils/formatDate';
 import { productDisplayName } from '../../utils/productCatalog';
+import { getProductActiveIngredientIds } from '../../utils/catalogImport';
 
 export const ProductDetails: React.FC = () => {
   const { productId = '' } = useParams();
   const user = useAuthStore((state) => state.user);
   const [product, setProduct] = useState<Product | null>(null);
-  const [ingredient, setIngredient] = useState<ActiveIngredient | null>(null);
+  const [ingredients, setIngredients] = useState<ActiveIngredient[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [prices, setPrices] = useState<PriceRecord[]>([]);
   const [history, setHistory] = useState<PriceHistory[]>([]);
@@ -38,7 +39,8 @@ export const ProductDetails: React.FC = () => {
         ]);
         if (!alive) return;
         setProduct(currentProduct);
-        setIngredient(allIngredients.find((item) => item.id === currentProduct.activeIngredientId) || null);
+        const ingredientIds = new Set(getProductActiveIngredientIds(currentProduct));
+        setIngredients(allIngredients.filter((item) => ingredientIds.has(item.id)));
         setSuppliers(visibleSuppliers);
         setPrices(productPrices.filter((price) => supplierIds.includes(price.supplierId)).sort((a, b) => a.price - b.price));
         setHistory(productHistory.filter((record) => supplierIds.includes(record.supplierId)).sort((a, b) => b.importedAt.localeCompare(a.importedAt)).slice(0, 100));
@@ -61,7 +63,7 @@ export const ProductDetails: React.FC = () => {
     <div className="max-w-5xl mx-auto p-3 sm:p-6 space-y-5" dir="rtl">
       <Link to="/app/prices" className="inline-flex items-center gap-2 text-xs font-bold text-[#0f9d7a]"><ArrowRight className="w-4 h-4" />العودة إلى مقارنة الأسعار</Link>
       <section className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-7 shadow-sm">
-        <div className="flex items-start gap-3"><div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-[#0f9d7a]">{product.productType === 'medical_supply' ? <Package className="w-6 h-6" /> : <Pill className="w-6 h-6" />}</div><div className="min-w-0"><h1 className="text-xl sm:text-2xl font-black text-slate-900">{productDisplayName(product)}</h1><p className="mt-1 text-sm text-[#0f9d7a] font-bold">{ingredient?.name || (product.productType === 'medical_supply' ? 'مستلزم طبي' : 'تفاصيل المنتج')}</p></div></div>
+        <div className="flex items-start gap-3"><div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-[#0f9d7a]">{product.productType === 'medical_supply' ? <Package className="w-6 h-6" /> : <Pill className="w-6 h-6" />}</div><div className="min-w-0"><h1 className="text-xl sm:text-2xl font-black text-slate-900">{productDisplayName(product)}</h1><p className="mt-1 text-sm text-[#0f9d7a] font-bold">{ingredients.length ? ingredients.map((item) => item.name).join(' + ') : product.productType === 'medical_supply' ? 'مستلزم طبي' : 'تفاصيل المنتج'}</p></div></div>
         <dl className="mt-5 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">{[['الشكل', product.form], ['التركيز', product.strength], ['حجم العبوة', product.packSize], ['الشركة', product.manufacturer], ['التصنيف', product.category], ['الباركود', product.barcode]].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3"><dt className="text-slate-500">{label}</dt><dd className="mt-1 font-bold text-slate-800">{value || '—'}</dd></div>)}</dl>
       </section>
 

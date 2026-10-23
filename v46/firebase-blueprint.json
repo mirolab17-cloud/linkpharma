@@ -51,6 +51,7 @@
         "category": { "type": "string", "maxLength": 150, "description": "Therapeutic category" },
         "barcode": { "type": "string", "maxLength": 100, "description": "Item barcode" },
         "activeIngredientId": { "type": "string", "maxLength": 128, "description": "Referenced active ingredient ID" },
+        "activeIngredientIds": { "type": "array", "items": { "type": "string", "maxLength": 128 }, "description": "All referenced active ingredient IDs for combination products" },
         "createdAt": { "type": "string", "maxLength": 64, "description": "Creation timestamp" }
       },
       "required": ["id", "tradeName", "form", "manufacturer", "activeIngredientId"]

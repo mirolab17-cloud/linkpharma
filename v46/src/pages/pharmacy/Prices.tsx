@@ -21,6 +21,7 @@ import { Product, ActiveIngredient, Supplier, PriceRecord, PriceHistory } from '
 import { formatCurrency, calculateEffectiveUnitPrice } from '../../utils/formatPrice';
 import { formatGregorianDate } from '../../utils/formatDate';
 import { normalizeArabic } from '../../utils/arabicNormalize';
+import { getProductActiveIngredientIds } from '../../utils/catalogImport';
 import {
   Search,
   RotateCcw,
@@ -680,7 +681,7 @@ export const PharmacyPrices: React.FC = () => {
 
     // الأصناف التي لها نفس المادة الفعالة
     const candidates = products.filter(
-      (p) => p.id !== base.id && p.activeIngredientId === ingId
+      (p) => p.id !== base.id && getProductActiveIngredientIds(p).includes(ingId)
     );
 
     // حساب أرخص سعر لكل بديل
@@ -925,7 +926,9 @@ export const PharmacyPrices: React.FC = () => {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {paginatedProducts.map((product) => {
-              const ing = ingredientsMap.get(product.activeIngredientId);
+              const ingredientNames = getProductActiveIngredientIds(product)
+                .map((id) => ingredientsMap.get(id)?.name)
+                .filter(Boolean);
               const prodPrices = productPricesMap.get(product.id) || [];
               const isFav = userFavorites.includes(product.id);
               const hasAlert = userPriceAlerts[product.id] !== undefined;
@@ -986,7 +989,7 @@ export const PharmacyPrices: React.FC = () => {
 
                         <div className="mt-1 flex items-center gap-2">
                           {product.productType === 'medical_supply' && <span className="text-xs text-slate-500 font-bold">مستلزم طبي</span>}
-                          {product.productType !== 'medical_supply' && ing && <span className="text-xs text-[#0f9d7a] font-bold">{ing.name}</span>}
+                          {product.productType !== 'medical_supply' && ingredientNames.length > 0 && <span className="text-xs text-[#0f9d7a] font-bold">{ingredientNames.join(' + ')}</span>}
                         </div>
                         <Link to={`/app/prices/${product.id}`} className="mt-2 inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold text-[#0f9d7a] hover:bg-emerald-100">عرض الصنف وآخر التغييرات</Link>
                       </div>

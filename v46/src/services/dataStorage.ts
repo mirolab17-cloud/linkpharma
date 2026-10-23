@@ -301,6 +301,39 @@ export async function saveActiveIngredient(item: Omit<ActiveIngredient, 'id'> & 
   return newItem;
 }
 
+export async function saveActiveIngredientsBatch(
+  items: Array<Omit<ActiveIngredient, 'id'> & { id?: string }>,
+  chunkSize = 400,
+): Promise<ActiveIngredient[]> {
+  if (items.length === 0) return [];
+  invalidateCache(['activeIngredients']);
+  const saved = items.map((item, index): ActiveIngredient => ({
+    ...item,
+    id: item.id || `ing_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: item.createdAt || new Date().toISOString(),
+  }));
+  const safeChunkSize = Math.max(1, Math.min(450, Math.floor(chunkSize) || 400));
+  if (isFirebaseConfigured) {
+    try {
+      for (let start = 0; start < saved.length; start += safeChunkSize) {
+        const batch = writeBatch(db);
+        saved.slice(start, start + safeChunkSize).forEach((ingredient) => {
+          batch.set(doc(db, 'activeIngredients', ingredient.id), ingredient);
+        });
+        await batch.commit();
+      }
+    } catch (e) {
+      console.error('Firestore saveActiveIngredientsBatch failed:', e);
+      throw new Error('تعذر حفظ المواد الفعالة المستوردة في قاعدة البيانات.');
+    }
+  }
+  const byId = new Map(getLocal<ActiveIngredient>(STORAGE_KEYS.activeIngredients).map((ingredient) => [ingredient.id, ingredient]));
+  saved.forEach((ingredient) => byId.set(ingredient.id, ingredient));
+  setLocal(STORAGE_KEYS.activeIngredients, [...saved, ...Array.from(byId.values()).filter((ingredient) => !saved.some((item) => item.id === ingredient.id))]);
+  saved.forEach((ingredient) => updateLiveCollection('activeIngredients', STORAGE_KEYS.activeIngredients, ingredient));
+  return saved;
+}
+
 export async function deleteActiveIngredients(ids: string[]): Promise<void> {
   invalidateCache(['activeIngredients']);
   if (isFirebaseConfigured) {

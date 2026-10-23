@@ -8,6 +8,7 @@ import {
 } from '../../services/dataStorage';
 import { ActiveIngredient, Product } from '../../types';
 import { normalizeArabic } from '../../utils/arabicNormalize';
+import { getProductActiveIngredientIds } from '../../utils/catalogImport';
 import { useToastStore } from '../../store/useToastStore';
 import {
   FlaskConical,
@@ -75,7 +76,9 @@ export const ActiveIngredients: React.FC = () => {
   const productCountMap = useMemo(() => {
     const map = new Map<string, number>();
     products.forEach((p) => {
-      map.set(p.activeIngredientId, (map.get(p.activeIngredientId) || 0) + 1);
+      getProductActiveIngredientIds(p).forEach((id) => {
+        map.set(id, (map.get(id) || 0) + 1);
+      });
     });
     return map;
   }, [products]);
