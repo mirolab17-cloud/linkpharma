@@ -194,6 +194,91 @@ export const ImportPrices: React.FC = () => {
   const [targetRollbackBatchId, setTargetRollbackBatchId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const restoredDraftKeyRef = useRef<string>('');
+  const [draftRecoveryReady, setDraftRecoveryReady] = useState(false);
+  const [draftRecovered, setDraftRecovered] = useState(false);
+  const draftStorageKey = user?.uid && selectedSupplierId
+    ? `linkpharma_price_import_draft_v51:${user.uid}:${selectedSupplierId}`
+    : '';
+
+  // استعادة مسودة الاستيراد بعد إعادة فتح الصفحة أو انقطاع الاتصال.
+  useEffect(() => {
+    if (!draftStorageKey || products.length === 0) {
+      setDraftRecoveryReady(false);
+      return;
+    }
+    if (restoredDraftKeyRef.current === draftStorageKey) return;
+    restoredDraftKeyRef.current = draftStorageKey;
+    setDraftRecoveryReady(false);
+    try {
+      const raw = localStorage.getItem(draftStorageKey);
+      if (raw) {
+        const draft = JSON.parse(raw);
+        if (draft?.version === 1 && draft?.sheetData && Array.isArray(draft?.matchRows)) {
+          setSheetData(draft.sheetData);
+          setCurrentFileName(String(draft.currentFileName || ''));
+          setSelectedSheetName(String(draft.selectedSheetName || draft.sheetData.selectedSheet || ''));
+          setStartRow(Number(draft.startRow) || 2);
+          setNameCol(Number.isInteger(draft.nameCol) ? draft.nameCol : -1);
+          setStrengthCol(Number.isInteger(draft.strengthCol) ? draft.strengthCol : -1);
+          setFormCol(Number.isInteger(draft.formCol) ? draft.formCol : -1);
+          setPackCol(Number.isInteger(draft.packCol) ? draft.packCol : -1);
+          setManufacturerCol(Number.isInteger(draft.manufacturerCol) ? draft.manufacturerCol : -1);
+          setBarcodeCol(Number.isInteger(draft.barcodeCol) ? draft.barcodeCol : -1);
+          setBonusCol(Number.isInteger(draft.bonusCol) ? draft.bonusCol : -1);
+          setPriceCol(Number.isInteger(draft.priceCol) ? draft.priceCol : -1);
+          setPublicPriceCol(Number.isInteger(draft.publicPriceCol) ? draft.publicPriceCol : -1);
+          setAvailCol(Number.isInteger(draft.availCol) ? draft.availCol : -1);
+          setExpiryCol(Number.isInteger(draft.expiryCol) ? draft.expiryCol : -1);
+          const restoredRows: RowMatchItem[] = draft.matchRows.map((row: any) => ({
+            ...row,
+            suggestions: (Array.isArray(row.suggestions) ? row.suggestions : [])
+              .map((suggestion: any) => {
+                const product = products.find((item) => item.id === (suggestion.productId || suggestion.product?.id));
+                return product ? { product, score: Number(suggestion.score) || 0 } : null;
+              }).filter(Boolean),
+          }));
+          setMatchRows(restoredRows);
+          setStep(draft.step === 3 && restoredRows.length ? 3 : 2);
+          setDraftRecovered(true);
+          info(`استعدنا مسودة الاستيراد: ${restoredRows.length || draft.sheetData.allRows?.length || 0} صفاً. راجعها وأكمل من حيث توقفت.`);
+        }
+      }
+    } catch (restoreError) {
+      console.error('تعذر استعادة مسودة استيراد الأسعار', restoreError);
+      warning('تعذر قراءة مسودة الاستيراد المحفوظة؛ الملف الأصلي لم يتغير.');
+    } finally {
+      setDraftRecoveryReady(true);
+    }
+  }, [draftStorageKey, products.length]);
+
+  // حفظ المسودة محلياً بعد كل تغيير مهم، ولا يشمل هذا اعتماد الأسعار في قاعدة البيانات.
+  useEffect(() => {
+    if (!draftRecoveryReady || !draftStorageKey || !sheetData || step < 2 || step > 3) return;
+    try {
+      const draft = {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        step,
+        supplierId: selectedSupplierId,
+        currentFileName,
+        sheetData,
+        selectedSheetName,
+        startRow,
+        nameCol, strengthCol, formCol, packCol, manufacturerCol, barcodeCol,
+        bonusCol, priceCol, publicPriceCol, availCol, expiryCol,
+        matchRows: matchRows.map((row) => ({
+          ...row,
+          suggestions: row.suggestions.map((suggestion) => ({ productId: suggestion.product.id, score: suggestion.score })),
+        })),
+      };
+      localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+    } catch (saveError) {
+      console.error('تعذر حفظ مسودة استيراد الأسعار', saveError);
+    }
+  }, [draftRecoveryReady, draftStorageKey, step, sheetData, currentFileName, selectedSheetName, startRow,
+    nameCol, strengthCol, formCol, packCol, manufacturerCol, barcodeCol, bonusCol, priceCol,
+    publicPriceCol, availCol, expiryCol, matchRows, selectedSupplierId]);
 
   useEffect(() => {
     loadBaseData();
@@ -504,6 +589,30 @@ export const ImportPrices: React.FC = () => {
     setReviewAcknowledged(false);
     setStep(3);
     info(`تمت مطابقة ${results.length} صفاً. يرجى مراجعة الحالات.`);
+  };
+
+  const handleSmartRematch = () => {
+    if (!matchRows.length) return;
+    const nextRows = matchRows.map((row) => {
+      // لا نلمس أي اختيار يدوي سبق أن حدده المستخدم.
+      if (row.selectedProductId || row.status === 'ignored') return row;
+      const result = productMatcher.match(row.originalName, row.manufacturer, {
+        tradeName: row.tradeName,
+        strength: row.strength,
+        form: row.form,
+        packSize: row.pack,
+        barcode: row.barcode,
+      });
+      return {
+        ...row,
+        status: result.status,
+        selectedProductId: result.matchedProduct?.id || null,
+        suggestions: result.suggestions,
+      };
+    });
+    setMatchRows(nextRows);
+    setReviewAcknowledged(false);
+    success(`اكتملت المطابقة الذكية مجدداً. تمت المحافظة على اختياراتك اليدوية، وأعيد فحص ${nextRows.filter((row) => !row.selectedProductId && row.status !== 'ignored').length} صف غير مربوط.`);
   };
 
   const handleOpenRowEditor = (row: RowMatchItem) => {
@@ -922,6 +1031,8 @@ export const ImportPrices: React.FC = () => {
       });
 
       setStep(4);
+      if (draftStorageKey) localStorage.removeItem(draftStorageKey);
+      setDraftRecovered(false);
       success(`تم اعتماد الاستيراد بنجاح! تم تحديث ${res.updatedCount} صنفاً وإضافة ${res.newCount} جديداً.`);
       await loadBaseData();
     } catch (err: any) {
@@ -1439,6 +1550,16 @@ export const ImportPrices: React.FC = () => {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSmartRematch}
+                  disabled={loading || matchRows.every((row) => row.selectedProductId || row.status === 'ignored')}
+                  className="px-3.5 py-2 rounded-xl bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200 text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
+                  title="إعادة فحص الصفوف غير المربوطة مع الحفاظ على الاختيارات اليدوية"
+                >
+                  <Search className="w-4 h-4" />
+                  إعادة المطابقة الذكية
+                </button>
                 {canCreateProducts && <button
                   type="button"
                   onClick={handleCreateAllUnlinked}
@@ -1799,6 +1920,8 @@ export const ImportPrices: React.FC = () => {
                 setSheetData(null);
                 setMatchRows([]);
                 setCommitSummary(null);
+                if (draftStorageKey) localStorage.removeItem(draftStorageKey);
+                setDraftRecovered(false);
               }}
               className="w-full sm:w-auto px-6 py-2.5 bg-[#0f9d7a] hover:bg-[#0b7a5e] text-white text-xs font-bold rounded-xl transition shadow-xs"
             >
