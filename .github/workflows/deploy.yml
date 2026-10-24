@@ -436,6 +436,18 @@ jobs:
           cp -r dist/. ../dist/v52/
           cd ..
 
+          # Build v53: smart product-name matching (name + strength + form + pack), composition display control, legacy product migration, alias unlink
+          cd v53
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v53
+          cp -r dist/. ../dist/v53/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
