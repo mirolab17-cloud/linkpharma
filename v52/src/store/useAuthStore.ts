@@ -265,7 +265,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         // فحص صلاحية المشرف يعمل في الخلفية ولا يؤخر الدخول (كان سبب التأخير 15 ثانية)
         const adminCheck: Promise<void> = Promise.all([
-          getDoc(doc(db, 'admins', fbUser.uid)).catch(() => null),
+          getDoc(doc(db, 'admins', fbUser.uid)).catch(() => getDocFromServer(doc(db, 'admins', fbUser.uid)).catch(() => null)),
           getDoc(doc(db, 'settings', 'system')).catch(() => null),
         ]).then(([adminSnap, settingsSnap]) => {
           let found = false;
