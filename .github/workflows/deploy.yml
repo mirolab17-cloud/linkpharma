@@ -403,6 +403,17 @@ jobs:
           cp -r dist/. ../dist/v48/
           cd ..
 
+          # Build v50: premium light 3D login redesign based on v48; auth behavior preserved
+          cd v50
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v50
+          cp -r dist/. ../dist/v50/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
