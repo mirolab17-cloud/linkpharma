@@ -425,6 +425,17 @@ jobs:
           cp -r dist/. ../dist/v51/
           cd ..
 
+          # Build v52: invoice print/colors fixes, product card settings, admin display name, active-ingredient search
+          cd v52
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v52
+          cp -r dist/. ../dist/v52/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
