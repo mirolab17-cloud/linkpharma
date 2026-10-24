@@ -414,6 +414,17 @@ jobs:
           cp -r dist/. ../dist/v50/
           cd ..
 
+          # Build v51: repair trade-item alias persistence based on v48
+          cd v51
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v51
+          cp -r dist/. ../dist/v51/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
