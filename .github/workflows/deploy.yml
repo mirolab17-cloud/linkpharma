@@ -510,6 +510,19 @@ jobs:
           cp -r dist/. ../dist/v58/
           cd ..
 
+          # Build v59: unified catalog name format, confidence, replace/delete aliases, unlinked export
+          cd v59
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v59
+          cp -r dist/. ../dist/v59/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
