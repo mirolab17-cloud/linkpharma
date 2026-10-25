@@ -484,6 +484,19 @@ jobs:
           cp -r dist/. ../dist/v56/
           cd ..
 
+          # Build v57: explicit supplier-to-catalog mapping workbook and safe per-row matching
+          cd v57
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v57
+          cp -r dist/. ../dist/v57/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
