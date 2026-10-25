@@ -105,12 +105,15 @@ export function parseQuickLinkRows(rows: Array<Record<string, unknown>>): { rows
   const headers = findQuickLinkHeaders(Object.keys(rows[0]));
   const out: QuickLinkRow[] = [];
   rows.forEach((row, index) => {
-    const rawName = text(row, headers.rawName);
-    if (!rawName) return;
+    const rawCell = text(row, headers.rawName);
+    if (!rawCell) return;
+    // أكثر من اسم بديل في خلية واحدة: يفصلها | أو ; أو ؛ أو سطر جديد، ويصبح كل اسم صفاً مستقلاً.
+    const names = String(row[headers.rawName] ?? '').split(/[|;؛\n\r]+/).map((part) => part.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    for (const rawName of names.length ? names : [rawCell]) {
     const priceText = text(row, headers.price);
     const price = priceText === '' ? null : Number(convertArabicNumerals(priceText).replace(/[^\d.]/g, ''));
     out.push({
-      rowNumber: index + 2,
+      rowNumber: out.length + 2,
       rawName,
       pack: text(row, headers.pack),
       price: price !== null && Number.isFinite(price) ? price : null,
@@ -123,6 +126,7 @@ export function parseQuickLinkRows(rows: Array<Record<string, unknown>>): { rows
       key: text(row, headers.key),
       note: text(row, headers.note),
     });
+    }
   });
   return { rows: out, headers, hasSystemColumn: Boolean(headers.sysName || headers.key) };
 }

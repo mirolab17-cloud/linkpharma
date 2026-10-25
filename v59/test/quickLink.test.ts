@@ -129,3 +129,8 @@ assert.equal(fmtHit.product?.id, 'g1');
 assert.equal(classifyQuickLinkRow({ fileStatus: 'confirmed', confidence: 60 }, { product: fmtCatalog[0], how: 'key' }, undefined), 'review');
 assert.equal(classifyQuickLinkRow({ fileStatus: 'confirmed', confidence: 90 }, { product: fmtCatalog[0], how: 'key' }, undefined), 'ready');
 console.log('quickLink v59 tests passed');
+
+const multi = parseQuickLinkRows([{ 'الصنف في النظام': 'Adeaflam 75ml 6amp', 'اسم الصنف في الملف': 'ADEAFLAM AMP | ادي فلام 75 | Adeaflam 75mg' }]);
+assert.equal(multi.rows.length, 3);
+assert.deepEqual(new Set(multi.rows.map((r) => r.rowNumber)).size, 3);
+assert.equal(multi.rows[1].rawName, 'ادي فلام 75');
