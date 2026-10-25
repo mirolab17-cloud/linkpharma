@@ -497,6 +497,19 @@ jobs:
           cp -r dist/. ../dist/v57/
           cd ..
 
+          # Build v58: supplier-independent global product-name alias dictionary
+          cd v58
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v58
+          cp -r dist/. ../dist/v58/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
