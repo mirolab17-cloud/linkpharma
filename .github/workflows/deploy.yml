@@ -459,6 +459,18 @@ jobs:
           cp -r dist/. ../dist/v54/
           cd ..
 
+          # Build v55: usage/session controls, branded admin exports, and mobile/profile improvements
+          cd v55
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v55
+          cp -r dist/. ../dist/v55/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
