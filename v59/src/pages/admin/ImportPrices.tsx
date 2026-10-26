@@ -846,32 +846,46 @@ export const ImportPrices: React.FC = () => {
         productType: effectiveType,
       });
       const nextProducts = [saved, ...products.filter((product) => product.id !== saved.id)];
-      const latestMatcher = new ProductMatcher(nextProducts, [...supplierAliases, ...globalAliases], selectedSupplierId);
       setProducts(nextProducts);
-      setMatchRows((prev) => prev.map((row) => {
-        if (row.status === 'ignored') return row;
-        const matchResult = latestMatcher.match(row.originalName, row.manufacturer, {
-          tradeName: row.tradeName || row.originalName,
-          strength: row.strength,
-          form: row.form,
-          packSize: row.pack,
-          barcode: row.barcode,
-        });
-        // اختيار المستخدم/الربط السابق مقصود، فلا نستبدله باقتراح تقريبي بعد تعديل المنتج.
-        if (row.selectedProductId) {
-          return {
-            ...row,
-            status: 'exact',
-            suggestions: matchResult.suggestions,
-          };
+
+      // لا تعالج جميع صفوف المطابقة دفعة واحدة على الخيط الرئيسي؛ الملفات الكبيرة
+      // كانت تجمّد الواجهة وتُبقي زر الحفظ على حالة الانتظار. قسّم العمل إلى دفعات
+      // صغيرة مع إتاحة فرصة للمتصفح لرسم الواجهة بين كل دفعة.
+      const latestMatcher = new ProductMatcher(nextProducts, [...supplierAliases, ...globalAliases], selectedSupplierId);
+      const currentRows = matchRows;
+      const rematchedRows: RowMatchItem[] = [];
+      const chunkSize = 40;
+      for (let start = 0; start < currentRows.length; start += chunkSize) {
+        const chunk = currentRows.slice(start, start + chunkSize);
+        for (const row of chunk) {
+          if (row.status === 'ignored') {
+            rematchedRows.push(row);
+            continue;
+          }
+          const matchResult = latestMatcher.match(row.originalName, row.manufacturer, {
+            tradeName: row.tradeName || row.originalName,
+            strength: row.strength,
+            form: row.form,
+            packSize: row.pack,
+            barcode: row.barcode,
+          });
+          // اختيار المستخدم/الربط السابق مقصود، فلا نستبدله باقتراح تقريبي بعد تعديل المنتج.
+          if (row.selectedProductId) {
+            rematchedRows.push({ ...row, status: 'exact', suggestions: matchResult.suggestions });
+          } else {
+            rematchedRows.push({
+              ...row,
+              status: matchResult.status,
+              selectedProductId: matchResult.matchedProduct?.id || null,
+              suggestions: matchResult.suggestions,
+            });
+          }
         }
-        return {
-          ...row,
-          status: matchResult.status,
-          selectedProductId: matchResult.matchedProduct?.id || null,
-          suggestions: matchResult.suggestions,
-        };
-      }));
+        if (start + chunkSize < currentRows.length) {
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+        }
+      }
+      setMatchRows(rematchedRows);
       setIsProductEditModalOpen(false);
       setProductEditDraft(null);
       success('تم حفظ تعديل الصنف مع الحفاظ على معرفه وربطه الحالي.');
