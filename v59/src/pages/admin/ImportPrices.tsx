@@ -10,6 +10,7 @@ import {
   getProductAliases,
   getGlobalProductAliases,
   saveProductAlias,
+  saveGlobalProductAliasesBatch,
   deleteProductAlias,
   saveProduct,
   saveProductsBatch,
@@ -772,6 +773,14 @@ export const ImportPrices: React.FC = () => {
       return;
     }
     try {
+      if (user?.role === 'admin') {
+        const outcome = await saveGlobalProductAliasesBatch([{ productId: selectedProduct.id, rawName }]);
+        if (outcome.saved || outcome.alreadyLinked) {
+          setGlobalAliases(await getGlobalProductAliases().catch(() => globalAliases));
+          success('تم ربط الصنف وحفظ الاسم في القاموس العام لكل الموردين.');
+          return;
+        }
+      }
       const alias = await saveProductAlias({
         supplierId: selectedSupplierId,
         productId: selectedProduct.id,
