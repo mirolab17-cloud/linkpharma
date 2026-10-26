@@ -6,6 +6,7 @@ import { Supplier } from '../types';
 import { useAuthStore } from '../store/useAuthStore';
 import { useToastStore } from '../store/useToastStore';
 import { Spinner } from './Loader';
+import { ExportActions, ExportColumn } from './admin/ExportActions';
 
 const dateTimeInput = (date: Date) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -132,6 +133,17 @@ export const OffersManager: React.FC<{ lockedSupplierId?: string }> = ({ lockedS
     }
   };
 
+  const offerExportColumns: ExportColumn<SupplierOffer>[] = [
+    { key: 'title', label: 'عنوان العرض' },
+    { key: 'productName', label: 'الصنف أو المجموعة' },
+    { key: 'supplier', label: 'المستودع', value: (offer) => supplierMap.get(offer.supplierId)?.name || offer.supplierId },
+    { key: 'description', label: 'تفاصيل العرض' },
+    { key: 'status', label: 'الحالة', value: (offer) => offer.status === 'active' ? 'مفعّل' : 'متوقف مؤقتًا' },
+    { key: 'startsAt', label: 'يبدأ في', value: (offer) => new Date(offer.startsAt).toLocaleString('ar') },
+    { key: 'endsAt', label: 'ينتهي في', value: (offer) => new Date(offer.endsAt).toLocaleString('ar') },
+    { key: 'quantityLimit', label: 'حد الكمية', value: (offer) => offer.quantityLimit ?? 'غير محدود' },
+  ];
+
   const offerState = (offer: SupplierOffer) => {
     const now = Date.now();
     if (offer.status === 'paused') return { label: 'متوقف مؤقتًا', style: 'bg-slate-100 text-slate-600' };
@@ -148,6 +160,8 @@ export const OffersManager: React.FC<{ lockedSupplierId?: string }> = ({ lockedS
       <div><p className="flex items-center gap-2 text-xs font-bold text-emerald-100"><BadgePercent className="h-4 w-4" />عروض المستودعات</p><h1 className="mt-2 text-2xl font-black">إدارة العروض</h1><p className="mt-2 text-xs leading-6 text-emerald-50">سجّل عرضًا مستقلًا بمدة صلاحية وكمية اختيارية. يستطيع المندوب إدارة مستودعه فقط إذا منحه المدير صلاحية العروض.</p></div>
       <button onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-xs font-bold hover:bg-white/20 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />تحديث</button>
     </header>
+
+    <div className="rounded-2xl border border-slate-200 bg-white p-4"><ExportActions title="عروض المستودعات" filename="عروض-المستودعات" data={offers} columns={offerExportColumns} /></div>
 
     <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
       <form onSubmit={(event) => void submit(event)} className={`${card} space-y-4`}>
