@@ -1,0 +1,598 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isCurrentUser(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Admin authorization: Relies solely on custom claims or trusted admins collection
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.keys().hasAll(['admin']) && request.auth.token.admin == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isPharmacyUser() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'pharmacy';
+    }
+
+    function isActivePharmacy() {
+      return isPharmacyUser() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
+    }
+
+    function isActiveRepresentative() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'representative' &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
+    }
+
+    function productExists(productId) {
+      return exists(/databases/$(database)/documents/products/$(productId));
+    }
+
+    function representativeForSupplier(supplierId) {
+      return isActiveRepresentative() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.supplierId == supplierId &&
+        exists(/databases/$(database)/documents/suppliers/$(supplierId)) &&
+        get(/databases/$(database)/documents/suppliers/$(supplierId)).data.status == 'active';
+    }
+
+    function representativeCanManagePrices(supplierId) {
+      return representativeForSupplier(supplierId) &&
+        'representativePermissions' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.representativePermissions.managePrices == true;
+    }
+
+    function representativeCanManagePromotions(supplierId) {
+      return representativeForSupplier(supplierId) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.representativePermissions.managePromotions == true;
+    }
+
+    function representativeCanManageDelivery(supplierId) {
+      return representativeForSupplier(supplierId) &&
+        'representativePermissions' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.representativePermissions.manageDeliverySchedule == true;
+    }
+
+    // Check active subscription or trial directly inside security rules
+    function hasActiveSubscription() {
+      return isSignedIn() && (
+        isAdmin() || (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active' &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscriptionStatus in ['active', 'trial'] &&
+          (
+            !('subscriptionExpiresAtMillis' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+            request.time.toMillis() <= get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscriptionExpiresAtMillis
+          )
+        )
+      );
+    }
+
+    function pharmacyCanManagePrices(supplierId) {
+      let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isActivePharmacy() && hasActiveSubscription() &&
+        profile.get('pharmacyCatalogPermissions', {}).get('managePrices', false) == true &&
+        profile.get('pharmacyCatalogPermissions', {}).get('priceSupplierIds', []).hasAny([supplierId]) &&
+        exists(/databases/$(database)/documents/suppliers/$(supplierId)) &&
+        get(/databases/$(database)/documents/suppliers/$(supplierId)).data.status == 'active';
+    }
+
+    function canAddGlobalAliases() {
+      let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isAdmin() || (isActiveRepresentative() &&
+        profile.get('representativePermissions', {}).get('managePrices', false) == true) ||
+        (isActivePharmacy() && hasActiveSubscription() &&
+        profile.get('pharmacyCatalogPermissions', {}).get('managePrices', false) == true &&
+        profile.get('pharmacyCatalogPermissions', {}).get('priceSupplierIds', []).size() > 0);
+    }
+
+    function pharmacyCanCreateProducts() {
+      return isActivePharmacy() && hasActiveSubscription() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('pharmacyCatalogPermissions', {}).get('createProducts', false) == true;
+    }
+
+    function pharmacyCanCreateIngredients() {
+      return isActivePharmacy() && hasActiveSubscription() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('pharmacyCatalogPermissions', {}).get('createActiveIngredients', false) == true;
+    }
+
+    // Test collection for boot connectivity check (Requires authentication)
+    match /test/{docId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Admins marker collection (Only admins can view or modify)
+    match /admins/{adminId} {
+      // يسمح للمدير بقراءة علامة حسابه لاكتشاف الصلاحية، دون فتح الكتابة للمستخدم.
+      allow get: if isSignedIn() && (request.auth.uid == adminId || isAdmin());
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // System Settings: Public settings readable by anyone; notification settings for signed-in users; sensitive settings (system, etc.) strictly for admin
+    match /settings/{settingId} {
+      allow read: if settingId == 'public' || (settingId == 'notifications' && isSignedIn()) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow get: if isCurrentUser(userId) || isAdmin();
+      allow list: if isAdmin();
+
+      // Instant registration: User can create their own initial profile with trial period configured by admin
+      // Strict key allowlist via hasOnly prevents ghost fields
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        (
+          isCurrentUser(userId) &&
+          request.resource.data.keys().hasOnly([
+            'uid', 'name', 'email', 'role', 'status', 'subscriptionStatus',
+            'subscriptionExpiresAt', 'subscriptionExpiresAtMillis', 'trialDays',
+            'pharmacyName', 'ownerName', 'phone', 'address', 'addressDetail', 'governorate', 'city', 'street', 'streetId', 'branches', 'defaultBranchId', 'commercialRegister',
+            'profileComplete', 'allowedSuppliers', 'favorites', 'priceAlerts', 'createdAt', 'updatedAt'
+          ]) &&
+          request.resource.data.role == 'pharmacy' &&
+          request.resource.data.status == 'active' &&
+          request.resource.data.subscriptionStatus == 'trial' &&
+          request.resource.data.subscriptionExpiresAtMillis is number &&
+          request.resource.data.subscriptionExpiresAtMillis >= request.time.toMillis() &&
+          request.resource.data.subscriptionExpiresAtMillis <= request.time.toMillis() + (31 * 24 * 60 * 60 * 1000) &&
+          (!('branches' in request.resource.data) || (request.resource.data.branches is list && request.resource.data.branches.size() <= 10)) &&
+          (!('defaultBranchId' in request.resource.data) || request.resource.data.defaultBranchId is string)
+        )
+      );
+
+      // Users cannot elevate their role, status, subscription, or write unpermitted fields
+      allow update: if isAdmin() || (
+        isCurrentUser(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'pharmacyName', 'ownerName', 'phone', 'address', 'addressDetail', 'governorate', 'governorateId', 'city', 'cityId', 'subarea', 'subareaId', 'street', 'streetId', 'branches', 'defaultBranchId',
+          'commercialRegister', 'profileComplete', 'favorites', 'priceAlerts', 'updatedAt',
+          'loginCount', 'lastActive', 'lastLoginAt', 'deviceIds', 'lastLoginSessionId'
+        ]) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['loginCount', 'lastLoginAt', 'lastLoginSessionId']) ||
+          (request.resource.data.loginCount is number && request.resource.data.loginCount == resource.data.get('loginCount', 0) + 1 &&
+           request.resource.data.lastLoginAt is string && request.resource.data.lastLoginSessionId is string && request.resource.data.lastLoginSessionId.size() <= 100)) &&
+        (!('lastActive' in request.resource.data) || (request.resource.data.lastActive is string && request.resource.data.lastActive.size() <= 40)) &&
+        (!('deviceIds' in request.resource.data) || (request.resource.data.deviceIds is list && request.resource.data.deviceIds.size() <= 20)) &&
+        (!('branches' in request.resource.data) || (request.resource.data.branches is list && request.resource.data.branches.size() <= 10)) &&
+        (!('defaultBranchId' in request.resource.data) || request.resource.data.defaultBranchId is string)
+      ) || (
+        isCurrentUser(userId) &&
+        resource.data.role == 'representative' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'status', 'supplierId', 'representativePermissions', 'updatedAt']) &&
+        request.resource.data.role == 'pharmacy' &&
+        request.resource.data.status == 'active' &&
+        request.resource.data.supplierId == null &&
+        request.resource.data.representativePermissions == null
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // Product aliases are limited to admins and delegated price managers for that supplier.
+    match /productAliases/{aliasId} {
+      allow read: if isAdmin() || representativeCanManagePrices(resource.data.supplierId) || pharmacyCanManagePrices(resource.data.supplierId);
+      allow create: if productExists(request.resource.data.productId) &&
+        request.resource.data.keys().hasOnly([
+          'id', 'supplierId', 'productId', 'rawName', 'normalizedName', 'manufacturer', 'strength', 'form', 'packSize', 'barcode', 'identityKey', 'createdAt', 'createdByUid', 'createdByName'
+        ]) &&
+        request.resource.data.id == aliasId &&
+        request.resource.data.supplierId is string && request.resource.data.productId is string &&
+        request.resource.data.normalizedName is string && request.resource.data.identityKey is string &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt is string &&
+        (isAdmin() || representativeCanManagePrices(request.resource.data.supplierId) || pharmacyCanManagePrices(request.resource.data.supplierId));
+      allow update: if productExists(request.resource.data.productId) && (isAdmin() || (
+        representativeCanManagePrices(resource.data.supplierId) &&
+        request.resource.data.supplierId == resource.data.supplierId &&
+        request.resource.data.productId == resource.data.productId &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'rawName', 'normalizedName', 'manufacturer', 'strength', 'form', 'packSize', 'barcode', 'identityKey'
+        ])
+      ));
+      allow delete: if isAdmin();
+    }
+
+    // Global aliases are shared across all imports and suppliers; every signed-in account may read them, only admins may manage them.
+    match /globalProductAliases/{aliasId} {
+      allow read: if isSignedIn();
+      allow create: if canAddGlobalAliases() && productExists(request.resource.data.productId) &&
+        request.resource.data.keys().hasOnly([
+          'id', 'supplierId', 'scope', 'productId', 'rawName', 'normalizedName', 'identityKey', 'createdAt', 'createdByUid', 'createdByName'
+        ]) &&
+        request.resource.data.id == aliasId && request.resource.data.supplierId == '*' && request.resource.data.scope == 'global' &&
+        request.resource.data.productId is string && request.resource.data.rawName is string && request.resource.data.rawName.size() > 0 &&
+        request.resource.data.normalizedName is string && request.resource.data.identityKey is string &&
+        request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt is string;
+      allow update: if isAdmin() && productExists(request.resource.data.productId) &&
+        request.resource.data.productId == resource.data.productId &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.keys().hasOnly([
+          'id', 'supplierId', 'scope', 'productId', 'rawName', 'normalizedName', 'identityKey', 'createdAt', 'createdByUid', 'createdByName'
+        ]) && request.resource.data.id == aliasId && request.resource.data.supplierId == '*' && request.resource.data.scope == 'global';
+      allow delete: if isAdmin();
+    }
+
+    // Active Ingredients (Catalog read by signed-in users, modified only by admin)
+    match /activeIngredients/{ingredientId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() || (pharmacyCanCreateIngredients() && request.resource.data.id == ingredientId && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.keys().hasOnly(['id', 'name', 'normalizedName', 'category', 'createdAt']));
+      allow update, delete: if isAdmin();
+    }
+
+    // v42 catalog snapshots: version metadata is readable by signed-in users; chunks are admin-written.
+    match /catalog_meta/{metaId} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow write: if isAdmin();
+    }
+    match /catalog_snapshots/{snapshotId} {
+      allow get: if isAdmin() || (
+        isSignedIn() && resource.data.kind == 'products'
+      ) || (
+        isActivePharmacy() && hasActiveSubscription() && resource.data.kind == 'prices' &&
+        (!('allowedSuppliers' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.allowedSuppliers.size() == 0 || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.allowedSuppliers.hasAny([resource.data.supplierId]))
+      );
+      allow list: if false;
+      allow write: if isAdmin();
+    }
+    // Products (Catalog read by signed-in users, modified only by admin)
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() || (pharmacyCanCreateProducts() && request.resource.data.id == productId && request.resource.data.tradeName is string && request.resource.data.tradeName.size() > 0 && request.resource.data.normalizedName is string && request.resource.data.keys().hasOnly(['id', 'tradeName', 'normalizedName', 'form', 'strength', 'packSize', 'manufacturer', 'category', 'barcode', 'activeIngredientId', 'activeIngredientIds', 'showStrength', 'productType', 'createdAt']));
+      allow update, delete: if isAdmin();
+    }
+
+    // Suppliers: representatives may edit only the fields specifically delegated for their assigned warehouse.
+    match /suppliers/{supplierId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        representativeCanManageDelivery(supplierId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'deliveryDaysByArea', 'deliveryCutoffByArea', 'minimumOrderByArea', 'deliveryScheduleUpdatedAt', 'deliveryScheduleUpdatedByUid', 'deliveryScheduleUpdatedByName'
+        ]) &&
+        request.resource.data.deliveryDaysByArea is map &&
+        request.resource.data.deliveryCutoffByArea is map &&
+        request.resource.data.minimumOrderByArea is map &&
+        request.resource.data.deliveryScheduleUpdatedByUid == request.auth.uid &&
+        (request.resource.data.deliveryScheduleUpdatedByName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name || request.resource.data.deliveryScheduleUpdatedByName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email)
+      ) || (
+        pharmacyCanManagePrices(supplierId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastPriceUpdate', 'lastPriceUpdatedByUid', 'lastPriceUpdatedByName']) &&
+        request.resource.data.lastPriceUpdatedByUid == request.auth.uid && request.resource.data.lastPriceUpdatedByName is string
+      ) || (
+        representativeCanManagePrices(supplierId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'importTemplate', 'importTemplateUpdatedAt', 'importTemplateUpdatedByUid', 'importTemplateUpdatedByName',
+          'lastPriceUpdate', 'lastPriceUpdatedByUid', 'lastPriceUpdatedByName'
+        ]) &&
+        (
+          ('importTemplateUpdatedByUid' in request.resource.data && request.resource.data.importTemplateUpdatedByUid == request.auth.uid) ||
+          ('lastPriceUpdatedByUid' in request.resource.data && request.resource.data.lastPriceUpdatedByUid == request.auth.uid && request.resource.data.lastPriceUpdatedByName is string)
+        )
+      );
+    }
+
+    // Prices: pharmacy read requires an active subscription; price uploaders are limited to assigned suppliers.
+    match /prices/{priceId} {
+      allow read: if isAdmin() || representativeForSupplier(resource.data.supplierId) || pharmacyCanManagePrices(resource.data.supplierId) || (
+        hasActiveSubscription() && isActivePharmacy() && (
+          !('allowedSuppliers' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.allowedSuppliers.size() == 0 ||
+          resource.data.supplierId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.allowedSuppliers
+        )
+      );
+      allow create: if productExists(request.resource.data.productId) && (isAdmin() || (
+        pharmacyCanManagePrices(request.resource.data.supplierId) &&
+        request.resource.data.keys().hasOnly(['productId', 'supplierId', 'price', 'publicPrice', 'available', 'expiry', 'bonus', 'hidden', 'updatedAt']) &&
+        request.resource.data.productId is string && request.resource.data.price is number && request.resource.data.price > 0 &&
+        request.resource.data.available is bool && request.resource.data.get('hidden', false) == false
+      ) || (
+        representativeCanManagePrices(request.resource.data.supplierId) &&
+        request.resource.data.keys().hasOnly(['productId', 'supplierId', 'price', 'publicPrice', 'available', 'expiry', 'bonus', 'hidden', 'updatedAt']) &&
+        request.resource.data.productId is string && request.resource.data.price is number && request.resource.data.price > 0 &&
+        request.resource.data.available is bool && request.resource.data.hidden == false &&
+        (representativeCanManagePromotions(request.resource.data.supplierId) || !('bonus' in request.resource.data))
+      ));
+      allow update: if productExists(request.resource.data.productId) && (isAdmin() || (
+        pharmacyCanManagePrices(resource.data.supplierId) &&
+        request.resource.data.supplierId == resource.data.supplierId && request.resource.data.productId == resource.data.productId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['price', 'publicPrice', 'available', 'expiry', 'updatedAt']) &&
+        request.resource.data.price is number && request.resource.data.price > 0 && request.resource.data.available is bool &&
+        request.resource.data.get('hidden', false) == resource.data.get('hidden', false)
+      ) || (
+        representativeCanManagePrices(resource.data.supplierId) &&
+        request.resource.data.supplierId == resource.data.supplierId &&
+        request.resource.data.productId == resource.data.productId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['price', 'publicPrice', 'available', 'expiry', 'bonus', 'hidden', 'updatedAt']) &&
+        request.resource.data.price is number && request.resource.data.price > 0 &&
+        request.resource.data.hidden == resource.data.get('hidden', false) &&
+        (representativeCanManagePromotions(resource.data.supplierId) || request.resource.data.get('bonus', null) == resource.data.get('bonus', null))
+      ));
+      allow delete: if isAdmin();
+    }
+
+    // Offers are separate from price imports; representatives are restricted to their linked warehouse.
+    match /supplier_offers/{offerId} {
+      allow get, list: if isAdmin() || representativeCanManagePromotions(resource.data.supplierId);
+      allow create: if isAdmin() || (
+        representativeCanManagePromotions(request.resource.data.supplierId) &&
+        request.resource.data.id == offerId &&
+        request.resource.data.createdByUid == request.auth.uid &&
+        request.resource.data.updatedByUid == request.auth.uid &&
+        request.resource.data.title is string && request.resource.data.title.size() > 0 &&
+        request.resource.data.productName is string && request.resource.data.productName.size() > 0 &&
+        request.resource.data.description is string &&
+        request.resource.data.startsAt is string && request.resource.data.endsAt is string &&
+        request.resource.data.updatedByName is string &&
+        (!('quantityLimit' in request.resource.data) || (request.resource.data.quantityLimit is int && request.resource.data.quantityLimit > 0)) &&
+        request.resource.data.status in ['active', 'paused'] &&
+        request.resource.data.keys().hasOnly([
+          'id', 'supplierId', 'title', 'productName', 'description', 'startsAt', 'endsAt', 'quantityLimit',
+          'status', 'createdAt', 'createdByUid', 'createdByName', 'updatedAt', 'updatedByUid', 'updatedByName'
+        ])
+      );
+      allow update: if isAdmin() || (
+        representativeCanManagePromotions(resource.data.supplierId) &&
+        request.resource.data.supplierId == resource.data.supplierId &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.updatedByUid == request.auth.uid &&
+        request.resource.data.title is string && request.resource.data.title.size() > 0 &&
+        request.resource.data.productName is string && request.resource.data.productName.size() > 0 &&
+        request.resource.data.description is string &&
+        request.resource.data.startsAt is string && request.resource.data.endsAt is string &&
+        request.resource.data.updatedByName is string &&
+        (!('quantityLimit' in request.resource.data) || (request.resource.data.quantityLimit is int && request.resource.data.quantityLimit > 0)) &&
+        request.resource.data.status in ['active', 'paused'] &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'productName', 'description', 'startsAt', 'endsAt', 'quantityLimit', 'status',
+          'updatedAt', 'updatedByUid', 'updatedByName'
+        ])
+      );
+      allow delete: if isAdmin() || representativeCanManagePromotions(resource.data.supplierId);
+    }
+
+    // Immutable price history, visible only to the admin, an entitled pharmacy, or the supplier's representative.
+    match /priceHistory/{historyId} {
+      allow read: if isAdmin() || representativeForSupplier(resource.data.supplierId) || pharmacyCanManagePrices(resource.data.supplierId) || (
+        hasActiveSubscription() && isActivePharmacy() && (
+          !('allowedSuppliers' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.allowedSuppliers.size() == 0 ||
+          resource.data.supplierId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.allowedSuppliers
+        )
+      );
+      allow create: if isAdmin() || (representativeCanManagePrices(request.resource.data.supplierId) && request.resource.data.actorUid == request.auth.uid && request.resource.data.actorName is string) || (pharmacyCanManagePrices(request.resource.data.supplierId) && request.resource.data.actorUid == request.auth.uid && request.resource.data.actorName is string);
+      allow update, delete: if isAdmin();
+    }
+
+    // Import batches are supplier-scoped; representatives may update progress only, while rollback/delete remain admin-only.
+    match /importBatches/{batchId} {
+      allow read: if isAdmin() || representativeCanManagePrices(resource.data.supplierId) || pharmacyCanManagePrices(resource.data.supplierId);
+      allow create: if isAdmin() || (
+        pharmacyCanManagePrices(request.resource.data.supplierId) && request.resource.data.createdByUid == request.auth.uid && request.resource.data.rowsCount is int && request.resource.data.rowsCount > 0 && request.resource.data.writtenRowsCount is int && request.resource.data.writtenRowsCount >= 0 && request.resource.data.writtenRowsCount <= request.resource.data.rowsCount && request.resource.data.importStatus in ['in_progress', 'completed'] && request.resource.data.progressUpdatedAt is string
+      ) || (
+        representativeCanManagePrices(request.resource.data.supplierId) &&
+        request.resource.data.createdByUid == request.auth.uid &&
+        request.resource.data.rowsCount is int && request.resource.data.rowsCount > 0 &&
+        request.resource.data.writtenRowsCount is int &&
+        request.resource.data.writtenRowsCount >= 0 && request.resource.data.writtenRowsCount <= request.resource.data.rowsCount &&
+        request.resource.data.importStatus in ['in_progress', 'completed'] &&
+        request.resource.data.progressUpdatedAt is string
+      );
+      allow update: if (pharmacyCanManagePrices(resource.data.supplierId) && resource.data.createdByUid == request.auth.uid && request.resource.data.supplierId == resource.data.supplierId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['importStatus', 'writtenRowsCount', 'progressUpdatedAt']) && request.resource.data.importStatus in ['in_progress', 'completed', 'interrupted'] && request.resource.data.writtenRowsCount is int && request.resource.data.writtenRowsCount >= resource.data.get('writtenRowsCount', 0) && request.resource.data.writtenRowsCount <= resource.data.rowsCount && request.resource.data.progressUpdatedAt is string) || (isAdmin() && (
+        request.resource.data.importStatus == 'rolled_back' ||
+        (resource.data.importStatus != 'rolled_back' && (
+          resource.data.importStatus != 'rolling_back' ||
+          request.resource.data.importStatus in ['rolling_back', 'rolled_back']
+        ))
+      )) || (
+        representativeCanManagePrices(resource.data.supplierId) &&
+        resource.data.importStatus != 'rolling_back' &&
+        resource.data.importStatus != 'rolled_back' &&
+        request.resource.data.supplierId == resource.data.supplierId &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['importStatus', 'writtenRowsCount', 'progressUpdatedAt']) &&
+        request.resource.data.importStatus in ['in_progress', 'completed', 'interrupted'] &&
+        request.resource.data.writtenRowsCount is int &&
+        request.resource.data.writtenRowsCount >= resource.data.get('writtenRowsCount', 0) &&
+        request.resource.data.writtenRowsCount <= resource.data.rowsCount &&
+        request.resource.data.progressUpdatedAt is string
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Campaign records are an auditable admin-only ledger; notification documents are written per recipient.
+    match /announcement_campaigns/{campaignId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin() &&
+        request.resource.data.id == campaignId &&
+        request.resource.data.createdByUid == request.auth.uid &&
+        request.resource.data.targetCount is int && request.resource.data.targetCount > 0 &&
+        request.resource.data.deliveredCount == 0 &&
+        request.resource.data.status == 'sending';
+      allow update: if isAdmin() &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.createdByUid == resource.data.createdByUid &&
+        request.resource.data.targetCount == resource.data.targetCount &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deliveredCount', 'status', 'updatedAt', 'completedAt', 'failureMessage']) &&
+        request.resource.data.deliveredCount is int &&
+        request.resource.data.deliveredCount >= resource.data.deliveredCount &&
+        request.resource.data.deliveredCount <= resource.data.targetCount &&
+        request.resource.data.status in ['sending', 'sent', 'partial', 'failed'];
+      allow delete: if false;
+    }
+
+    // Orders (Only users with active subscription can place orders)
+    match /orders/{orderId} {
+      allow get: if isAdmin() || (isSignedIn() && resource.data.pharmacyId == request.auth.uid) || representativeForSupplier(resource.data.supplierId);
+      allow list: if isAdmin() || (isSignedIn() && resource.data.pharmacyId == request.auth.uid) || representativeForSupplier(resource.data.supplierId);
+
+      allow create: if isAdmin() || (
+        hasActiveSubscription() &&
+        request.resource.data.keys().hasOnly([
+          'id', 'pharmacyId', 'pharmacyName', 'pharmacyAddress', 'pharmacyBranchId', 'pharmacyPhone',
+          'supplierId', 'supplierName', 'items', 'total', 'status', 'createdAt', 'updatedAt', 'notes', 'statusHistory'
+        ]) &&
+        request.resource.data.id == orderId &&
+        request.resource.data.pharmacyId == request.auth.uid &&
+        request.resource.data.pharmacyName is string && request.resource.data.pharmacyName.size() <= 160 &&
+        request.resource.data.pharmacyAddress is string && request.resource.data.pharmacyAddress.size() <= 500 &&
+        request.resource.data.supplierId is string && request.resource.data.supplierId.size() <= 128 &&
+        request.resource.data.supplierName is string && request.resource.data.supplierName.size() <= 160 &&
+        request.resource.data.items is list && request.resource.data.items.size() > 0 && request.resource.data.items.size() <= 100 &&
+        request.resource.data.total is number && request.resource.data.total >= 0 && request.resource.data.total <= 100000000 &&
+        request.resource.data.status == 'sent' &&
+        request.resource.data.createdAt is string && request.resource.data.createdAt.size() <= 64 &&
+        request.resource.data.statusHistory is list && request.resource.data.statusHistory.size() <= 100 &&
+        (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() <= 2000))
+      );
+
+      allow update: if isAdmin() || (
+        isCurrentUser(resource.data.pharmacyId) &&
+        resource.data.status == 'sent' &&
+        request.resource.data.status == 'sent' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'total', 'updatedAt', 'editHistory']) &&
+        request.resource.data.items is list &&
+        request.resource.data.items.size() <= 100 &&
+        request.resource.data.total is number &&
+        request.resource.data.total >= 0
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Notifications collection:
+    // Regular users cannot broadcast with userId=='all'. Only admins can manage broadcasts & stats.
+    match /notifications/{notificationId} {
+      allow get: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.userId == request.auth.uid ||
+          (resource.data.userId == 'all' && (
+            !('audience' in resource.data) ||
+            resource.data.audience.type == 'all' ||
+            ('userIds' in resource.data.audience && request.auth.uid in resource.data.audience.userIds)
+          ))
+        )
+      );
+
+      allow list: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.userId == request.auth.uid ||
+          (resource.data.userId == 'all' && (
+            !('audience' in resource.data) ||
+            resource.data.audience.type == 'all' ||
+            ('userIds' in resource.data.audience && request.auth.uid in resource.data.audience.userIds)
+          ))
+        )
+      );
+
+      // Only admins can broadcast; regular users can only create private notifications for themselves
+      allow create: if isAdmin() || (
+        isSignedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.userId != 'all'
+      );
+
+      // Only admins can update notification documents (stats and content). Regular user interactions belong in notification_reads.
+      allow update: if isAdmin();
+
+      // Only admins or private owners can delete
+      allow delete: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.userId == request.auth.uid &&
+        resource.data.userId != 'all'
+      );
+    }
+
+    // User-specific notification reads and interaction status
+    match /notification_reads/{readId} {
+      allow get, list: if isSignedIn() && (isAdmin() || resource.data.uid == request.auth.uid);
+
+      allow create: if isSignedIn() && (
+        isAdmin() || (
+          request.resource.data.uid == request.auth.uid &&
+          readId == request.auth.uid + '_' + request.resource.data.notifId &&
+          request.resource.data.keys().hasOnly(['uid', 'notifId', 'readAt', 'shownCount', 'lastShownAt', 'dismissed'])
+        )
+      );
+
+      allow update: if isSignedIn() && (
+        isAdmin() || (
+          resource.data.uid == request.auth.uid &&
+          request.resource.data.uid == request.auth.uid &&
+          request.resource.data.notifId == resource.data.notifId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt', 'shownCount', 'lastShownAt', 'dismissed'])
+        )
+      );
+
+      allow delete: if isSignedIn() && (isAdmin() || resource.data.uid == request.auth.uid);
+    }
+
+    // v18 Suggestions: pharmacy may create and read only its own suggestions; admins manage all.
+    match /suggestions/{suggestionId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.pharmacyId == request.auth.uid);
+      allow create: if isActivePharmacy() && request.resource.data.pharmacyId == request.auth.uid && request.resource.data.keys().hasOnly(['id', 'pharmacyId', 'pharmacyName', 'subject', 'message', 'createdAt', 'status', 'adminReply', 'reviewedAt']) && request.resource.data.subject is string && request.resource.data.subject.size() > 0 && request.resource.data.subject.size() <= 160 && request.resource.data.message is string && request.resource.data.message.size() > 0 && request.resource.data.message.size() <= 4000 && request.resource.data.status == 'new';
+      allow update, delete: if isAdmin();
+    }
+
+    // v18 Operations activity: signed-in users can append their own event; admins can review.
+    match /platform_activity/{activityId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && (isAdmin() || request.resource.data.actorId == request.auth.uid) && request.resource.data.keys().hasOnly(['id', 'type', 'actorId', 'actorName', 'actorRole', 'message', 'createdAt', 'metadata']) && request.resource.data.actorId == request.auth.uid && request.resource.data.message is string && request.resource.data.message.size() <= 500;
+      allow update, delete: if isAdmin();
+    }
+
+    // v18 Presence: each account updates only its own heartbeat; admins can monitor.
+    match /presence/{uid} {
+      allow read: if isAdmin() || isCurrentUser(uid);
+      allow create, update: if isCurrentUser(uid) && request.resource.data.keys().hasOnly(['uid', 'online', 'lastSeenAt', 'device', 'updatedAt']) && request.resource.data.uid == uid;
+      allow delete: if isAdmin() || isCurrentUser(uid);
+    }
+
+    // Warehouse representative applications: the applicant can create/read only their own request; decisions are admin-only.
+    match /warehouse_link_requests/{requestId} {
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isPharmacyUser() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.keys().hasOnly([
+          'id', 'userId', 'userName', 'userEmail', 'phone', 'supplierId', 'note', 'status', 'createdAt'
+        ]) &&
+        request.resource.data.supplierId is string &&
+        request.resource.data.userEmail == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email;
+      allow update, delete: if isAdmin();
+    }
+
+    // v24 order templates are stored under the owning pharmacy UID.
+    match /pharmacy_templates/{uid} {
+      allow read: if isAdmin() || isCurrentUser(uid);
+      allow create, update: if isCurrentUser(uid) &&
+        request.resource.data.pharmacyId == uid &&
+        request.resource.data.keys().hasOnly(['pharmacyId', 'templates', 'updatedAt']);
+      allow delete: if isAdmin() || isCurrentUser(uid);
+    }
+
+  }
+}
