@@ -1,16 +1,76 @@
 import React, { useEffect, useState } from 'react';
-import { BrandMark } from './BrandLogo';
-import { WifiOff, RefreshCw } from 'lucide-react';
+import { WifiOff, Wifi, RefreshCw } from 'lucide-react';
+
+/**
+ * Non-blocking connection status. Never cover the application: cached pages
+ * and locally saved drafts should remain accessible while the network is down.
+ * Firestore-backed writes still depend on the SDK's configured persistence and
+ * security rules; this indicator does not claim that every mutation is queued.
+ */
 export const OfflineIndicator: React.FC = () => {
- const [offline,setOffline]=useState(typeof navigator !== 'undefined' && !navigator.onLine);
- useEffect(()=>{const on=()=>setOffline(false), off=()=>setOffline(true); addEventListener('online',on); addEventListener('offline',off); return()=>{removeEventListener('online',on);removeEventListener('offline',off)}},[]);
- if(!offline) return null;
- return <div dir="rtl" className="fixed inset-0 z-[100] bg-slate-50 flex items-center justify-center p-6 text-center">
-  <div className="max-w-sm w-full bg-white border border-slate-200 rounded-3xl p-8 shadow-xl">
-   <div className="mx-auto mb-4 flex justify-center"><BrandMark size={56}/></div>
-   <div className="mx-auto mb-4 w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center"><WifiOff className="w-6 h-6"/></div>
-   <h1 className="text-2xl font-black text-slate-900">فارما لينك غير متاحة حالياً</h1>
-   <p className="mt-3 text-sm leading-7 text-slate-500">لا يوجد اتصال بالإنترنت. التطبيق يعمل أونلاين فقط، أعد الاتصال ثم حاول مرة أخرى.</p>
-   <button onClick={()=>location.reload()} className="mt-6 w-full rounded-xl bg-[#0f9d7a] text-white py-3 text-sm font-black"><RefreshCw className="inline w-4 ml-2"/>إعادة المحاولة</button>
-  </div></div>;
+  const [offline, setOffline] = useState(
+    typeof navigator !== 'undefined' && !navigator.onLine
+  );
+  const [justOnline, setJustOnline] = useState(false);
+
+  useEffect(() => {
+    const onOnline = () => {
+      setOffline(false);
+      setJustOnline(true);
+      const timer = window.setTimeout(() => setJustOnline(false), 3500);
+      return timer;
+    };
+    const onOffline = () => {
+      setOffline(true);
+      setJustOnline(false);
+    };
+    const handleOnline = () => { void onOnline(); };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  if (!offline && !justOnline) return null;
+
+  return (
+    <div
+      dir="rtl"
+      role="status"
+      aria-live="polite"
+      className={`fixed inset-x-2 top-20 z-[90] mx-auto flex max-w-xl items-center gap-3 rounded-2xl border px-4 py-3 shadow-lg backdrop-blur sm:inset-x-4 ${
+        offline
+          ? 'border-amber-200 bg-amber-50/95 text-amber-950'
+          : 'border-emerald-200 bg-emerald-50/95 text-emerald-950'
+      }`}
+    >
+      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${
+        offline ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+      }`}>
+        {offline ? <WifiOff className="h-5 w-5" /> : <Wifi className="h-5 w-5" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-black">
+          {offline ? 'أنت تعمل دون اتصال' : 'عاد الاتصال بالإنترنت'}
+        </p>
+        <p className="mt-0.5 text-xs leading-5 opacity-80">
+          {offline
+            ? 'لن تُغلق المنصة. قد تتطلب بعض العمليات اتصالاً لإتمام الحفظ والمزامنة؛ تحقّق من نجاح الحفظ قبل مغادرة الصفحة.'
+            : 'يمكنك متابعة العمل. تحقّق من حالة العمليات التي حاولت تنفيذها أثناء انقطاع الاتصال.'}
+        </p>
+      </div>
+      {offline && (
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-amber-300 bg-white/70 px-3 py-2 text-xs font-bold hover:bg-white"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          تحديث
+        </button>
+      )}
+    </div>
+  );
 };
