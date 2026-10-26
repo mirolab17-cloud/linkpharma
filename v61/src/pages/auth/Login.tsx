@@ -119,8 +119,8 @@ export const Login: React.FC = () => {
                 <div className="absolute inset-x-12 top-5 bottom-0 rounded-[50%] border border-teal-300/30 rotate-[-8deg]"/>
                 <div className="absolute inset-x-20 top-1 bottom-4 rounded-[50%] border border-emerald-300/25 rotate-[12deg]"/>
                 <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-28 h-28 rounded-[30px] rotate-[-8deg] bg-gradient-to-br from-[#20d8b1] via-[#0f9d7a] to-[#075c58] shadow-[0_0_55px_rgba(25,220,178,.25)] flex items-center justify-center border border-teal-100/40"><BrandMark size={56}/></div>
-                <div className="absolute top-5 right-8 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md p-3 flex items-center gap-2 text-xs"><Store size={17} className="text-[#4ee7c5}"/> مستودعات متعددة</div>
-                <div className="absolute bottom-4 left-3 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md p-3 flex items-center gap-2 text-xs"><TrendingUp size={17} className="text-[#4ee7c5}"/> مقارنة أوضح للأسعار</div>
+                <div className="absolute top-5 right-8 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md p-3 flex items-center gap-2 text-xs"><Store size={17} className="text-[#4ee7c5]"/> مستودعات متعددة</div>
+                <div className="absolute bottom-4 left-3 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md p-3 flex items-center gap-2 text-xs"><TrendingUp size={17} className="text-[#4ee7c5]"/> مقارنة أوضح للأسعار</div>
                 <div className="absolute bottom-0 right-12 rounded-xl bg-[#0c7167]/80 border border-teal-300/20 px-3 py-2 flex items-center gap-2 text-[11px]"><PackageCheck size={15} className="text-teal-200"/> طلبات أكثر تنظيمًا</div>
               </div>
             </div>
