@@ -716,48 +716,30 @@ export const ImportPrices: React.FC = () => {
 
     const currentRow = matchRows.find((row) => row.rowId === editingRowId);
     const originalName = rowEditDraft.originalName.trim();
-    // عند تعديل القوة/العبوة فقط يبقى الاسم التجاري الأساسي، ولا نعيد استخدام الاسم المركب القديم كاسم تجاري.
     const tradeName = currentRow && originalName === currentRow.originalName
       ? (currentRow.tradeName || originalName)
       : originalName;
-    const identity = {
-      strength: rowEditDraft.strength.trim() || undefined,
-      form: rowEditDraft.form.trim() || undefined,
-      packSize: rowEditDraft.pack.trim() || undefined,
-      barcode: rowEditDraft.barcode.trim() || undefined,
-    };
-    const matchResult = productMatcher.match(
-      originalName,
-      rowEditDraft.manufacturer.trim() || undefined,
-      {
-        ...identity,
-        tradeName,
-        manufacturer: rowEditDraft.manufacturer.trim() || undefined,
-      }
-    );
 
+    // تعديل بيانات صف السعر فقط: لا نشغّل المطابقة ولا نغيّر الربط اليدوي الحالي.
     setMatchRows((prev) => prev.map((row) => row.rowId === editingRowId ? {
       ...row,
       originalName,
       tradeName,
-      strength: identity.strength,
-      form: identity.form,
-      pack: identity.packSize,
+      strength: rowEditDraft.strength.trim() || undefined,
+      form: rowEditDraft.form.trim() || undefined,
+      pack: rowEditDraft.pack.trim() || undefined,
       manufacturer: rowEditDraft.manufacturer.trim() || undefined,
-      barcode: identity.barcode,
+      barcode: rowEditDraft.barcode.trim() || undefined,
       price,
       publicPrice,
       available: rowEditDraft.available,
       expiry: rowEditDraft.expiry.trim() || undefined,
       bonus: rowEditDraft.bonus.trim() || undefined,
-      status: matchResult.status,
-      selectedProductId: matchResult.matchedProduct?.id || null,
-      suggestions: matchResult.suggestions,
     } : row));
     setIsRowEditModalOpen(false);
     setEditingRowId(null);
     setRowEditDraft(null);
-    success('تم حفظ بيانات الصف وإعادة بناء المطابقة فوراً.');
+    success('تم حفظ تعديلات صف السعر دون إعادة المطابقة، مع الحفاظ على الربط الحالي.');
   };
 
   const handleManualProductSelect = async (row: RowMatchItem, productId: string) => {
@@ -829,7 +811,6 @@ export const ImportPrices: React.FC = () => {
       ? 'other'
       : productEditDraft.productType;
     setIsSavingProductEdit(true);
-    setProductEditProgress(null);
     try {
       const existing = products.find((product) => product.id === productEditDraft.id);
       const saved = await saveProduct({
@@ -847,55 +828,13 @@ export const ImportPrices: React.FC = () => {
         barcode: productEditDraft.barcode.trim() || undefined,
         productType: effectiveType,
       });
-      const nextProducts = [saved, ...products.filter((product) => product.id !== saved.id)];
-      setProducts(nextProducts);
 
-      // لا تعالج جميع صفوف المطابقة دفعة واحدة على الخيط الرئيسي؛ الملفات الكبيرة
-      // كانت تجمّد الواجهة وتُبقي زر الحفظ على حالة الانتظار. قسّم العمل إلى دفعات
-      // صغيرة مع إتاحة فرصة للمتصفح لرسم الواجهة بين كل دفعة.
-      const latestMatcher = new ProductMatcher(nextProducts, [...supplierAliases, ...globalAliases], selectedSupplierId);
-      const currentRows = matchRows;
-      const rematchedRows: RowMatchItem[] = [];
-      // Keep each main-thread slice deliberately small: large supplier files can contain
-      // expensive fuzzy searches, so yield frequently to keep the UI responsive.
-      const chunkSize = 5;
-      setProductEditProgress({ completed: 0, total: currentRows.length });
-      for (let start = 0; start < currentRows.length; start += chunkSize) {
-        const chunk = currentRows.slice(start, start + chunkSize);
-        for (const row of chunk) {
-          if (row.status === 'ignored') {
-            rematchedRows.push(row);
-            continue;
-          }
-          const matchResult = latestMatcher.match(row.originalName, row.manufacturer, {
-            tradeName: row.tradeName || row.originalName,
-            strength: row.strength,
-            form: row.form,
-            packSize: row.pack,
-            barcode: row.barcode,
-          });
-          // اختيار المستخدم/الربط السابق مقصود، فلا نستبدله باقتراح تقريبي بعد تعديل المنتج.
-          if (row.selectedProductId) {
-            rematchedRows.push({ ...row, status: 'exact', suggestions: matchResult.suggestions });
-          } else {
-            rematchedRows.push({
-              ...row,
-              status: matchResult.status,
-              selectedProductId: matchResult.matchedProduct?.id || null,
-              suggestions: matchResult.suggestions,
-            });
-          }
-        }
-        setProductEditProgress({ completed: Math.min(start + chunk.length, currentRows.length), total: currentRows.length });
-        if (start + chunkSize < currentRows.length) {
-          // setTimeout(0) gives React/browser a chance to paint progress and process input.
-          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-        }
-      }
-      setMatchRows(rematchedRows);
+      // حدّث سجل الصنف محلياً فقط. إعادة المطابقة عملية مستقلة لا تعمل إلا من زرها
+      // أو بعد رفع ملف جديد؛ لا نعيد فحص كل صفوف الملف عند حفظ تعديل صنف واحد.
+      setProducts((prev) => [saved, ...prev.filter((product) => product.id !== saved.id)]);
       setIsProductEditModalOpen(false);
       setProductEditDraft(null);
-      success('تم حفظ تعديل الصنف مع الحفاظ على معرفه وربطه الحالي.');
+      success('تم حفظ تعديل الصنف بنجاح دون إعادة المطابقة، مع الحفاظ على الروابط والاختيارات الحالية.');
       if (productEditDraft.productType === 'medicine' && !productEditDraft.activeIngredientId) {
         info('لم تُختر مادة فعالة؛ حُفظ الصنف كغير دوائي.');
       }
