@@ -549,6 +549,18 @@ jobs:
           cp -r dist/. ../dist/v61/
           cd ..
 
+          # Build V62: lazy-load the heavy pharmacy prices page and correct PWA scope
+          cd v62
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npm run build
+          mkdir -p ../dist/v62
+          cp -r dist/. ../dist/v62/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
