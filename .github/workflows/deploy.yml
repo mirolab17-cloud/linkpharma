@@ -523,6 +523,19 @@ jobs:
           cp -r dist/. ../dist/v59/
           cd ..
 
+          # Build v60: per-product strength visibility (hidden by default; opt in per product)
+          cd v60
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npm run test:rules:emulator
+          npm run build
+          mkdir -p ../dist/v60
+          cp -r dist/. ../dist/v60/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
