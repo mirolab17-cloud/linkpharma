@@ -172,6 +172,7 @@ export const ImportPrices: React.FC = () => {
   const [isProductEditModalOpen, setIsProductEditModalOpen] = useState(false);
   const [productEditDraft, setProductEditDraft] = useState<ProductEditDraft | null>(null);
   const [isSavingProductEdit, setIsSavingProductEdit] = useState(false);
+  const [productEditProgress, setProductEditProgress] = useState<{ completed: number; total: number } | null>(null);
 
   // Audit Diff & Anomaly Detection State (تدقيق الاستيراد والمعاينة)
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
@@ -828,6 +829,7 @@ export const ImportPrices: React.FC = () => {
       ? 'other'
       : productEditDraft.productType;
     setIsSavingProductEdit(true);
+    setProductEditProgress(null);
     try {
       const existing = products.find((product) => product.id === productEditDraft.id);
       const saved = await saveProduct({
@@ -854,7 +856,10 @@ export const ImportPrices: React.FC = () => {
       const latestMatcher = new ProductMatcher(nextProducts, [...supplierAliases, ...globalAliases], selectedSupplierId);
       const currentRows = matchRows;
       const rematchedRows: RowMatchItem[] = [];
-      const chunkSize = 40;
+      // Keep each main-thread slice deliberately small: large supplier files can contain
+      // expensive fuzzy searches, so yield frequently to keep the UI responsive.
+      const chunkSize = 5;
+      setProductEditProgress({ completed: 0, total: currentRows.length });
       for (let start = 0; start < currentRows.length; start += chunkSize) {
         const chunk = currentRows.slice(start, start + chunkSize);
         for (const row of chunk) {
@@ -881,7 +886,9 @@ export const ImportPrices: React.FC = () => {
             });
           }
         }
+        setProductEditProgress({ completed: Math.min(start + chunk.length, currentRows.length), total: currentRows.length });
         if (start + chunkSize < currentRows.length) {
+          // setTimeout(0) gives React/browser a chance to paint progress and process input.
           await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
         }
       }
@@ -896,6 +903,7 @@ export const ImportPrices: React.FC = () => {
       error('تعذر حفظ تعديل الصنف: ' + (err?.message || 'تحقق من الاتصال والصلاحيات ثم أعد المحاولة.'));
     } finally {
       setIsSavingProductEdit(false);
+      setProductEditProgress(null);
     }
   };
 
@@ -2290,7 +2298,7 @@ export const ImportPrices: React.FC = () => {
         footer={
           <>
             <button type="button" disabled={isSavingProductEdit} onClick={() => { setIsProductEditModalOpen(false); setProductEditDraft(null); }} className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl disabled:opacity-50">إلغاء</button>
-            <button type="button" disabled={isSavingProductEdit} onClick={() => (document.getElementById('edit-linked-product-form') as HTMLFormElement | null)?.requestSubmit()} className="px-5 py-2 text-xs font-bold text-white bg-[#0f9d7a] hover:bg-[#0b7a5e] rounded-xl shadow-xs disabled:opacity-50">{isSavingProductEdit ? 'جاري الحفظ...' : 'حفظ تعديل الصنف'}</button>
+            <button type="button" disabled={isSavingProductEdit} onClick={() => (document.getElementById('edit-linked-product-form') as HTMLFormElement | null)?.requestSubmit()} className="px-5 py-2 text-xs font-bold text-white bg-[#0f9d7a] hover:bg-[#0b7a5e] rounded-xl shadow-xs disabled:opacity-50">{isSavingProductEdit ? (productEditProgress && productEditProgress.total > 0 ? `جاري إعادة المطابقة (${productEditProgress.completed}/${productEditProgress.total})` : 'جاري حفظ الصنف...') : 'حفظ تعديل الصنف'}</button>
           </>
         }
       >
