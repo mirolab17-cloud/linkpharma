@@ -28,6 +28,7 @@ import { formatGregorianDate } from '../../utils/formatDate';
 import { BulkBar } from '../../components/BulkBar';
 import { EmptyState } from '../../components/EmptyState';
 import { Spinner } from '../../components/Loader';
+import { ExportActions, ExportColumn } from '../../components/admin/ExportActions';
 
 export const ActiveIngredients: React.FC = () => {
   const { success, error, warning } = useToastStore();
@@ -196,6 +197,13 @@ export const ActiveIngredients: React.FC = () => {
     }
   };
 
+  const ingredientExportColumns: ExportColumn<ActiveIngredient>[] = [
+    { key: 'name', label: 'اسم المادة الفعالة' },
+    { key: 'category', label: 'التصنيف الدوائي' },
+    { key: 'productCount', label: 'عدد الأصناف المرتبطة', value: (item) => productCountMap.get(item.id) || 0 },
+    { key: 'createdAt', label: 'تاريخ الإضافة', value: (item) => item.createdAt ? formatGregorianDate(item.createdAt) : '' },
+  ];
+
   // تعريف أعمدة الجدول
   const columns: Column<ActiveIngredient>[] = [
     {
@@ -281,6 +289,11 @@ export const ActiveIngredients: React.FC = () => {
           <Plus className="w-4 h-4" />
           <span>إضافة مادة فعالة جديدة</span>
         </button>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+        <p className="text-xs text-slate-500">تصدير النتائج المطابقة للبحث والتصنيف الحاليين.</p>
+        <ExportActions title="قائمة المواد الفعالة" filename="المواد-الفعالة" data={filteredIngredients} columns={ingredientExportColumns} />
       </div>
 
       {/* شريط البحث والفلترة */}
