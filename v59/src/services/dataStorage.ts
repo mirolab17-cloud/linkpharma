@@ -792,7 +792,10 @@ export async function saveGlobalProductAliasesBatch(
   chunkSize = 200,
 ): Promise<ProductAliasBatchResult> {
   const actor = useAuthStore.getState().user;
-  if (!actor || actor.role !== 'admin') throw new Error('إدارة قاموس الأسماء العام متاحة لمدير المنصة فقط.');
+  const repCanManage = actor?.role === 'representative' && actor.status === 'active' && actor.representativePermissions?.managePrices === true;
+  const pharmacyCanManage = actor?.role === 'pharmacy' && actor.status === 'active' && actor.pharmacyCatalogPermissions?.managePrices === true && (actor.pharmacyCatalogPermissions.priceSupplierIds?.length || 0) > 0;
+  if (!actor || (actor.role !== 'admin' && !repCanManage && !pharmacyCanManage)) throw new Error('إدارة قاموس الأسماء العام متاحة لمدير المنصة أو لمن لديه صلاحية تحديث الأسعار.');
+  if (actor.role !== 'admin') items = items.map((item) => ({ ...item, replace: false }));
   const result: ProductAliasBatchResult = { saved: 0, alreadyLinked: 0, conflicts: [], failed: 0 };
   if (!items.length) return result;
   const cacheKey = GLOBAL_PRODUCT_ALIASES_CACHE_KEY;

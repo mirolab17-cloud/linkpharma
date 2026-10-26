@@ -94,6 +94,15 @@ service cloud.firestore {
         get(/databases/$(database)/documents/suppliers/$(supplierId)).data.status == 'active';
     }
 
+    function canAddGlobalAliases() {
+      let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isAdmin() || (isActiveRepresentative() &&
+        profile.get('representativePermissions', {}).get('managePrices', false) == true) ||
+        (isActivePharmacy() && hasActiveSubscription() &&
+        profile.get('pharmacyCatalogPermissions', {}).get('managePrices', false) == true &&
+        profile.get('pharmacyCatalogPermissions', {}).get('priceSupplierIds', []).size() > 0);
+    }
+
     function pharmacyCanCreateProducts() {
       return isActivePharmacy() && hasActiveSubscription() &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('pharmacyCatalogPermissions', {}).get('createProducts', false) == true;
@@ -207,7 +216,7 @@ service cloud.firestore {
     // Global aliases are shared across all imports and suppliers; every signed-in account may read them, only admins may manage them.
     match /globalProductAliases/{aliasId} {
       allow read: if isSignedIn();
-      allow create: if isAdmin() && productExists(request.resource.data.productId) &&
+      allow create: if canAddGlobalAliases() && productExists(request.resource.data.productId) &&
         request.resource.data.keys().hasOnly([
           'id', 'supplierId', 'scope', 'productId', 'rawName', 'normalizedName', 'identityKey', 'createdAt', 'createdByUid', 'createdByName'
         ]) &&
