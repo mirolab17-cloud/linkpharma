@@ -1,0 +1,6 @@
+{
+  "name": "LinkPharma v58",
+  "description": "قاموس عالمي لربط الأسماء البديلة للأصناف مع كتالوج LinkPharma دون ارتباط بمورد.",
+  "requestFramePermissions": [],
+  "version": "58.0.0"
+}
