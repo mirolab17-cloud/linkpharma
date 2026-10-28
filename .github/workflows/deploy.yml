@@ -574,6 +574,19 @@ jobs:
           cp -r dist/. ../dist/v63/
           cd ..
 
+          # Build V64: faster catalog snapshots and progressive representative catalog rendering
+          cd v64
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npx tsx test/importRows.test.ts
+          npm run build
+          mkdir -p ../dist/v64
+          cp -r dist/. ../dist/v64/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
