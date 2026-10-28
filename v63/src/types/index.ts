@@ -182,6 +182,8 @@ export interface UserProfile {
 
 export interface DosageForm { id: string; name: string; createdAt?: string; updatedAt?: string; }
 
+export interface DosageForm { id: string; name: string; createdAt?: string; updatedAt?: string; }
+
 export interface ActiveIngredient {
   id: string;
   name: string;
