@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Activity, BadgePercent, BarChart3, Bell, Building2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Command, CopyCheck, CreditCard, Database, Eye, FlaskConical, LayoutDashboard, Pill, LayoutTemplate, ScrollText, ShieldCheck, Truck, UploadCloud, UserRoundCheck, MonitorSmartphone, Zap } from 'lucide-react';
+import { Activity, BadgePercent, BarChart3, Bell, Building2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Command, CopyCheck, CreditCard, Database, Eye, FlaskConical, LayoutDashboard, Pill, LayoutTemplate, ScrollText, ShieldCheck, Truck, UploadCloud, UserRoundCheck, MonitorSmartphone, Zap, Beaker } from 'lucide-react';
 
 interface AdminSidebarProps { isOpen: boolean; onClose: () => void; collapsed: boolean; onToggleCollapse: () => void; }
 type MenuItem = { to: string; label: string; icon: React.ElementType; end?: boolean };
@@ -23,6 +23,7 @@ const groups: Array<{ id: string; title: string; icon: React.ElementType; items:
     { to: '/admin/products', label: 'الأصناف التجارية', icon: Pill },
     { to: '/admin/quick-link', label: 'قاموس أسماء الأصناف', icon: Zap },
     { to: '/admin/ingredients', label: 'المواد الفعالة', icon: FlaskConical },
+    { to: '/admin/dosage-forms', label: 'Dosage Forms', icon: Beaker },
     { to: '/admin/catalog-import', label: 'استيراد الكتالوج', icon: UploadCloud },
     { to: '/admin/product-quality', label: 'جودة الكتالوج والتكرار', icon: CopyCheck },
   ]},

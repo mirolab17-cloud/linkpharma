@@ -256,6 +256,16 @@ service cloud.firestore {
       allow list: if false;
       allow write: if isAdmin();
     }
+    // Dosage forms: signed-in users may read; only admins may manage the English catalog.
+    match /dosageForms/{formId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() &&
+        request.resource.data.id == formId &&
+        request.resource.data.name is string &&
+        request.resource.data.name.matches('^[A-Za-z0-9 ()/.,+-]+$') &&
+        request.resource.data.keys().hasOnly(['id', 'name', 'createdAt', 'updatedAt']);
+      allow delete: if isAdmin();
+    }
     // Products (Catalog read by signed-in users, modified only by admin)
     match /products/{productId} {
       allow read: if isSignedIn();
