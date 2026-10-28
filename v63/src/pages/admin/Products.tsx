@@ -38,19 +38,19 @@ import { EmptyState } from '../../components/EmptyState';
 import { Spinner, TableSkeleton } from '../../components/Loader';
 
 const DOSAGE_FORMS = [
-  'أقراص',
-  'كبسولات',
-  'شراب',
-  'شراب معلق',
-  'حقن',
-  'مرهم',
-  'كريم',
-  'قطرات فموية',
-  'قطرات عين',
-  'فوار',
-  'بخاخ',
-  'جل',
-  'تحاميل',
+  'Tablet',
+  'Capsule',
+  'Syrup',
+  'Oral Suspension',
+  'Injection',
+  'Ointment',
+  'Cream',
+  'Oral Drops',
+  'Eye Drops',
+  'Effervescent Tablet',
+  'Spray',
+  'Gel',
+  'Suppository',
 ];
 
 type ProductExportRecord = Product & { supplierPrices?: string };
