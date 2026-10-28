@@ -335,6 +335,25 @@ describe('current Firestore rules — warehouse representatives and pharmacy bra
     await assertFails(updateDoc(doc(db, 'users/pharmacy1'), { branches: Array.from({ length: 11 }, (_, index) => ({ ...branch, id: `branch${index}` })) }));
   });
 
+  it('allows a promotion manager to attach only an existing catalog product to an offer', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'users/reppromo'), {
+        uid: 'reppromo', name: 'مندوب العروض', email: 'promo@example.test', role: 'representative', status: 'active',
+        supplierId: 'supplier1', representativePermissions: { managePrices: false, managePromotions: true, manageDeliverySchedule: false },
+      });
+    });
+    const db = testEnv.authenticatedContext('reppromo').firestore();
+    const now = new Date().toISOString();
+    const offer = {
+      id: 'offer-product1', supplierId: 'supplier1', title: 'عرض اختبار', productName: 'منتج تجريبي أول', productId: 'product1',
+      description: '', startsAt: now, endsAt: new Date(Date.now() + 86400000).toISOString(), status: 'active',
+      createdAt: now, createdByUid: 'reppromo', createdByName: 'مندوب العروض', updatedAt: now,
+      updatedByUid: 'reppromo', updatedByName: 'مندوب العروض',
+    };
+    await assertSucceeds(setDoc(doc(db, 'supplier_offers/offer-product1'), offer));
+    await assertFails(setDoc(doc(db, 'supplier_offers/offer-missing'), { ...offer, id: 'offer-missing', productId: 'missing-product' }));
+  });
+
   it('allows alias creation only for the representative assigned to that supplier', async () => {
     const db = testEnv.authenticatedContext('rep1').firestore();
     const alias = {

@@ -18,6 +18,7 @@ export interface SupplierOffer {
   supplierId: string;
   title: string;
   productName: string;
+  productId?: string;
   description: string;
   startsAt: string;
   endsAt: string;
@@ -102,6 +103,7 @@ export async function saveSupplierOffer(input: Omit<SupplierOffer, 'id' | 'creat
     supplierId: input.supplierId,
     title,
     productName,
+    ...(input.productId ? { productId: input.productId } : {}),
     description: input.description.trim(),
     startsAt: startsAt.toISOString(),
     endsAt: endsAt.toISOString(),

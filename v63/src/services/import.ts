@@ -29,6 +29,33 @@ export interface MappedPriceRow {
 }
 
 /**
+ * Read populated cells directly rather than relying only on Excel's declared !ref.
+ * Some spreadsheet writers leave !ref truncated after edits, silently hiding later rows.
+ */
+export function extractWorksheetRows(worksheet: XLSX.WorkSheet): Array<{ rowNumber: number; cells: string[] }> {
+  let maxRow = -1;
+  let maxCol = -1;
+  const addresses = Object.keys(worksheet).filter((key) => /^[A-Z]+[1-9]\d*$/.test(key));
+  for (const address of addresses) {
+    const cell = worksheet[address] as XLSX.CellObject | undefined;
+    if (!cell || (cell.v === undefined && !cell.f)) continue;
+    const position = XLSX.utils.decode_cell(address);
+    maxRow = Math.max(maxRow, position.r);
+    maxCol = Math.max(maxCol, position.c);
+  }
+  if (maxRow < 0 || maxCol < 0) return [];
+
+  return Array.from({ length: maxRow + 1 }, (_, row) => ({
+    rowNumber: row + 1,
+    cells: Array.from({ length: maxCol + 1 }, (_, col) => {
+      const cell = worksheet[XLSX.utils.encode_cell({ r: row, c: col })] as XLSX.CellObject | undefined;
+      const value = cell?.v !== undefined && cell?.v !== null ? cell.v : cell?.f ? cell.f : '';
+      return String(value).trim();
+    }),
+  }));
+}
+
+/**
  * قراءة ملف Excel أو CSV
  */
 export async function parseSpreadsheetFile(file: File, targetSheetName?: string): Promise<SheetParseResult> {
@@ -43,14 +70,9 @@ export async function parseSpreadsheetFile(file: File, targetSheetName?: string)
   const selectedSheet = targetSheetName && sheetNames.includes(targetSheetName) ? targetSheetName : sheetNames[0];
   const worksheet = workbook.Sheets[selectedSheet];
 
-  // تحويل إلى مصفوفة صفوف (Array of Arrays)
-  const rawRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-
-  // استخراج أقصى عدد أعمدة
-  let maxCols = 0;
-  rawRows.forEach((r) => {
-    if (r.length > maxCols) maxCols = r.length;
-  });
+  // قراءة الخلايا الفعلية تعالج ملفات فيها !ref ناقص بعد تحرير الملف.
+  const rawRows = extractWorksheetRows(worksheet);
+  const maxCols = rawRows.reduce((max, row) => Math.max(max, row.cells.length), 0);
 
   // توليد أسماء الأعمدة القياسية (A, B, C, ...)
   const columnHeaders: string[] = [];
@@ -58,13 +80,9 @@ export async function parseSpreadsheetFile(file: File, targetSheetName?: string)
     columnHeaders.push(XLSX.utils.encode_col(i)); // 'A', 'B', 'C', ...
   }
 
-  // احتفظ بأرقام الصفوف الأصلية حتى تكون تقارير الأخطاء دقيقة، مع إزالة الصفوف الفارغة بالكامل.
-  const allRows = rawRows.map((row, idx) => ({
-    rowNumber: idx + 1,
-    cells: Array.from({ length: maxCols }, (_, colIdx) => {
-      const val = row[colIdx];
-      return val !== undefined && val !== null ? String(val).trim() : '';
-    }),
+  const allRows = rawRows.map((row) => ({
+    ...row,
+    cells: Array.from({ length: maxCols }, (_, colIdx) => row.cells[colIdx] || ''),
   }));
 
   return {

@@ -348,8 +348,9 @@ service cloud.firestore {
         request.resource.data.updatedByName is string &&
         (!('quantityLimit' in request.resource.data) || (request.resource.data.quantityLimit is int && request.resource.data.quantityLimit > 0)) &&
         request.resource.data.status in ['active', 'paused'] &&
+        (!('productId' in request.resource.data) || (request.resource.data.productId is string && productExists(request.resource.data.productId))) &&
         request.resource.data.keys().hasOnly([
-          'id', 'supplierId', 'title', 'productName', 'description', 'startsAt', 'endsAt', 'quantityLimit',
+          'id', 'supplierId', 'title', 'productName', 'productId', 'description', 'startsAt', 'endsAt', 'quantityLimit',
           'status', 'createdAt', 'createdByUid', 'createdByName', 'updatedAt', 'updatedByUid', 'updatedByName'
         ])
       );
@@ -367,8 +368,9 @@ service cloud.firestore {
         request.resource.data.updatedByName is string &&
         (!('quantityLimit' in request.resource.data) || (request.resource.data.quantityLimit is int && request.resource.data.quantityLimit > 0)) &&
         request.resource.data.status in ['active', 'paused'] &&
+        (!('productId' in request.resource.data) || (request.resource.data.productId is string && productExists(request.resource.data.productId))) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'title', 'productName', 'description', 'startsAt', 'endsAt', 'quantityLimit', 'status',
+          'title', 'productName', 'productId', 'description', 'startsAt', 'endsAt', 'quantityLimit', 'status',
           'updatedAt', 'updatedByUid', 'updatedByName'
         ])
       );

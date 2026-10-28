@@ -568,6 +568,7 @@ jobs:
           npm run test:catalog-import
           npm run test:product-matching
           npm run test:quick-link
+          npx tsx test/importRows.test.ts
           npm run build
           mkdir -p ../dist/v63
           cp -r dist/. ../dist/v63/

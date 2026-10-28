@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BadgePercent, CalendarClock, Package, PauseCircle, PlayCircle, Plus, RefreshCw, Save, Tag, Trash2, Truck } from 'lucide-react';
-import { getSuppliers } from '../services/dataStorage';
+import { getProducts, getSuppliers } from '../services/dataStorage';
 import { deleteSupplierOffer, listSupplierOffers, saveSupplierOffer, SupplierOffer } from '../services/offers';
-import { Supplier } from '../types';
+import { Product, Supplier } from '../types';
 import { useAuthStore } from '../store/useAuthStore';
 import { useToastStore } from '../store/useToastStore';
 import { Spinner } from './Loader';
 import { ExportActions, ExportColumn } from './admin/ExportActions';
+import { SearchSelect } from './SearchSelect';
+import { productDisplayName } from '../utils/productCatalog';
+import { normalizeArabic } from '../utils/arabicNormalize';
 
 const dateTimeInput = (date: Date) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -22,12 +25,13 @@ export const OffersManager: React.FC<{ lockedSupplierId?: string }> = ({ lockedS
   const { success, error } = useToastStore();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [offers, setOffers] = useState<SupplierOffer[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [supplierFilter, setSupplierFilter] = useState(lockedSupplierId || '');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<SupplierOffer | null>(null);
   const [title, setTitle] = useState('');
-  const [productName, setProductName] = useState('');
+  const [selectedProductId, setSelectedProductId] = useState('');
   const [description, setDescription] = useState('');
   const [startsAt, setStartsAt] = useState(initialStart);
   const [endsAt, setEndsAt] = useState(initialEnd);
@@ -39,16 +43,23 @@ export const OffersManager: React.FC<{ lockedSupplierId?: string }> = ({ lockedS
   const allowed = isAdmin || (isRepresentative && !!actor?.representativePermissions?.managePromotions);
   const effectiveSupplierId = lockedSupplierId || (isRepresentative ? actor?.supplierId || '' : supplierFilter);
   const supplierMap = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
+  const productOptions = useMemo(() => products.map((product) => ({
+    id: product.id,
+    label: productDisplayName(product),
+    subLabel: [product.strength, product.form, product.packSize, product.manufacturer, product.barcode ? `باركود ${product.barcode}` : ''].filter(Boolean).join(' · '),
+  })), [products]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [supplierRows, offerRows] = await Promise.all([
+      const [supplierRows, offerRows, productRows] = await Promise.all([
         getSuppliers(),
         listSupplierOffers(effectiveSupplierId || undefined),
+        getProducts(),
       ]);
       setSuppliers(supplierRows);
       setOffers(offerRows);
+      setProducts(productRows);
     } catch (cause) {
       error(cause instanceof Error ? cause.message : 'تعذر تحميل العروض.');
     } finally {
@@ -61,7 +72,7 @@ export const OffersManager: React.FC<{ lockedSupplierId?: string }> = ({ lockedS
   const resetForm = () => {
     setEditing(null);
     setTitle('');
-    setProductName('');
+    setSelectedProductId('');
     setDescription('');
     setStartsAt(dateTimeInput(new Date()));
     setEndsAt(dateTimeInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
@@ -73,7 +84,8 @@ export const OffersManager: React.FC<{ lockedSupplierId?: string }> = ({ lockedS
     setEditing(offer);
     setSupplierFilter(offer.supplierId);
     setTitle(offer.title);
-    setProductName(offer.productName);
+    const legacyMatched = products.find((product) => normalizeArabic(productDisplayName(product)) === normalizeArabic(offer.productName));
+    setSelectedProductId(offer.productId || legacyMatched?.id || '');
     setDescription(offer.description || '');
     setStartsAt(toInputDate(offer.startsAt));
     setEndsAt(toInputDate(offer.endsAt));
@@ -86,6 +98,8 @@ export const OffersManager: React.FC<{ lockedSupplierId?: string }> = ({ lockedS
     event.preventDefault();
     const supplierId = lockedSupplierId || (isRepresentative ? actor?.supplierId : supplierFilter);
     if (!supplierId) { error('اختر المستودع أولًا.'); return; }
+    const selectedProduct = products.find((product) => product.id === selectedProductId);
+    if (!selectedProduct) { error('ابحث عن الصنف واختره من قائمة الكتالوج بدقة.'); return; }
     const quantity = quantityLimit.trim() ? Number(quantityLimit) : undefined;
     setSaving(true);
     try {
@@ -93,7 +107,8 @@ export const OffersManager: React.FC<{ lockedSupplierId?: string }> = ({ lockedS
         ...(editing ? { id: editing.id } : {}),
         supplierId,
         title,
-        productName,
+        productName: productDisplayName(selectedProduct),
+        productId: selectedProduct.id,
         description,
         startsAt: new Date(startsAt).toISOString(),
         endsAt: new Date(endsAt).toISOString(),
@@ -136,6 +151,7 @@ export const OffersManager: React.FC<{ lockedSupplierId?: string }> = ({ lockedS
   const offerExportColumns: ExportColumn<SupplierOffer>[] = [
     { key: 'title', label: 'عنوان العرض' },
     { key: 'productName', label: 'الصنف أو المجموعة' },
+    { key: 'productId', label: 'معرّف الصنف' },
     { key: 'supplier', label: 'المستودع', value: (offer) => supplierMap.get(offer.supplierId)?.name || offer.supplierId },
     { key: 'description', label: 'تفاصيل العرض' },
     { key: 'status', label: 'الحالة', value: (offer) => offer.status === 'active' ? 'مفعّل' : 'متوقف مؤقتًا' },
@@ -169,7 +185,11 @@ export const OffersManager: React.FC<{ lockedSupplierId?: string }> = ({ lockedS
         {isAdmin && !lockedSupplierId && <label className="block text-xs font-bold text-slate-700">المستودع<select required value={supplierFilter} onChange={(event) => { setSupplierFilter(event.target.value); if (editing && editing.supplierId !== event.target.value) resetForm(); }} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="">اختر المستودع</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>}
         {lockedSupplierId && <div className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900"><Truck className="ml-1 inline h-4 w-4" />{supplierMap.get(lockedSupplierId)?.name || 'المستودع المرتبط'} — لا يمكن تغيير نطاق المستودع.</div>}
         <label className="block text-xs font-bold text-slate-700">عنوان العرض<input required maxLength={100} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="مثال: خصم خاص لنهاية الأسبوع" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium" /></label>
-        <label className="block text-xs font-bold text-slate-700">اسم الصنف أو المجموعة<input required maxLength={120} value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="مثال: أدوية الحساسية — مجموعة مختارة" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium" /></label>
+        <div>
+          <SearchSelect label="الصنف الذي ينطبق عليه العرض" placeholder="ابحث بالاسم أو التركيز أو الشركة ثم اختر الصنف" options={productOptions} value={selectedProductId} onChange={setSelectedProductId} required />
+          {editing && !selectedProductId && <p className="mt-1.5 text-[11px] text-amber-700">هذا عرض قديم محفوظ بالاسم فقط؛ ابحث عن الصنف المطابق واختره قبل حفظ التعديل.</p>}
+          <p className="mt-1 text-[10px] text-slate-500">سيُحفظ معرّف الصنف المختار لمنع الالتباس بين أصناف متشابهة الأسماء.</p>
+        </div>
         <label className="block text-xs font-bold text-slate-700">تفاصيل العرض<textarea maxLength={600} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="اكتب نسبة الخصم أو البونص وشروط الاستفادة." className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium leading-6" /></label>
         <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold text-slate-700">يبدأ في<input required type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-2 py-2.5 text-xs" /></label><label className="text-xs font-bold text-slate-700">ينتهي في<input required type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-2 py-2.5 text-xs" /></label></div>
         <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold text-slate-700">حد الكمية (اختياري)<input type="number" min="1" step="1" value={quantityLimit} onChange={(event) => setQuantityLimit(event.target.value)} placeholder="غير محدود" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label><label className="text-xs font-bold text-slate-700">حالة العرض<select value={formStatus} onChange={(event) => setFormStatus(event.target.value as 'active' | 'paused')} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="active">مفعّل</option><option value="paused">متوقف مؤقتًا</option></select></label></div>

@@ -1154,6 +1154,25 @@ export const ImportPrices: React.FC = () => {
     return { exact, fuzzy, none, ignored, total: matchRows.length };
   }, [matchRows]);
 
+  const importDiagnostics = useMemo(() => {
+    if (!sheetData) return null;
+    const remainingRows = sheetData.allRows.filter((row) => row.rowNumber >= startRow);
+    const nonEmptyRows = remainingRows.filter((row) => row.cells.some((cell) => cell.trim()));
+    if (nameCol < 0 || priceCol < 0) return { sheetRows: sheetData.allRows.length, nonEmptyRows: nonEmptyRows.length, valid: 0, invalid: 0 };
+    const mapped = processMappedRows({
+      allRows: sheetData.allRows, startRow, nameColIdx: nameCol, priceColIdx: priceCol,
+      strengthColIdx: strengthCol, formColIdx: formCol, packColIdx: packCol,
+      manufacturerColIdx: manufacturerCol, bonusColIdx: bonusCol, publicPriceColIdx: publicPriceCol,
+      availColIdx: availCol, expiryColIdx: expiryCol,
+    });
+    return {
+      sheetRows: sheetData.allRows.length,
+      nonEmptyRows: nonEmptyRows.length,
+      valid: mapped.filter((row) => row.isValid && row.rawPrice !== null).length,
+      invalid: mapped.filter((row) => !row.isValid || row.rawPrice === null).length,
+    };
+  }, [sheetData, startRow, nameCol, priceCol, strengthCol, formCol, packCol, manufacturerCol, bonusCol, publicPriceCol, availCol, expiryCol]);
+
   return (
     <div className="space-y-6 pb-24">
       {/* رأس الصفحة ومسار الخطوات */}
@@ -1423,6 +1442,14 @@ export const ImportPrices: React.FC = () => {
                 </div>
               </div>
 
+              {importDiagnostics && <div className="grid grid-cols-2 gap-2 rounded-xl border border-sky-100 bg-sky-50 p-3 text-[11px] sm:grid-cols-4">
+                <div><b className="block text-sm text-sky-900">{importDiagnostics.sheetRows}</b><span className="text-sky-800">صف مقروء من الورقة</span></div>
+                <div><b className="block text-sm text-sky-900">{importDiagnostics.nonEmptyRows}</b><span className="text-sky-800">صف غير فارغ بعد صف البداية</span></div>
+                <div><b className="block text-sm text-emerald-800">{importDiagnostics.valid}</b><span className="text-emerald-800">صف فيه اسم وسعر صالح</span></div>
+                <div><b className="block text-sm text-rose-800">{importDiagnostics.invalid}</b><span className="text-rose-800">صف سيُستبعد بسبب الاسم أو السعر</span></div>
+                {importDiagnostics.nonEmptyRows > importDiagnostics.valid + importDiagnostics.invalid && <p className="col-span-full text-amber-800">قد توجد صفوف تحتوي بيانات لكن دون الاسم أو السعر المختارين؛ راجع مطابقة الأعمدة وصف البداية.</p>}
+              </div>}
+
               {/* واجهة ربط الأعمدة الأساسية والاختيارية */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
                 {/* 1) اسم الصنف (إجباري) */}
@@ -1655,6 +1682,9 @@ export const ImportPrices: React.FC = () => {
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
                   تطابق تام (أخضر)، تطابق تقريبي مقترح (أصفر)، أو صنف غير موجود (أحمر)
+                </p>
+                <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                  قاعدة المطابقة الحالية: {products.length} صنفاً في الكتالوج · {globalAliases.length} اسماً بديلاً عاماً · {supplierAliases.length} رابطاً خاصاً بالمورد · {matchStats.total} صفاً صالحاً في الملف.
                 </p>
               </div>
 

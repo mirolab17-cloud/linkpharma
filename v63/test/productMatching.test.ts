@@ -11,6 +11,7 @@ import {
 } from '../src/utils/productIdentity';
 import { globalProductAliasDocumentId, productAliasDocumentId, normalizeAliasValue } from '../src/utils/productAliases';
 import type { Product, ProductAlias } from '../src/types';
+import { calculateEffectiveUnitPrice } from '../src/utils/formatPrice';
 
 const product = (id: string, tradeName: string, extra: Partial<Product> = {}): Product => ({
   id, tradeName, normalizedName: tradeName.toLowerCase(), form: '', strength: '', manufacturer: '', category: 'عام', activeIngredientId: '', ...extra,
@@ -124,5 +125,11 @@ assert.equal(plan[1].id, '3');
 assert.equal(plan[1].after.strength, '625mg', 'لا تُستبدل قيمة موجودة أبداً');
 assert.equal(plan[1].after.form, 'أقراص');
 assert.equal(plan[1].after.tradeName, 'Augmentin');
+
+// ---- صيغ البونص الواردة من ملفات الموردين -------------------------------
+assert.deepEqual(calculateEffectiveUnitPrice(100, '10+1'), { effectivePrice: 90.91, hasBonus: true, bonusDetails: '10+1', discountPercent: 9 });
+assert.deepEqual(calculateEffectiveUnitPrice(100, '10*1'), { effectivePrice: 90.91, hasBonus: true, bonusDetails: '10+1', discountPercent: 9 });
+assert.deepEqual(calculateEffectiveUnitPrice(100, '1×10'), { effectivePrice: 9.09, hasBonus: true, bonusDetails: '1+10', discountPercent: 91 });
+assert.equal(calculateEffectiveUnitPrice(100, '١٠ x ١').bonusDetails, '10+1', 'Arabic digits and x separator are accepted');
 
 console.log('Product matching tests passed.');

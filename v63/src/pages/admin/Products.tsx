@@ -6,7 +6,9 @@ import {
   saveProduct,
   deleteProducts,
   updateProductsCategory,
-  saveActiveIngredient
+  saveActiveIngredient,
+  getPricesForProductIds,
+  getSuppliers,
 } from '../../services/dataStorage';
 import { Product, ActiveIngredient } from '../../types';
 import { normalizeArabic } from '../../utils/arabicNormalize';
@@ -50,6 +52,8 @@ const DOSAGE_FORMS = [
   'جل',
   'تحاميل',
 ];
+
+type ProductExportRecord = Product & { supplierPrices?: string };
 
 export const Products: React.FC = () => {
   const { success, error, warning } = useToastStore();
@@ -175,13 +179,29 @@ export const Products: React.FC = () => {
     ingredientsMap,
   ]);
 
-  const productExportColumns: ExportColumn<Product>[] = [
+  const productExportColumns: ExportColumn<ProductExportRecord>[] = [
+    { key: 'id', label: 'معرّف الصنف' },
     { key: 'tradeName', label: 'الاسم التجاري' },
     { key: 'activeIngredientIds', label: 'المواد الفعالة', value: (p) => getProductActiveIngredientIds(p).map((id) => ingredientsMap.get(id)?.name).filter(Boolean).join(' + ') || 'غير محددة' },
     { key: 'form', label: 'الشكل الدوائي' }, { key: 'strength', label: 'التركيز' },
     { key: 'packSize', label: 'حجم العبوة' }, { key: 'manufacturer', label: 'الشركة المصنعة' },
     { key: 'category', label: 'التصنيف' }, { key: 'barcode', label: 'الباركود' },
+    { key: 'supplierPrices', label: 'أسعار الموردين', value: (p) => p.supplierPrices || 'لا توجد أسعار محفوظة' },
   ];
+  const prepareProductExport = async (data: ProductExportRecord[]): Promise<ProductExportRecord[]> => {
+    const [prices, suppliers] = await Promise.all([
+      getPricesForProductIds(data.map((product) => product.id), undefined, true),
+      getSuppliers(),
+    ]);
+    const supplierNames = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
+    const byProduct = new Map<string, string[]>();
+    prices.forEach((price) => {
+      const current = byProduct.get(price.productId) || [];
+      current.push(`${supplierNames.get(price.supplierId) || price.supplierId}: ${price.price} ₪${price.bonus ? ` (بونص ${price.bonus})` : ''}${price.available ? '' : ' — غير متوفر'}`);
+      byProduct.set(price.productId, current);
+    });
+    return data.map((product) => ({ ...product, supplierPrices: (byProduct.get(product.id) || []).join(' | ') }));
+  };
   // Paginated Products
   const totalPages = Math.ceil(filteredProducts.length / PAGE_SIZE);
   const paginatedProducts = useMemo(() => {
@@ -547,7 +567,7 @@ export const Products: React.FC = () => {
         </div>
       </div>
 
-      <ExportActions title="قائمة الأصناف التجارية" filename="الأصناف-التجارية" data={filteredProducts} columns={productExportColumns} />
+      <ExportActions title="قائمة الأصناف التجارية" filename="الأصناف-التجارية" data={filteredProducts} columns={productExportColumns} prepareData={prepareProductExport} />
       {/* الجدول والبيانات */}
       {loading ? (
         <TableSkeleton rows={8} cols={6} />

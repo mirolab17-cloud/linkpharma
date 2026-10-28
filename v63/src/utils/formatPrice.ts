@@ -76,8 +76,9 @@ export function calculateEffectiveUnitPrice(
     return { effectivePrice: price, hasBonus: false, discountPercent: 0 };
   }
 
-  // دعم صيغ: "10+2" أو "10 + 2" أو "10+1" أو "5+1"
-  const match = bonusText.match(/(\d+)\s*\+\s*(\d+)/);
+  // الصيغة الأولى هي عدد الوحدات المدفوعة والثانية البونص؛ نقبل + و* وx و×.
+  const normalizedBonus = convertArabicNumerals(bonusText).replace(/×|x/gi, '*');
+  const match = normalizedBonus.match(/(\d+)\s*(?:\+|\*)\s*(\d+)/);
   if (match) {
     const buyQty = parseInt(match[1], 10);
     const freeQty = parseInt(match[2], 10);
