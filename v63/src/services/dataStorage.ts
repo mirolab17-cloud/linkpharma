@@ -55,6 +55,7 @@ import { duplicateMessage, detectProductDuplicates } from './productQuality';
 
 const STORAGE_KEYS = {
   activeIngredients: 'pharma_db_active_ingredients',
+  dosageForms: 'linkpharma_dosage_forms',
   products: 'pharma_db_products',
   suppliers: 'pharma_db_suppliers',
   prices: 'pharma_db_prices',
@@ -2877,4 +2878,42 @@ export async function clearDatabase(): Promise<void> {
   setLocal(STORAGE_KEYS.priceHistory, []);
   setLocal(STORAGE_KEYS.importBatches, []);
   setLocal(STORAGE_KEYS.orders, []);
+}
+
+
+// ======================= Dosage Forms =======================
+export async function getDosageForms(): Promise<import('../types').DosageForm[]> {
+  return getLiveCollection<import('../types').DosageForm>('dosageForms', STORAGE_KEYS.dosageForms);
+}
+
+export async function saveDosageForm(item: { id?: string; name: string }): Promise<import('../types').DosageForm> {
+  const actor = useAuthStore.getState().user;
+  if (!actor || actor.role !== 'admin') throw new Error('You do not have permission to manage dosage forms.');
+  const name = item.name.trim();
+  if (!name || !/^[A-Za-z0-9 ()/.,+-]+$/.test(name)) throw new Error('Dosage form names must use English letters and standard symbols.');
+  const current = await getDosageForms();
+  if (current.some((row) => row.name.toLowerCase() === name.toLowerCase() && row.id !== item.id)) throw new Error('This dosage form already exists.');
+  const id = item.id || 'form_' + Date.now().toString(36);
+  const saved: import('../types').DosageForm = { id, name, createdAt: current.find((row) => row.id === id)?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
+  invalidateCache(['dosageForms']);
+  if (isFirebaseConfigured) {
+    try { await setDoc(doc(db, 'dosageForms', id), saved); }
+    catch (e) { console.error('saveDosageForm failed:', e); throw new Error('Could not save dosage form to the database.'); }
+  }
+  const local = getLocal<import('../types').DosageForm>(STORAGE_KEYS.dosageForms);
+  setLocal(STORAGE_KEYS.dosageForms, [saved, ...local.filter((row) => row.id !== id)]);
+  updateLiveCollection('dosageForms', STORAGE_KEYS.dosageForms, saved);
+  return saved;
+}
+
+export async function deleteDosageForm(id: string): Promise<void> {
+  const actor = useAuthStore.getState().user;
+  if (!actor || actor.role !== 'admin') throw new Error('You do not have permission to manage dosage forms.');
+  invalidateCache(['dosageForms']);
+  if (isFirebaseConfigured) {
+    try { await deleteDoc(doc(db, 'dosageForms', id)); }
+    catch (e) { console.error('deleteDosageForm failed:', e); throw new Error('Could not delete dosage form from the database.'); }
+  }
+  setLocal(STORAGE_KEYS.dosageForms, getLocal<import('../types').DosageForm>(STORAGE_KEYS.dosageForms).filter((row) => row.id !== id));
+  updateLiveCollection<import('../types').DosageForm>('dosageForms', STORAGE_KEYS.dosageForms, null, id);
 }
