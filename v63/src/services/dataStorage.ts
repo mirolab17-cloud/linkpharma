@@ -1352,8 +1352,9 @@ export async function commitImportBatch(params: {
   if (isFirebaseConfigured) {
     // Each price write verifies its product in Firestore rules (access-call limit 20 per batch),
     // so batches stay at 10 prices but are committed in parallel.
-    const CHUNK_SIZE = 10;
-    const CONCURRENCY = 12;
+    // المدير معفى من تحقق وجود الصنف في القواعد فيكتب 240 سعراً (480 مستنداً مع السجل) بالدفعة؛ غيره يبقى 10.
+    const CHUNK_SIZE = actor.role === 'admin' ? 240 : 10;
+    const CONCURRENCY = actor.role === 'admin' ? 6 : 12;
     const total = updatedPrices.length;
     const batchRef = doc(db, 'importBatches', batchId);
     await setDoc(batchRef, { ...importBatch, importStatus: 'in_progress', writtenRowsCount: 0, progressUpdatedAt: new Date().toISOString() });

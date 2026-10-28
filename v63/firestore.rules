@@ -303,7 +303,7 @@ service cloud.firestore {
           resource.data.supplierId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.allowedSuppliers
         )
       );
-      allow create: if productExists(request.resource.data.productId) && (isAdmin() || (
+      allow create: if isAdmin() || (productExists(request.resource.data.productId) && ((
         pharmacyCanManagePrices(request.resource.data.supplierId) &&
         request.resource.data.keys().hasOnly(['productId', 'supplierId', 'price', 'publicPrice', 'available', 'expiry', 'bonus', 'hidden', 'updatedAt']) &&
         request.resource.data.productId is string && request.resource.data.price is number && request.resource.data.price > 0 &&
@@ -314,8 +314,8 @@ service cloud.firestore {
         request.resource.data.productId is string && request.resource.data.price is number && request.resource.data.price > 0 &&
         request.resource.data.available is bool && request.resource.data.hidden == false &&
         (representativeCanManagePromotions(request.resource.data.supplierId) || !('bonus' in request.resource.data))
-      ));
-      allow update: if productExists(request.resource.data.productId) && (isAdmin() || (
+      )));
+      allow update: if isAdmin() || (productExists(request.resource.data.productId) && ((
         pharmacyCanManagePrices(resource.data.supplierId) &&
         request.resource.data.supplierId == resource.data.supplierId && request.resource.data.productId == resource.data.productId &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['price', 'publicPrice', 'available', 'expiry', 'updatedAt']) &&
@@ -329,7 +329,7 @@ service cloud.firestore {
         request.resource.data.price is number && request.resource.data.price > 0 &&
         request.resource.data.hidden == resource.data.get('hidden', false) &&
         (representativeCanManagePromotions(resource.data.supplierId) || request.resource.data.get('bonus', null) == resource.data.get('bonus', null))
-      ));
+      )));
       allow delete: if isAdmin();
     }
 
