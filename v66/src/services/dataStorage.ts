@@ -1871,23 +1871,26 @@ export async function getPriceHistory(productId?: string, allowedSupplierIds?: s
 
 export async function toggleProductFavorite(userId: string, productId: string): Promise<string[]> {
   const users = getLocal<UserProfile>(STORAGE_KEYS.users);
-  const user = users.find((u) => u.uid === userId);
-  const currentFavs = user?.favorites || [];
-  const exists = currentFavs.includes(productId);
-  const newFavs = exists ? currentFavs.filter((id) => id !== productId) : [...currentFavs, productId];
+  const localUser = users.find((u) => u.uid === userId);
+  const storeUser = useAuthStore.getState().user;
+  const currentFavs: string[] = (storeUser && storeUser.uid === userId ? storeUser.favorites : localUser?.favorites) || [];
+  const newFavs = currentFavs.includes(productId) ? currentFavs.filter((id) => id !== productId) : [...currentFavs, productId];
 
-  if (user) {
-    user.favorites = newFavs;
+  useAuthStore.setState((state) => state.user && state.user.uid === userId ? { user: { ...state.user, favorites: newFavs } } : state);
+
+  if (localUser) {
+    localUser.favorites = newFavs;
     setLocal(STORAGE_KEYS.users, users);
   }
 
-  // حفظ في التخزين المحلي للمستخدم الحالي
   try {
     const activeLocal = localStorage.getItem('pharma_local_user');
     if (activeLocal) {
       const parsed = JSON.parse(activeLocal);
-      parsed.favorites = newFavs;
-      localStorage.setItem('pharma_local_user', JSON.stringify(parsed));
+      if (parsed?.uid === userId) {
+        parsed.favorites = newFavs;
+        localStorage.setItem('pharma_local_user', JSON.stringify(parsed));
+      }
     }
   } catch (_) {}
 
