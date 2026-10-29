@@ -587,6 +587,19 @@ jobs:
           cp -r dist/. ../dist/v64/
           cd ..
 
+          # Build V65: managed dosage forms, editable subscription number, per-pharmacy WhatsApp branding
+          cd v65
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npx tsx test/importRows.test.ts
+          npm run build
+          mkdir -p ../dist/v65
+          cp -r dist/. ../dist/v65/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
