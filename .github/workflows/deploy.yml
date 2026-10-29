@@ -600,6 +600,19 @@ jobs:
           cp -r dist/. ../dist/v65/
           cd ..
 
+          # Build V66: live refresh of catalog data across open pages (matching, approval, products)
+          cd v66
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npx tsx test/importRows.test.ts
+          npm run build
+          mkdir -p ../dist/v66
+          cp -r dist/. ../dist/v66/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
