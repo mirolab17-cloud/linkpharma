@@ -626,6 +626,19 @@ jobs:
           cp -r dist/. ../dist/v67/
           cd ..
 
+          # Build V68: share LinkPharma from user profiles with a downloadable QR code
+          cd v68
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npx tsx test/importRows.test.ts
+          npm run build
+          mkdir -p ../dist/v68
+          cp -r dist/. ../dist/v68/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
