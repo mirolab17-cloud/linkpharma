@@ -613,6 +613,19 @@ jobs:
           cp -r dist/. ../dist/v66/
           cd ..
 
+          # Build V67: product-centered management of global commercial-name aliases
+          cd v67
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npx tsx test/importRows.test.ts
+          npm run build
+          mkdir -p ../dist/v67
+          cp -r dist/. ../dist/v67/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
