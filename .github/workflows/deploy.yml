@@ -653,6 +653,20 @@ jobs:
           cp -r dist/. ../dist/v69/
           cd ..
 
+          # Build V70: fix price conflicts when several rows map to one product
+          cd v70
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npm run test:alias-suggestions
+          npx tsx test/importRows.test.ts
+          npm run build
+          mkdir -p ../dist/v70
+          cp -r dist/. ../dist/v70/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
