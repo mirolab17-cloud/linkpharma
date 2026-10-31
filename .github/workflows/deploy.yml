@@ -639,6 +639,20 @@ jobs:
           cp -r dist/. ../dist/v68/
           cd ..
 
+          # Build V69: reviewable global alias suggestions, duplicate detection and bulk retargeting
+          cd v69
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npm run test:alias-suggestions
+          npx tsx test/importRows.test.ts
+          npm run build
+          mkdir -p ../dist/v69
+          cp -r dist/. ../dist/v69/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
