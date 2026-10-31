@@ -179,6 +179,7 @@ service cloud.firestore {
       ) || (
         isCurrentUser(userId) &&
         resource.data.role == 'representative' &&
+        resource.data.status == 'active' &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'status', 'supplierId', 'representativePermissions', 'updatedAt']) &&
         request.resource.data.role == 'pharmacy' &&
         request.resource.data.status == 'active' &&
@@ -216,7 +217,7 @@ service cloud.firestore {
     // Global aliases are shared across all imports and suppliers; every signed-in account may read them, only admins may manage them.
     match /globalProductAliases/{aliasId} {
       allow read: if isSignedIn();
-      allow create: if canAddGlobalAliases() && productExists(request.resource.data.productId) &&
+      allow create: if isAdmin() && productExists(request.resource.data.productId) &&
         request.resource.data.keys().hasOnly([
           'id', 'supplierId', 'scope', 'productId', 'rawName', 'normalizedName', 'identityKey', 'createdAt', 'createdByUid', 'createdByName'
         ]) &&
