@@ -681,6 +681,20 @@ jobs:
           cp -r dist/. ../dist/v71/
           cd ..
 
+          # Build V72: fix stale "previous price" in price review after approval
+          cd v72
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npm run test:alias-suggestions
+          npx tsx test/importRows.test.ts
+          npm run build
+          mkdir -p ../dist/v72
+          cp -r dist/. ../dist/v72/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 

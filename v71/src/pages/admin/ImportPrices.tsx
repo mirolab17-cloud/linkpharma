@@ -19,6 +19,7 @@ import {
   getImportBatches,
   rollbackImportBatch,
   getPrices,
+  invalidateCache,
   getSystemSettings
 } from '../../services/dataStorage';
 import { Supplier, Product, ProductAlias, ActiveIngredient, ImportBatch, PriceRecord } from '../../types';
@@ -298,11 +299,20 @@ export const ImportPrices: React.FC = () => {
     loadBaseData();
   }, [user?.role, user?.supplierId, user?.pharmacyCatalogPermissions?.priceSupplierIds?.join(',')]);
 
+  const refreshExistingPrices = async (supplierId = selectedSupplierId) => {
+    if (!supplierId) { setExistingPrices([]); return; }
+    invalidateCache(['prices']);
+    try { setExistingPrices(await getPrices([supplierId], true)); } catch { setExistingPrices([]); }
+  };
+
   useEffect(() => {
-    if (!selectedSupplierId) { setExistingPrices([]); return; }
-    void getPrices([selectedSupplierId], true).then(setExistingPrices).catch(() => setExistingPrices([]));
+    void refreshExistingPrices(selectedSupplierId);
     setReviewAcknowledged(false);
   }, [selectedSupplierId]);
+
+  useEffect(() => {
+    if (step === 3) { void refreshExistingPrices(); setReviewAcknowledged(false); }
+  }, [step]);
 
   const loadBaseData = async () => {
     try {
@@ -1084,6 +1094,7 @@ export const ImportPrices: React.FC = () => {
       setDraftRecovered(false);
       success(`تم اعتماد الاستيراد بنجاح! تم تحديث ${res.updatedCount} صنفاً وإضافة ${res.newCount} جديداً.`);
       void loadBaseData();
+      void refreshExistingPrices();
     } catch (err: any) {
       setCommitProgress((current) => current ? { ...current, status: 'error' } : null);
       try {
