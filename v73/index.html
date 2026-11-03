@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#087f68">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="description" content="LinkPharma — حلقة الوصل الذكية بين الصيدليات والمستودعات">
+  <title>LinkPharma | حلقة الوصل الذكية</title>
+  <style>
+    :root{
+      --green:#07866c;--green2:#10a982;--deep:#064b48;--ink:#073f40;
+      --muted:#567779;--mint:#e9f8f4;--line:#d9efea;--white:#fff;
+      --shadow:0 18px 45px rgba(4,91,78,.10);--radius:24px;
+    }
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth;scroll-padding-top:84px}
+    body{margin:0;background:#fff;color:var(--ink);font-family:Cairo,Tahoma,Arial,sans-serif;line-height:1.7}
+    a{color:inherit;text-decoration:none}
+    button,a{-webkit-tap-highlight-color:transparent}
+    .wrap{width:min(1160px,calc(100% - 40px));margin-inline:auto}
+    .topbar{height:76px;display:flex;align-items:center;background:rgba(255,255,255,.94);border-bottom:1px solid #e8f3f0;position:sticky;top:0;z-index:20;backdrop-filter:blur(16px)}
+    .nav{display:flex;align-items:center;justify-content:space-between;gap:20px}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:23px;letter-spacing:-.5px;color:var(--deep);white-space:nowrap}
+    .brand-mark{width:42px;height:42px;border-radius:15px;background:linear-gradient(145deg,#10b98a,#00695c);display:grid;place-items:center;color:#fff;box-shadow:0 7px 18px #0b9b7b38}
+    .brand-mark svg{width:27px;height:27px}
+    .brand small{display:block;font-size:9px;font-weight:600;letter-spacing:0;color:#668782;margin-top:-4px}
+    .links{display:flex;align-items:center;gap:26px;color:#496d6b;font-size:13px;font-weight:700}
+    .links a:hover{color:var(--green)}
+    .btn{min-height:46px;padding:12px 21px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:9px;font-weight:800;font-size:14px;border:1px solid transparent;transition:transform .2s,box-shadow .2s,background .2s;cursor:pointer}
+    .btn:hover{transform:translateY(-2px)}
+    .btn-primary{background:linear-gradient(135deg,#0bb78a,#08775f);color:#fff;box-shadow:0 8px 22px #07866c2b}
+    .btn-outline{border-color:#16a987;color:#087c66;background:#ffffffd9}
+    .menu-btn{display:none;width:44px;height:44px;border:1px solid var(--line);border-radius:14px;background:#fff;color:var(--deep);font-size:23px}
+    .hero{position:relative;overflow:hidden;background:radial-gradient(ellipse at 78% 42%,#c8f5e8 0,transparent 34%),linear-gradient(115deg,#f6fcfa 0%,#fff 50%,#e9f8f5 100%);padding:54px 0 48px}
+    .hero:before{content:"";position:absolute;width:390px;height:390px;border:1px solid #b6e9dc;border-radius:50%;right:34%;top:-190px;opacity:.5}
+    .hero-grid{display:grid;grid-template-columns:.9fr 1.1fr;align-items:center;gap:38px;position:relative}
+    .eyebrow{display:inline-flex;align-items:center;gap:8px;border:1px solid #c8eee4;background:#f1fcf8;color:#087c66;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:900;margin-bottom:18px}
+    .eyebrow i{width:7px;height:7px;border-radius:50%;background:#11b88a;box-shadow:0 0 0 4px #11b88a1e}
+    h1{font-size:clamp(34px,4.1vw,54px);line-height:1.35;letter-spacing:-1.2px;margin:0 0 16px;font-weight:900;color:#073e3e}
+    h1 span{color:var(--green)}
+    .hero-copy{font-size:17px;color:#4d7372;max-width:510px;margin:0 0 26px}
+    .actions{display:flex;flex-wrap:wrap;gap:12px}
+    .trust{display:flex;flex-wrap:wrap;gap:17px;margin-top:27px;color:#47706c;font-size:12px;font-weight:700}
+    .trust span{display:inline-flex;align-items:center;gap:7px}
+    .check{display:grid;place-items:center;width:19px;height:19px;border-radius:50%;background:#d9f7ed;color:#07866c;font-size:12px;font-weight:900}
+    .visual{position:relative;min-height:385px;display:flex;align-items:center;justify-content:center}
+    .visual-glow{position:absolute;width:85%;height:72%;border-radius:50%;background:#a6f2dc80;filter:blur(40px)}
+    .scene{position:relative;width:100%;max-width:600px;height:350px}
+    .scene-line{position:absolute;inset:20px 8%;border:2px dashed #73d9bf;border-radius:50%;transform:rotate(-8deg);opacity:.9}
+    .scene-core{position:absolute;left:50%;top:49%;transform:translate(-50%,-50%);width:132px;height:132px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,#fff,#e2faf2);border:8px solid #fff;box-shadow:0 0 0 1px #b7ebdc,0 20px 45px #087f6826}
+    .scene-core .brand-mark{width:70px;height:70px;border-radius:23px}
+    .scene-core .brand-mark svg{width:43px;height:43px}
+    .node{position:absolute;width:40%;max-width:205px;min-height:146px;border-radius:23px;background:#ffffffed;border:1px solid #cfeee5;box-shadow:var(--shadow);padding:18px 14px;text-align:center}
+    .node.pharmacy{right:0;top:30px}.node.warehouse{left:0;bottom:22px}
+    .node-icon{width:56px;height:56px;margin:0 auto 8px;border-radius:19px;display:grid;place-items:center;background:linear-gradient(145deg,#d8f8ed,#fff);color:#07866c}
+    .node-icon svg{width:34px;height:34px}
+    .node strong{display:block;font-size:15px}
+    .node small{display:block;color:#6c8a86;font-size:11px;margin-top:2px}
+    .float-chip{position:absolute;z-index:2;border:1px solid #c7f2e6;background:#fff;border-radius:14px;padding:8px 12px;box-shadow:0 10px 25px #087f681c;color:#087c66;font-size:11px;font-weight:800}
+    .chip-one{left:12%;top:40px}.chip-two{right:12%;bottom:26px}
+    .section{padding:70px 0}
+    .section-soft{background:linear-gradient(180deg,#f5fbf9,#edf8f5)}
+    .section-head{text-align:center;max-width:700px;margin:0 auto 32px}
+    .section-kicker{color:#0a9677;font-size:12px;font-weight:900;letter-spacing:.3px}
+    h2{font-size:clamp(26px,3vw,36px);line-height:1.35;margin:7px 0 9px;color:#064544}
+    .section-head p{margin:0;color:#62807d;font-size:14px}
+    .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+    .step{background:#fff;border:1px solid #e0f1ec;border-radius:var(--radius);padding:24px 22px;box-shadow:0 8px 24px #064b4808;position:relative;overflow:hidden}
+    .step:after{content:"";position:absolute;width:120px;height:120px;border-radius:50%;background:#e9faf4;left:-45px;top:-45px}
+    .step h3,.step p{position:relative;z-index:1}
+    .step-num{width:36px;height:36px;border-radius:12px;background:#087f68;color:#fff;display:grid;place-items:center;font-size:13px;font-weight:900;position:relative;z-index:1}
+    .step h3{font-size:17px;margin:16px 0 6px}.step p{font-size:13px;color:#64817e;margin:0}
+    .features{display:grid;grid-template-columns:repeat(4,1fr);gap:15px}
+    .feature{background:#fff;border:1px solid #e0f1ec;border-radius:21px;padding:25px 18px;text-align:center;box-shadow:0 9px 25px #064b4808;transition:transform .2s}
+    .feature:hover{transform:translateY(-4px)}
+    .feature-icon{margin:0 auto 14px;width:58px;height:58px;border-radius:20px;background:linear-gradient(145deg,#d5f7ec,#f8fffc);color:#07866c;display:grid;place-items:center}
+    .feature-icon svg{width:29px;height:29px}
+    .feature h3{font-size:15px;margin:0 0 6px}.feature p{font-size:12px;line-height:1.8;color:#698681;margin:0}
+    .partnership{display:grid;grid-template-columns:1fr 1fr;gap:35px;align-items:center;background:linear-gradient(120deg,#075b52,#063e40);color:#fff;border-radius:30px;padding:38px 42px;overflow:hidden;position:relative}
+    .partnership:after{content:"";position:absolute;width:300px;height:300px;border:1px solid #ffffff19;border-radius:50%;left:-80px;bottom:-200px;box-shadow:0 0 0 25px #ffffff08,0 0 0 55px #ffffff05}
+    .partnership h2{color:#fff;margin-top:0}.partnership p{color:#c1e4dc;font-size:14px;margin:0}
+    .partners{display:grid;grid-template-columns:1fr 1fr;gap:12px;position:relative;z-index:1}
+    .partner{border:1px solid #ffffff30;background:#ffffff0b;border-radius:19px;padding:19px;text-align:center}
+    .partner b{display:block;margin:8px 0 3px}.partner small{font-size:11px;color:#c1e4dc}
+    .partner-icon{margin:auto;width:45px;height:45px;border-radius:15px;background:#ffffff12;display:grid;place-items:center;color:#81f1d0}
+    .partner-icon svg{width:25px;height:25px}
+    footer{background:#032f32;color:#d4eeea;padding:28px 0 18px}
+    .footer-main{display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:22px}
+    footer .brand{color:#fff;font-size:20px}footer .brand small{color:#a3d0c7}
+    .footer-links{display:flex;gap:20px;flex-wrap:wrap;font-size:12px;color:#c2e2dc}
+    .footer-links a:hover{color:#7cf0d0}
+    .copyright{border-top:1px solid #ffffff20;padding-top:15px;display:flex;justify-content:space-between;gap:12px;font-size:10px;color:#9fc7c0}
+    @media(max-width:900px){
+      .links{gap:15px}.hero-grid{gap:18px;grid-template-columns:1fr 1fr}.visual{min-height:330px}.scene{height:310px}
+      .node{min-height:130px;padding:13px 10px}.scene-core{width:112px;height:112px}.scene-core .brand-mark{width:60px;height:60px}
+      .features{grid-template-columns:repeat(2,1fr)}.partnership{padding:30px}
+    }
+    @media(max-width:640px){
+      html{scroll-padding-top:68px}
+      .wrap{width:min(100% - 28px,500px)}
+      .topbar{height:66px}
+      .brand{font-size:19px;gap:8px}.brand-mark{width:37px;height:37px;border-radius:13px}.brand small{font-size:8px}
+      .nav>.btn{min-height:40px;padding:9px 13px;font-size:12px}
+      .links{display:none;position:absolute;top:65px;right:14px;left:14px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:12px;box-shadow:var(--shadow);flex-direction:column;align-items:stretch;gap:0}
+      .links.open{display:flex}.links a{padding:12px;border-radius:10px}.links a:hover{background:#f0faf6}
+      .menu-btn{display:block;order:3}.nav{gap:8px}.nav .brand{margin-left:auto}
+      .hero{padding:30px 0 27px}
+      .hero-grid{grid-template-columns:1fr;gap:8px}
+      .hero-copy-wrap{text-align:center}
+      .eyebrow{margin-bottom:12px;font-size:11px}
+      h1{font-size:clamp(29px,8.2vw,38px);line-height:1.42;letter-spacing:-.6px;margin-bottom:11px}
+      .hero-copy{font-size:14px;line-height:1.9;margin:0 auto 18px;max-width:420px}
+      .actions{justify-content:center;gap:9px}
+      .btn{min-height:48px;padding:12px 17px;font-size:13px}
+      .actions .btn{flex:1;max-width:220px}
+      .trust{justify-content:center;gap:10px 14px;margin-top:18px;font-size:10px}
+      .visual{min-height:245px;margin-top:0}
+      .scene{height:245px;max-width:440px}
+      .scene-line{inset:25px 8%}
+      .node{width:39%;min-height:105px;border-radius:18px;padding:10px 7px}
+      .node.pharmacy{top:18px}.node.warehouse{bottom:14px}
+      .node-icon{width:40px;height:40px;border-radius:13px;margin-bottom:5px}.node-icon svg{width:25px;height:25px}
+      .node strong{font-size:12px}.node small{font-size:9px}
+      .scene-core{width:88px;height:88px;border-width:6px}
+      .scene-core .brand-mark{width:49px;height:49px;border-radius:16px}.scene-core .brand-mark svg{width:30px;height:30px}
+      .float-chip{font-size:9px;padding:6px 8px;border-radius:10px}.chip-one{left:1%;top:17px}.chip-two{right:1%;bottom:13px}
+      .section{padding:46px 0}
+      .section-head{margin-bottom:22px}.section-kicker{font-size:11px}h2{font-size:25px}
+      .section-head p{font-size:12px;line-height:1.8}
+      .steps{grid-template-columns:1fr;gap:12px}
+      .step{padding:18px;border-radius:19px;display:grid;grid-template-columns:40px 1fr;column-gap:12px;align-items:start}
+      .step-num{grid-row:span 2}.step h3{font-size:15px;margin:0 0 3px}.step p{font-size:12px}
+      .features{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+      .feature{padding:18px 11px;border-radius:18px}
+      .feature-icon{width:48px;height:48px;border-radius:16px;margin-bottom:10px}.feature-icon svg{width:25px;height:25px}
+      .feature h3{font-size:13px;line-height:1.5}.feature p{font-size:11px;line-height:1.75}
+      .partnership{grid-template-columns:1fr;gap:20px;padding:25px 18px;border-radius:23px;text-align:center}
+      .partnership h2{font-size:24px}.partnership p{font-size:12px;line-height:1.9}
+      .partners{gap:9px}.partner{padding:13px 8px;border-radius:15px}.partner b{font-size:12px}.partner small{font-size:10px}
+      .partner-icon{width:39px;height:39px;border-radius:13px}
+      .footer-main{align-items:flex-start;flex-direction:column;gap:18px}
+      .footer-links{gap:10px 17px;font-size:11px}
+      .copyright{flex-direction:column;gap:4px;font-size:9px}
+    }
+    @media(max-width:360px){
+      .nav>.btn{padding-inline:10px;font-size:11px}
+      .brand{font-size:17px}.brand-mark{width:33px;height:33px}
+      h1{font-size:28px}.actions .btn{padding-inline:10px;font-size:12px}
+      .trust{gap:8px}.visual{min-height:220px}.scene{height:220px}
+      .features{gap:8px}.feature{padding:15px 8px}
+    }
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+  </style>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap nav">
+    <a class="brand" href="#home" aria-label="LinkPharma الرئيسية">
+      <span class="brand-mark"><svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M14 25.5 10.5 29a7 7 0 0 1-9.9-9.9l8-8a7 7 0 0 1 9.9 0" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="m26 14.5 3.5-3.5a7 7 0 0 1 9.9 9.9l-8 8a7 7 0 0 1-9.9 0" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="m12 28 16-16" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span>
+      <span>LinkPharma<small>حلقة الوصل بين الصيدليات والمستودعات</small></span>
+    </a>
+    <nav class="links" id="siteLinks" aria-label="التنقل الرئيسي">
+      <a href="#home">الرئيسية</a><a href="#how">كيف تعمل المنصة</a><a href="#features">المزايا</a><a href="#partnership">الشراكة</a>
+    </nav>
+    <a class="btn btn-primary" href="platform.html#/login" id="loginTop">تسجيل الدخول <span aria-hidden="true">↗</span></a>
+    <button class="menu-btn" id="menuBtn" aria-label="فتح القائمة" aria-expanded="false" aria-controls="siteLinks">☰</button>
+  </div>
+</header>
+<main>
+  <section class="hero" id="home">
+    <div class="wrap hero-grid">
+      <div class="hero-copy-wrap">
+        <div class="eyebrow"><i></i> منصة رقمية تربط القطاع الدوائي</div>
+        <h1>حلقة الوصل الذكية بين <span>الصيدليات والمستودعات.</span></h1>
+        <p class="hero-copy">منصة رقمية تجمع عروض التوريد ومعلومات الأصناف في تجربة أكثر وضوحًا وشفافية.</p>
+        <div class="actions">
+          <a class="btn btn-primary" href="platform.html#/login" id="loginHero">تسجيل الدخول <span aria-hidden="true">↗</span></a>
+          <a class="btn btn-outline" href="#how">تعرّف على آلية العمل <span aria-hidden="true">↓</span></a>
+        </div>
+        <div class="trust">
+          <span><b class="check">✓</b> تجربة واضحة</span>
+          <span><b class="check">✓</b> تواصل أكثر كفاءة</span>
+          <span><b class="check">✓</b> للطرفين</span>
+        </div>
+      </div>
+      <div class="visual" aria-label="تصوير رمزي للترابط بين الصيدلية والمستودع">
+        <div class="visual-glow"></div>
+        <div class="scene">
+          <div class="scene-line"></div>
+          <div class="float-chip chip-one">ترابط رقمي ذكي</div>
+          <div class="float-chip chip-two">شراكة متوازنة</div>
+          <div class="node pharmacy">
+            <div class="node-icon"><svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M8 35V12h24v23M4 12h32L31 5H9L4 12Z" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M20 16v11M14.5 21.5h11" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/><path d="M13 35V29h5v6M23 35V29h5v6" stroke="currentColor" stroke-width="2.5"/></svg></div>
+            <strong>الصيدليات</strong><small>احتياجات وتجربة استخدام</small>
+          </div>
+          <div class="node warehouse">
+            <div class="node-icon"><svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="m4 15 16-9 16 9v20H4V15Z" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/><path d="M4 15h32M13 35V20h14v15M17 24h6M17 28h6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path d="m20 6 0 9" stroke="currentColor" stroke-width="2.5"/></svg></div>
+            <strong>المستودعات</strong><small>معلومات وتواصل منظم</small>
+          </div>
+          <div class="scene-core"><span class="brand-mark"><svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M14 25.5 10.5 29a7 7 0 0 1-9.9-9.9l8-8a7 7 0 0 1 9.9 0" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="m26 14.5 3.5-3.5a7 7 0 0 1 9.9 9.9l-8 8a7 7 0 0 1-9.9 0" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="m12 28 16-16" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="section" id="how">
+    <div class="wrap">
+      <div class="section-head"><span class="section-kicker">كيف تعمل المنصة؟</span><h2>من الصيدلية إلى المستودع.. عبر منصة واحدة</h2><p>تساعد LinkPharma على تنظيم التواصل وتبادل المعلومات ضمن تجربة رقمية واضحة للطرفين.</p></div>
+      <div class="steps">
+        <article class="step"><span class="step-num">01</span><h3>الصيدليات والمستودعات</h3><p>لكل طرف احتياجاته ومعلوماته ضمن بيئة عمل واضحة.</p></article>
+        <article class="step"><span class="step-num">02</span><h3>حلقة وصل رقمية</h3><p>تجمع المنصة التجربة في واجهة موحدة وسهلة الفهم.</p></article>
+        <article class="step"><span class="step-num">03</span><h3>تواصل أكثر وضوحًا</h3><p>تجربة منظمة تساعد على الوصول إلى المعلومات والتواصل بكفاءة.</p></article>
+      </div>
+    </div>
+  </section>
+  <section class="section section-soft" id="features">
+    <div class="wrap">
+      <div class="section-head"><span class="section-kicker">مزايا المنصة</span><h2>كل ما تحتاجه في تجربة واحدة</h2><p>واجهة عملية تجمع بين البساطة والوضوح والتوافق مع مختلف الأجهزة.</p></div>
+      <div class="features">
+        <article class="feature"><div class="feature-icon"><svg viewBox="0 0 32 32" fill="none"><path d="M5 7h22v15H5zM11 27h10M16 22v5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><rect x="21" y="15" width="7" height="12" rx="1.5" fill="#fff" stroke="currentColor" stroke-width="2"/></svg></div><h3>تصميم متوافق</h3><p>تجربة مرنة على الهاتف واللوحي والحاسوب.</p></article>
+        <article class="feature"><div class="feature-icon"><svg viewBox="0 0 32 32" fill="none"><path d="M5 7.5A3.5 3.5 0 0 1 8.5 4h15A3.5 3.5 0 0 1 27 7.5v11a3.5 3.5 0 0 1-3.5 3.5H14l-6 5v-5a3.5 3.5 0 0 1-3-3.5v-11Z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M11 12h.1M16 12h.1M21 12h.1" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/></svg></div><h3>تواصل أكثر كفاءة</h3><p>تنظيم أفضل للتواصل بين مختلف الأطراف.</p></article>
+        <article class="feature"><div class="feature-icon"><svg viewBox="0 0 32 32" fill="none"><path d="M9 4h11l5 5v19H9a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M20 4v6h5M11 15h11M11 20h11M11 25h7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div><h3>معلومات منظمة</h3><p>عرض واضح يساعد على فهم المعلومات بسهولة.</p></article>
+        <article class="feature"><div class="feature-icon"><svg viewBox="0 0 32 32" fill="none"><path d="M16 3 27 7v8c0 7-4.7 11.5-11 14-6.3-2.5-11-7-11-14V7l11-4Z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="m10.5 16 3.5 3.5 7.5-8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h3>تجربة واضحة</h3><p>واجهة بسيطة تُبرز المهم دون ازدحام بصري.</p></article>
+      </div>
+    </div>
+  </section>
+  <section class="section" id="partnership">
+    <div class="wrap">
+      <div class="partnership">
+        <div><span class="section-kicker" style="color:#85ecd1">شراكة متوازنة</span><h2>نجاح المنصة يبدأ بنجاح الطرفين</h2><p>تؤمن LinkPharma بأن الصيدليات والمستودعات شركاء في منظومة واحدة. لذلك صُممت التجربة لتكون واضحة ومتوازنة، وتدعم التواصل وتبادل المعلومات دون تفضيل طرف على آخر.</p></div>
+        <div class="partners">
+          <div class="partner"><div class="partner-icon"><svg viewBox="0 0 32 32" fill="none"><path d="M5 28V11h22v17M2 11h28L25 5H7L2 11Z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M16 14v9M11.5 18.5h9" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg></div><b>الصيدليات</b><small>تجربة رقمية أوضح</small></div>
+          <div class="partner"><div class="partner-icon"><svg viewBox="0 0 32 32" fill="none"><path d="m3 12 13-8 13 8v16H3V12Z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M3 12h26M11 28V17h10v11" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></div><b>المستودعات</b><small>تواصل منظم وواضح</small></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+<footer>
+  <div class="wrap">
+    <div class="footer-main">
+      <a class="brand" href="#home"><span class="brand-mark"><svg viewBox="0 0 40 40" fill="none"><path d="M14 25.5 10.5 29a7 7 0 0 1-9.9-9.9l8-8a7 7 0 0 1 9.9 0M26 14.5l3.5-3.5a7 7 0 0 1 9.9 9.9l-8 8a7 7 0 0 1-9.9 0M12 28l16-16" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span><span>LinkPharma<small>حلقة الوصل بين الصيدليات والمستودعات</small></span></a>
+      <div class="footer-links"><a href="#home">الرئيسية</a><a href="#how">كيف تعمل المنصة</a><a href="#features">المزايا</a><a href="#partnership">الشراكة</a><a href="platform.html#/login">تسجيل الدخول</a></div>
+    </div>
+    <div class="copyright"><span>© LinkPharma — جميع الحقوق محفوظة</span><span>معًا نحو تجربة رقمية أكثر وضوحًا وشفافية</span></div>
+  </div>
+</footer>
+<script>
+  const menuBtn = document.getElementById('menuBtn');
+  const links = document.getElementById('siteLinks');
+  menuBtn.addEventListener('click', () => {
+    const opened = links.classList.toggle('open');
+    menuBtn.setAttribute('aria-expanded', String(opened));
+    menuBtn.textContent = opened ? '×' : '☰';
+  });
+  links.querySelectorAll('a').forEach(a => a.addEventListener('click', () => {
+    links.classList.remove('open');
+    menuBtn.setAttribute('aria-expanded', 'false');
+    menuBtn.textContent = '☰';
+  }));
+</script>
+</body>
+</html>

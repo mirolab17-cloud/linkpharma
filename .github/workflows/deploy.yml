@@ -695,6 +695,20 @@ jobs:
           cp -r dist/. ../dist/v72/
           cd ..
 
+          # Build V73: manual product refresh on price imports; preserve existing mappings
+          cd v73
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npm run test:alias-suggestions
+          npx tsx test/importRows.test.ts
+          npm run build
+          mkdir -p ../dist/v73
+          cp -r dist/. ../dist/v73/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
