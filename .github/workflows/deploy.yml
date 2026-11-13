@@ -709,6 +709,20 @@ jobs:
           cp -r dist/. ../dist/v73/
           cd ..
 
+          # Build V74: pinned suppliers for pharmacies + no full reload on trade-products edit
+          cd v74
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run lint
+          npm run test:catalog-import
+          npm run test:product-matching
+          npm run test:quick-link
+          npm run test:alias-suggestions
+          npx tsx test/importRows.test.ts
+          npm run build
+          mkdir -p ../dist/v74
+          cp -r dist/. ../dist/v74/
+          cd ..
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 

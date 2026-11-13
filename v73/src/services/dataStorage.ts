@@ -1262,6 +1262,24 @@ export async function deleteProductAlias(supplierId: string, aliasId: string): P
   try { localStorage.setItem(`pharma_db_${key}`, JSON.stringify(next)); } catch (_) {}
 }
 
+/** تثبيت/إلغاء تثبيت مستودع (للمدير فقط). يحدّث حقل pinned وحده دون إعادة كتابة المستند. */
+export async function setSupplierPinned(id: string, pinned: boolean): Promise<void> {
+  const actor = useAuthStore.getState().user;
+  if (!actor || actor.role !== 'admin') throw new Error('تثبيت المستودعات متاح لمدير المنصة فقط.');
+  if (isFirebaseConfigured) {
+    try {
+      await updateDoc(doc(db, 'suppliers', id), { pinned });
+    } catch (e) {
+      console.error('Firestore setSupplierPinned failed:', e);
+      throw new Error('تعذر تحديث تثبيت المستودع.');
+    }
+  }
+  const list = getLocal<Supplier>(STORAGE_KEYS.suppliers);
+  const idx = list.findIndex((s) => s.id === id);
+  if (idx > -1) { list[idx] = { ...list[idx], pinned }; setLocal(STORAGE_KEYS.suppliers, list); updateLiveCollection('suppliers', STORAGE_KEYS.suppliers, list[idx]); }
+  invalidateCache(['suppliers']);
+}
+
 export async function saveSupplier(item: Omit<Supplier, 'id'> & { id?: string }): Promise<Supplier> {
   invalidateCache(['suppliers', 'prices']);
   const id = item.id || 'sup_' + Date.now();

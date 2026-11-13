@@ -60,6 +60,7 @@ import { PharmacyGlobalSearch, SearchScope } from '../../components/PharmacyGlob
 import { productDisplayName, productCardTitle, normalizeProductCardConfig, DEFAULT_PRODUCT_CARD_CONFIG } from '../../utils/productCatalog';
 import { getDeliveryAreaKeys } from '../../utils/gaza';
 import { deliveryRuleForSupplier } from '../../services/v18Features';
+import { pinnedFirst } from '../../utils/pinnedSuppliers';
 
 // عدد البطاقات التي تُضاف في كل دفعة عرض أثناء التمرير.
 const PAGE_SIZE = 24;
@@ -244,7 +245,7 @@ export const PharmacyPrices: React.FC = () => {
 
   // الموردون المسموحون لهذه الصيدلية (لا نعتمد على كائن user كاملاً)
   const allowedSuppliers = useMemo(() => {
-    const activeSuppliers = suppliers.filter((s) => s.status === 'active');
+    const activeSuppliers = pinnedFirst(suppliers.filter((s) => s.status === 'active'));
     const allowed = user?.allowedSuppliers;
     if (!allowed || allowed.length === 0) {
       return activeSuppliers;

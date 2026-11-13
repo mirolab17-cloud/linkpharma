@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '../../components/Modal';
 import { formatGregorianDate } from '../../utils/formatDate';
+import { pinnedFirst } from '../../utils/pinnedSuppliers';
 import { Spinner, CardSkeleton } from '../../components/Loader';
 
 export const PharmacySuppliers: React.FC = () => {
@@ -66,7 +67,7 @@ export const PharmacySuppliers: React.FC = () => {
 
   // فلترة المستودعات المسموح للصيدلية برؤيتها
   const visibleSuppliers = useMemo(() => {
-    let list = suppliers.filter((s) => s.status === 'active');
+    let list = pinnedFirst(suppliers.filter((s) => s.status === 'active'));
 
     // إذا كانت هناك مستودعات مخصصة للصيدلية
     if (user?.allowedSuppliers && user.allowedSuppliers.length > 0) {
