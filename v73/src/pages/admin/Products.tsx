@@ -133,9 +133,15 @@ export const Products: React.FC = () => {
     }
   };
 
-  useLiveCollections(['products', 'activeIngredients', 'dosageForms'], () => {
-    void Promise.all([getProducts(), getActiveIngredients(), getDosageForms().catch(() => [])]).then(([prods, ings, forms]) => {
-      setProducts(prods);
+  // تحديث صامت للأصناف فقط (من الذاكرة، بدون شاشة تحميل وبدون قراءة جديدة من Firestore).
+  const refreshProducts = async () => {
+    try { setProducts(await getProducts()); } catch (e) { console.error(e); }
+  };
+
+  useLiveCollections(['products'], () => { void refreshProducts(); });
+
+  useLiveCollections(['activeIngredients', 'dosageForms'], () => {
+    void Promise.all([getActiveIngredients(), getDosageForms().catch(() => [])]).then(([ings, forms]) => {
       setIngredients(ings);
       setDosageFormNames(forms.map((f) => f.name).sort((a, b) => a.localeCompare(b)));
     }).catch(() => undefined);
@@ -295,7 +301,7 @@ export const Products: React.FC = () => {
     if (failed.length) warning(`تعذر ترحيل ${failed.length} صنف (غالباً تكرار): ${failed.slice(0, 2).join(' | ')}`);
     setIsMigrationOpen(false);
     setMigrationSkipped(new Set());
-    await loadData();
+    await refreshProducts();
   };
 
   const handleSaveProduct = async (e: React.FormEvent) => {
@@ -327,7 +333,7 @@ export const Products: React.FC = () => {
 
       success(editingProduct ? 'تم تحديث الصنف بنجاح' : 'تمت إضافة الصنف بنجاح');
       setIsModalOpen(false);
-      await loadData();
+      await refreshProducts();
     } catch (err: any) {
       error('فشل حفظ الصنف: ' + err.message);
     } finally {
@@ -371,7 +377,7 @@ export const Products: React.FC = () => {
       success('تم حذف الأصناف المحددة بنجاح.');
       setSelectedIds((prev) => prev.filter((id) => !targetDeleteIds.includes(id)));
       setIsConfirmOpen(false);
-      await loadData();
+      await refreshProducts();
     } catch (err: any) {
       error('تعذر الحذف: ' + err.message);
     }
@@ -386,7 +392,7 @@ export const Products: React.FC = () => {
       setIsBulkCategoryOpen(false);
       setBulkNewCategory('');
       setSelectedIds([]);
-      await loadData();
+      await refreshProducts();
     } catch (err: any) {
       error('تعذر تحديث التصنيف: ' + err.message);
     }
