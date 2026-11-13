@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import {
   getSuppliers,
   saveSupplier,
+  setSupplierPinned,
   deleteSupplier
 } from '../../services/dataStorage';
 import { Supplier } from '../../types';
@@ -12,6 +13,7 @@ import {
   Truck,
   Plus,
   Edit,
+  Pin,
   Trash2,
   MessageCircle,
   FileSpreadsheet,
@@ -115,6 +117,7 @@ export const Suppliers: React.FC = () => {
         notes: notes.trim(),
         representativeName: representativeName.trim(),
         status,
+        pinned: editingSupplier?.pinned,
         deliveryFee: Math.max(0, Number(deliveryFee) || 0),
         importTemplate: editingSupplier?.importTemplate,
         lastPriceUpdate: editingSupplier?.lastPriceUpdate,
@@ -128,6 +131,15 @@ export const Suppliers: React.FC = () => {
       error('حدث خطأ أثناء الحفظ: ' + err.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleTogglePin = async (item: Supplier) => {
+    try {
+      await setSupplierPinned(item.id, !item.pinned);
+      setSuppliers((prev) => prev.map((s) => (s.id === item.id ? { ...s, pinned: !item.pinned } : s)));
+    } catch (err: any) {
+      error(err?.message || 'تعذر تحديث التثبيت.');
     }
   };
 
@@ -249,6 +261,14 @@ export const Suppliers: React.FC = () => {
             title="تعديل"
           >
             <Edit className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => void handleTogglePin(item)}
+            className={`p-1.5 rounded-lg transition ${item.pinned ? 'text-[#0f9d7a] bg-emerald-50' : 'text-slate-400 hover:text-[#0f9d7a] hover:bg-emerald-50'}`}
+            title={item.pinned ? 'إلغاء التثبيت (يظهر أولاً للصيدليات)' : 'تثبيت ليظهر أولاً للصيدليات'}
+            aria-pressed={Boolean(item.pinned)}
+          >
+            <Pin className={`w-4 h-4 ${item.pinned ? 'fill-current' : ''}`} />
           </button>
           <button
             onClick={() => confirmDelete(item.id)}

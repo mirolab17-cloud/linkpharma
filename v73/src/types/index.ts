@@ -253,6 +253,8 @@ export interface Supplier {
   lastPriceUpdatedByUid?: string;
   lastPriceUpdatedByName?: string;
   status: 'active' | 'paused';
+  /** يثبّته المدير ليظهر أولاً في قوائم الصيدليات؛ لا يُعرض للصيدلية أنه مثبّت. */
+  pinned?: boolean;
   importTemplate?: ImportTemplate;
   importTemplateUpdatedAt?: string;
   importTemplateUpdatedByUid?: string;
